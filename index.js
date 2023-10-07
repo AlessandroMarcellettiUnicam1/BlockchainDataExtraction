@@ -124,7 +124,6 @@ async function getStorageData(){
         }
     blockchainLog.push(newLog)
     }
-    console.log(blockchainLog);
 }
 
 async function getTransactionsByAddress() {
@@ -152,6 +151,61 @@ async function getTransactionsByAddress() {
         console.error('Error:', error);
     }
 }
-getTransactionsByAddress()
 
+async function getAllTransactions(){
+    const axios = require('axios');
+
+// Replace with your Etherscan API key
+    const apiKey = 'I81RM42RCBH3HIC9YEK1GX6KYQ12U73K1C';
+
+// Replace with the contract address you want to retrieve transactions for
+    const contractAddress = '0xf258FabBF035353001f0f34799666608d4A75C90';
+
+// Etherscan API endpoint for contract transactions
+    const endpoint = `https://api.etherscan.io/api?module=account&action=txlist&address=${contractAddress}&startblock=0&endblock=99999999&sort=asc&apikey=${apiKey}`;
+
+    axios
+        .get(endpoint)
+        .then((response) => {
+            const data = response.data;
+            if (data.status === '1') {
+                const transactions = data.result;
+                transactions.forEach((transaction) => {
+                    console.log(transaction);
+                });
+            } else {
+                console.error('Error: Unable to retrieve transactions.');
+            }
+        })
+        .catch((error) => {
+            console.error(`An error occurred: ${error}`);
+        });
+
+}
+//getAllTransactions()
+//getTransactionsByAddress()
+
+
+async function pp(){
+
+// Replace with the desired output file path
+const inputData = blockchainLog;
+
+
+    const ocelJson = Serializer.serializeJson(inputData);
+
+
+
+    try {
+        // Serialize the object-centric event log data to JSON
+        const ocelJson = JSON.stringify(objectCentricData, null, 2);
+
+        // Write the OCEL JSON to the output file
+        fs.writeFileSync(ocelOutputFilePath, ocelJson);
+        console.log(`OCEL JSON file created at ${ocelOutputFilePath}`);
+    } catch (error) {
+        console.error(`Error writing output file: ${error}`);
+    }
+
+}
 
