@@ -146,11 +146,11 @@ async function getStorageData(){
                     newLog.storageValues[index] = web3.utils.hexToAscii(storageValue);
                 }else if(storageVar.type === 't_bool'){
                     if(storageValue == true){
-                        newLog.storageValues[index] = 'true'
+                        newLog.storageValues[index] = true
                         console.log("STORAGE decoded boolean VARAIBLE: " + 'true');
                     }else{
                         console.log('false')
-                        newLog.storageValues[index] = 'false'
+                        newLog.storageValues[index] = false
                     }
                 }else{
                     console.log(storageVar.type)
