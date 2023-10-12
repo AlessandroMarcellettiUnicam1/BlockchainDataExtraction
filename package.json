@@ -4,13 +4,19 @@
   "description": "",
   "main": "index.js",
   "scripts": {
+    "ganache": "ganache --fork.network mainnet --fork.blockNumber 16924888",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "alchemy-sdk": "^2.10.1",
     "axios": "^1.5.1",
+    "childprocess": "^2.0.2",
     "ethereum-input-data-decoder": "^0.4.2",
+    "ethers": "^5.4.0",
+    "ganache": "^7.9.1",
+    "node-fetch": "^3.3.2",
     "pm4js": "^0.0.28",
     "solc": "^0.8.12",
     "web3": "^4.1.2"

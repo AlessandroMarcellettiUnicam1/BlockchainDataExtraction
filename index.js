@@ -3,9 +3,14 @@ const InputDataDecoder = require('ethereum-input-data-decoder');
 const solc = require('solc');
 const fs = require('fs');
 const axios = require("axios");
+const { Network, Alchemy } = require("alchemy-sdk");
+const ethers = require("ethers");
+const https = require("https");
+const ganache = require("ganache");
+const { spawn  } = require('child_process');
 const sourceCode = fs.readFileSync('contractEtherscan.sol', 'utf8');
 let contractAbi = fs.readFileSync('abiEtherscan.json', 'utf8');
-let localweb3 = new Web3('HTTP://127.0.0.1:7545')
+let localweb3 = new Web3('HTTP://127.0.0.1:8545')
 let web3 = new Web3('https://eth-mainnet.g.alchemy.com/v2/ISHV03DLlGo2K1-dqE6EnsyrP2GF44Gt')
 let transactions = [];
 let generalStorageLayout;
@@ -84,6 +89,73 @@ for(const contract of output.sources[''].AST.children){
 
 }
 
+
+async function getTraces(blockNumber){
+   /* const mappingKey = 0;
+const index = 0
+    const encodedIndex = web3.eth.abi.encodeParameters(['uint'],['0'])
+    const key = 'ciaone'
+    const encodeKey = web3.eth.abi.encodeParameters(['string'],['ciaone'])
+    for(let i = 0; i < 20; i++){
+        const slot = web3.utils.soliditySha3(encodeKey + encodedIndex, {"encoding" : "hex"});
+        console.log(slot);
+        // const keyInBytes32 = web3.utils.asciiToHex(i);
+        const storageValue = await localweb3.eth.getStorageAt(contractAddress, slot)
+        console.log("STORAGE Value: " + storageValue);
+    }*/
+   // const tx = await web3.eth.getTransaction("0x2649b657617dac7272a9aaac751cb1c4a45d8e220a0ea9dfb0077aec750177eb");
+    //const decoder = new InputDataDecoder(contractAbi);
+    //const result = decoder.decodeData(tx.input);
+    //console.log(result);
+    //const storageValue = await web3.eth.getStorageAt(contractAddress, "0x6fc3b8e7a837271ba00b731b2bd88ce48419283825eb0ec35420d4c59904f32e", 16924888)
+    //const please = await web3.utils.hexToNumber(storageValue);
+   // console.log("STORAGE Value: " + please);
+
+
+    const ls = spawn('ganache.cmd', ['--fork.network' , 'mainnet', '--fork.blockNumber', blockNumber], {
+    });
+
+    ls.stdout.on('data', (data) => {
+        console.log("pippo");
+        console.log(`stdout: ${data}`);
+    });
+
+    ls.stderr.on('data', (data) => {
+        console.error(`stderr: ${data}`);
+    });
+
+    ls.on('close', (code, signal) => {
+        console.log(`child process exited with code ${code}`);
+    });
+    await new Promise(r => setTimeout(r, 5000));
+
+    axios.post('http://127.0.0.1:8545', {"method": "debug_traceTransaction", "params" :  ["0x2649b657617dac7272a9aaac751cb1c4a45d8e220a0ea9dfb0077aec750177eb",  {
+               "tracer": "prestateTracer"
+           }]}).then((response) => {
+            const data = response.data;
+            if (data.status === '1') {
+                for (const log of response.data.result.structLogs) {
+                    console.log(log.storage)
+                }
+            }
+
+       }).catch((error) => {
+        console.error(`An error occurred: ${error}`);
+    });
+    await web3.eth.getStorageAt(contractAddress, "0x6fc3b8e7a837271ba00b731b2bd88ce48419283825eb0ec35420d4c59904f32e", 16924888);
+
+    ls.kill()
+
+
+
+
+}
+
+
+getTraces(
+    16924888
+)
+//getContractCodeEtherscan(false, 'CakeOFT')
 //todo work with mapping value
 async function getStorageData(){
    // const transaction = await web3.eth.getTransaction("0xc43edd41977e9fb87c0f8a5851d092460281266dd5b939fc7609a8fa764277e9")
@@ -92,9 +164,10 @@ async function getStorageData(){
     let partialInt = 0;
     console.log(contractTransactions.length);
     for(const tx of contractTransactions){
-        if(partialInt < 10){
+        if(partialInt < 400){
         let newLog = {
             activity: '',
+            timestamp: '',
             inputNames: [],
             inputTypes: [],
             inputValues: [],
@@ -108,6 +181,7 @@ async function getStorageData(){
         const result = decoder.decodeData(tx.input);
        // console.log("Decoded inputData: " + result);
         newLog.activity = result.method;
+        newLog.timestamp = tx.timeStamp;
         for (let i = 0; i < result.inputs.length; i++) {
 
             newLog.inputTypes[i] = result.types[i];
@@ -117,8 +191,8 @@ async function getStorageData(){
             console.log("Input name" + result.names[i]);*/
 
         if(result.types[i] === 'uint256'){
-                console.log("Input INTEGER: " + web3.utils.hexToNumber(result.inputs[i]._hex));
-            newLog.inputValues[i] = web3.utils.hexToNumber(result.inputs[i]._hex);
+                console.log("Input INTEGER: " + Number(web3.utils.hexToNumber(result.inputs[i]._hex)));
+            newLog.inputValues[i] = Number(web3.utils.hexToNumber(result.inputs[i]._hex));
         }else if(result.types[i] === 'string'){
                 console.log("Input STRING: " + web3.utils.hexToAscii(result.inputs[i]));
             newLog.inputValues[i] = web3.utils.hexToAscii(result.inputs[i]);
@@ -139,8 +213,8 @@ async function getStorageData(){
                // console.log("STORAGE Value: " + storageValue);
 
                 if(storageVar.type === 't_uint256'){
-                    console.log("STORAGE decoded integer VARAIBLE: " + web3.utils.hexToNumber(storageValue));
-                    newLog.storageValues[index] = web3.utils.hexToNumber(storageValue);
+                    console.log("STORAGE decoded integer VARAIBLE: " + Number(web3.utils.hexToNumber(storageValue)));
+                    newLog.storageValues[index] = Number(web3.utils.hexToNumber(storageValue));
                 }else if(storageVar.type === 't_string'){
                     console.log("STORAGE decoded string VARAIBLE: " + web3.utils.hexToAscii(storageValue));
                     newLog.storageValues[index] = web3.utils.hexToAscii(storageValue);
@@ -153,7 +227,8 @@ async function getStorageData(){
                         newLog.storageValues[index] = false
                     }
                 }else{
-                    console.log(storageVar.type)
+                    newLog.storageValues[index] = storageValue
+                    console.log("TIPO GREZZO: " + storageVar.type + "CON VALORE: " + storageValue)
                 }
             index ++;
         }
@@ -169,7 +244,7 @@ async function getStorageData(){
         const finalParsedLog = JSON.stringify(blockchainLog, null, 2);
 
         // Write the OCEL JSON to the output file
-        fs.writeFileSync('outputLog.json', finalParsedLog);
+        fs.writeFileSync('pancakeSwap.json', finalParsedLog);
         console.log(`OCEL JSON file created`);
     } catch (error) {
         console.error(`Error writing output file: ${error}`);
@@ -203,7 +278,7 @@ async function getTransactionsByAddress() {
 }
 
 async function getAllTransactions(){
-    const axios = require('axios');
+
 
 // Replace with your Etherscan API key
     const apiKey = 'I81RM42RCBH3HIC9YEK1GX6KYQ12U73K1C';
@@ -221,7 +296,7 @@ async function getAllTransactions(){
             if (data.status === '1') {
                 const transactions = data.result;
                 transactions.forEach((transaction) => {
-                    //console.log(transaction);
+                  //  console.log(transaction);
                     contractTransactions.push(transaction);
                 });
                 getStorageData()
@@ -301,7 +376,7 @@ let buffer;
             console.error(`An error occurred: ${error}`);
         });
 }
-getContractCodeEtherscan(false, 'CakeOFT')
+//getContractCodeEtherscan(false, 'CakeOFT')
 
 //getTransactionsByAddress()
 //readStorageLayout()
