@@ -1,0 +1,186 @@
+[
+  {},
+  {
+    "activity": null,
+    "timestamp": "1679985839",
+    "inputNames": [],
+    "inputTypes": [],
+    "inputValues": [],
+    "storageVarTypes": [],
+    "storageVarNames": []
+  },
+  {
+    "activity": "setConfig",
+    "timestamp": "1679989487",
+    "inputNames": [
+      "_version",
+      "_chainId",
+      "_configType",
+      "_config"
+    ],
+    "inputTypes": [
+      "uint16",
+      "uint16",
+      "uint256",
+      "bytes"
+    ],
+    "inputValues": [
+      0,
+      102,
+      2,
+      "0x000000000000000000000000000000000000000000000000000000000000000a"
+    ],
+    "storageVarTypes": [],
+    "storageVarNames": []
+  },
+  {
+    "activity": "setConfig",
+    "timestamp": "1679989643",
+    "inputNames": [
+      "_version",
+      "_chainId",
+      "_configType",
+      "_config"
+    ],
+    "inputTypes": [
+      "uint16",
+      "uint16",
+      "uint256",
+      "bytes"
+    ],
+    "inputValues": [
+      0,
+      108,
+      2,
+      "0x000000000000000000000000000000000000000000000000000000000000000a"
+    ],
+    "storageVarTypes": [],
+    "storageVarNames": []
+  },
+  {
+    "activity": "setTrustedRemote",
+    "timestamp": "1679990123",
+    "inputNames": [
+      "_srcChainId",
+      "_path"
+    ],
+    "inputTypes": [
+      "uint16",
+      "bytes"
+    ],
+    "inputValues": [
+      102,
+      "0xb274202daba6ae180c665b4fbe59857b7c3a8091152649ea73beab28c5b49b26eb48f7ead6d4c898"
+    ],
+    "storageVarTypes": [],
+    "storageVarNames": []
+  },
+  {
+    "activity": "setTrustedRemoteAddress",
+    "timestamp": "1679994467",
+    "inputNames": [
+      "_remoteChainId",
+      "_remoteAddress"
+    ],
+    "inputTypes": [
+      "uint16",
+      "bytes"
+    ],
+    "inputValues": [
+      10108,
+      "0x159df6b7689437016108a019fd5bef736bac692b6d4a1f10c941f6fbb9a74ca6"
+    ],
+    "storageVarTypes": [],
+    "storageVarNames": []
+  },
+  {
+    "activity": "setInboundCap",
+    "timestamp": "1679994755",
+    "inputNames": [
+      "chainId",
+      "cap"
+    ],
+    "inputTypes": [
+      "uint16",
+      "uint256"
+    ],
+    "inputValues": [
+      102,
+      5e+25
+    ],
+    "storageVarTypes": [],
+    "storageVarNames": []
+  },
+  {
+    "activity": "setInboundCap",
+    "timestamp": "1679994911",
+    "inputNames": [
+      "chainId",
+      "cap"
+    ],
+    "inputTypes": [
+      "uint16",
+      "uint256"
+    ],
+    "inputValues": [
+      108,
+      5e+25
+    ],
+    "storageVarTypes": [],
+    "storageVarNames": []
+  },
+  {
+    "activity": "setOutboundCap",
+    "timestamp": "1679994959",
+    "inputNames": [
+      "chainId",
+      "cap"
+    ],
+    "inputTypes": [
+      "uint16",
+      "uint256"
+    ],
+    "inputValues": [
+      102,
+      5e+25
+    ],
+    "storageVarTypes": [],
+    "storageVarNames": []
+  },
+  {
+    "activity": "setOutboundCap",
+    "timestamp": "1679995007",
+    "inputNames": [
+      "chainId",
+      "cap"
+    ],
+    "inputTypes": [
+      "uint16",
+      "uint256"
+    ],
+    "inputValues": [
+      108,
+      5e+25
+    ],
+    "storageVarTypes": [],
+    "storageVarNames": []
+  },
+  {
+    "activity": "setTrustedRemoteAddress",
+    "timestamp": "1679996171",
+    "inputNames": [
+      "_remoteChainId",
+      "_remoteAddress"
+    ],
+    "inputTypes": [
+      "uint16",
+      "bytes"
+    ],
+    "inputValues": [
+      10108,
+      "0x0000000000000000000000000000000000000000"
+    ],
+    "storageVarTypes": [],
+    "storageVarNames": []
+  }
+]

@@ -89,8 +89,8 @@ for(const contract of output.sources[''].AST.children){
 
 }
 
-
-async function getTraces(blockNumber){
+let indiceProva = 0;
+async function getTraces(blockNumber, txHash){
    /* const mappingKey = 0;
 const index = 0
     const encodedIndex = web3.eth.abi.encodeParameters(['uint'],['0'])
@@ -111,10 +111,9 @@ const index = 0
     //const please = await web3.utils.hexToNumber(storageValue);
    // console.log("STORAGE Value: " + please);
 
-
-    const ls = spawn('ganache.cmd', ['--fork.network' , 'mainnet', '--fork.blockNumber', blockNumber], {
-    });
-
+if(indiceProva < 10) {
+    const ls = spawn('ganache.cmd', ['--fork.network', 'mainnet', '--fork.blockNumber', blockNumber], {});
+    console.log(ls.pid);
     ls.stdout.on('data', (data) => {
         console.log("pippo");
         console.log(`stdout: ${data}`);
@@ -127,56 +126,68 @@ const index = 0
     ls.on('close', (code, signal) => {
         console.log(`child process exited with code ${code}`);
     });
-    setTimeout(() => {
-        console.log("dwwddwdwwd")
-        getStorageFromTrace();
-        ls.kill()
+    const vaa = setTimeout(async () => {
+        await getStorageFromTrace(ls.pid, blockNumber, txHash);
+        clearTimeout(vaa)
+        console.log("terminatedd")
+
     }, 5000);
-
-
-
-
-
-
 }
 
+}
+getTraces(16924448, 0xc660499c88814c243919ad08337ae88fc3e2395e5d7587da6b13e1dc7c58f46d)
 
-getTraces(
-    16924888
-)
 
-async function getStorageFromTrace(){
-    console.log("ciaooooo");
-    axios.post('http://127.0.0.1:8545', {"method": "debug_traceTransaction", "params" :  ["0x2649b657617dac7272a9aaac751cb1c4a45d8e220a0ea9dfb0077aec750177eb",  {
+//etTraces(blockNumber)
+
+async function getStorageFromTrace(pid, blockNumber, txAddress){
+    let storageValues = []
+    axios.post('http://127.0.0.1:8545', {"method": "debug_traceTransaction", "params" :  [txAddress,  {
             "tracer": "prestateTracer"
         }]}).then((response) => {
-        console.log("ciaooooo");
-
         const rawData = response.data;
-        console.log(rawData);
+       // console.log(rawData.result.structLogs);
 
-            for (const log of rawData.result.structLogs) {
-                console.log(log.storage)
+        for (const log of rawData.result.structLogs) {
+            //console.log('.........................................')
+            //console.log(log.op)
+            //console.log(log.storage)
+
+            if(log.op === 'STOP'){
+                console.log(log.storage);
+                const keys = Object.keys(log.storage);
+                for(const key of keys){
+                    storageValues.push(log.storage[key])
+                }
+
             }
-        web3.eth.getStorageAt(contractAddress, "0x6fc3b8e7a837271ba00b731b2bd88ce48419283825eb0ec35420d4c59904f32e", 16924888);
-        console.log(rawStorage);
-
-
+        }
+      // web3.eth.getStorageAt(contractAddress, "0x6fc3b8e7a837271ba00b731b2bd88ce48419283825eb0ec35420d4c59904f32e", 16924888)
+        process.kill(pid);
+       // processStorage(storageKeys, blockNumber)
+        //process.exit()
+        return storageValues;
     }).catch((error) => {
         console.error(`An error occurred: ${error}`);
     });
-    c
+
+}
+
+async function processStorage(storageKeys, blockNumber){
+    for (const storageKey of storageKeys){
+        console.log(storageKey);
+        const storageValue = await web3.eth.getStorageAt(contractAddress, '0x6fc3b8e7a837271ba00b731b2bd88ce48419283825eb0ec35420d4c59904f32e', blockNumber)
+         console.log("STORAGE Value: " + storageValue);
+        process.exit()
+    }
 }
 //getContractCodeEtherscan(false, 'CakeOFT')
 //todo work with mapping value
 async function getStorageData(){
-   // const transaction = await web3.eth.getTransaction("0xc43edd41977e9fb87c0f8a5851d092460281266dd5b939fc7609a8fa764277e9")
-
-   // console.log(web3.utils.hexToNumber(result.inputs[0]._hex));
     let partialInt = 0;
     console.log(contractTransactions.length);
     for(const tx of contractTransactions){
-        if(partialInt < 400){
+        if(partialInt < 10){
         let newLog = {
             activity: '',
             timestamp: '',
@@ -189,18 +200,14 @@ async function getStorageData(){
         };
         console.log('---------------------------------------------------');
         const decoder = new InputDataDecoder(contractAbi);
-        //console.log(tx.input);
+
         const result = decoder.decodeData(tx.input);
-       // console.log("Decoded inputData: " + result);
         newLog.activity = result.method;
         newLog.timestamp = tx.timeStamp;
         for (let i = 0; i < result.inputs.length; i++) {
 
             newLog.inputTypes[i] = result.types[i];
             newLog.inputNames[i] = result.names[i];
-            /*console.log("ACTIVITY: " + result.method);
-            console.log("Input type" + result.types[i]);
-            console.log("Input name" + result.names[i]);*/
 
         if(result.types[i] === 'uint256'){
                 console.log("Input INTEGER: " + Number(web3.utils.hexToNumber(result.inputs[i]._hex)));
@@ -213,8 +220,9 @@ async function getStorageData(){
             newLog.inputValues[i] = result.inputs[i];
             }
         }
+
         //WORKS WITH STORAGE
-        let index = 0;
+        /*let index = 0;
         for (const storageVar of generalStorageLayout.storage){
 
                 newLog.storageVarNames[index] = storageVar.label
@@ -243,7 +251,9 @@ async function getStorageData(){
                     console.log("TIPO GREZZO: " + storageVar.type + "CON VALORE: " + storageValue)
                 }
             index ++;
-        }
+        }*/
+            const storageVal = await getTraces(tx.blockNumber);
+            newLog.storageValues = storageVal;
         console.log("FINITOOO!!!")
     blockchainLog.push(newLog)
             partialInt++;
@@ -320,22 +330,13 @@ async function getAllTransactions(){
             console.error(`An error occurred: ${error}`);
         });
 
-
-
 }
-
+//getAllTransactions();
 
 async function getContractCodeEtherscan(firstRun, chosenContract){
     const axios = require('axios');
-
-// Replace with your Etherscan API key
     const apiKey = 'I81RM42RCBH3HIC9YEK1GX6KYQ12U73K1C';
-
-// Replace with the contract address you want to retrieve transactions for
-
-// Etherscan API endpoint for contract transactions
     const endpoint = `https://api.etherscan.io/api?module=contract&action=getsourcecode&address=${contractAddress}&apikey=${apiKey}`;
-
 
 let buffer;
     axios
