@@ -127,24 +127,13 @@ const index = 0
     ls.on('close', (code, signal) => {
         console.log(`child process exited with code ${code}`);
     });
-    await new Promise(r => setTimeout(r, 5000));
+    setTimeout(() => {
+        console.log("dwwddwdwwd")
+        getStorageFromTrace();
+        ls.kill()
+    }, 5000);
 
-    axios.post('http://127.0.0.1:8545', {"method": "debug_traceTransaction", "params" :  ["0x2649b657617dac7272a9aaac751cb1c4a45d8e220a0ea9dfb0077aec750177eb",  {
-               "tracer": "prestateTracer"
-           }]}).then((response) => {
-            const data = response.data;
-            if (data.status === '1') {
-                for (const log of response.data.result.structLogs) {
-                    console.log(log.storage)
-                }
-            }
 
-       }).catch((error) => {
-        console.error(`An error occurred: ${error}`);
-    });
-    await web3.eth.getStorageAt(contractAddress, "0x6fc3b8e7a837271ba00b731b2bd88ce48419283825eb0ec35420d4c59904f32e", 16924888);
-
-    ls.kill()
 
 
 
@@ -155,6 +144,29 @@ const index = 0
 getTraces(
     16924888
 )
+
+async function getStorageFromTrace(){
+    console.log("ciaooooo");
+    axios.post('http://127.0.0.1:8545', {"method": "debug_traceTransaction", "params" :  ["0x2649b657617dac7272a9aaac751cb1c4a45d8e220a0ea9dfb0077aec750177eb",  {
+            "tracer": "prestateTracer"
+        }]}).then((response) => {
+        console.log("ciaooooo");
+
+        const rawData = response.data;
+        console.log(rawData);
+
+            for (const log of rawData.result.structLogs) {
+                console.log(log.storage)
+            }
+        web3.eth.getStorageAt(contractAddress, "0x6fc3b8e7a837271ba00b731b2bd88ce48419283825eb0ec35420d4c59904f32e", 16924888);
+        console.log(rawStorage);
+
+
+    }).catch((error) => {
+        console.error(`An error occurred: ${error}`);
+    });
+    c
+}
 //getContractCodeEtherscan(false, 'CakeOFT')
 //todo work with mapping value
 async function getStorageData(){
