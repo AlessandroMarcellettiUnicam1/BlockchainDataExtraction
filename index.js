@@ -7,7 +7,7 @@ const { Network, Alchemy } = require("alchemy-sdk");
 const ethers = require("ethers");
 const https = require("https");
 const ganache = require("ganache");
-const { spawn  } = require('child_process');
+const { spawnSync  } = require('child_process');
 const sourceCode = fs.readFileSync('contractEtherscan.sol', 'utf8');
 let contractAbi = fs.readFileSync('abiEtherscan.json', 'utf8');
 let localweb3 = new Web3('HTTP://127.0.0.1:8545')
@@ -89,7 +89,7 @@ for(const contract of output.sources[''].AST.children){
 
 }
 
-let indiceProva = 0;
+let indiceProva = 8;
 async function getTraces(blockNumber, txHash){
    /* const mappingKey = 0;
 const index = 0
@@ -112,9 +112,9 @@ const index = 0
    // console.log("STORAGE Value: " + please);
 
 if(indiceProva < 10) {
-    const ls = spawn('ganache.cmd', ['--fork.network', 'mainnet', '--fork.blockNumber', blockNumber], {});
-    console.log(ls.pid);
-    ls.stdout.on('data', (data) => {
+    const ls = spawnSync('node', ['C:\\Users\\alkit\\OneDrive\\Desktop\\lavoro\\processMiningExtractor\\utilities.js'],  { encoding: 'utf-8' });
+    console.log(ls.output);
+   /* ls.stdout.on('data', (data) => {
         console.log("pippo");
         console.log(`stdout: ${data}`);
     });
@@ -125,19 +125,42 @@ if(indiceProva < 10) {
 
     ls.on('close', (code, signal) => {
         console.log(`child process exited with code ${code}`);
-    });
-    const vaa = setTimeout(async () => {
+    });*/
+   /* const vaa = setTimeout(async () => {
         await getStorageFromTrace(ls.pid, blockNumber, txHash);
         clearTimeout(vaa)
         console.log("terminatedd")
 
-    }, 5000);
+    }, 5000);*/
 }
 
 }
-getTraces(16924448, 0xc660499c88814c243919ad08337ae88fc3e2395e5d7587da6b13e1dc7c58f46d)
 
+//getTraces(16924448, 0xc660499c88814c243919ad08337ae88fc3e2395e5d7587da6b13e1dc7c58f46d)
+async function altroGiro(){
+    const ganache = require("ganache");
 
+    const provider = ganache.provider({
+        network_id: 1,
+        chainId: 1,
+      //  url: 'https://mainnet.infura.io/v3/f3851e4d467341f1b5927b6546d9f30c',
+        fork: 'https://mainnet.infura.io/v3/f3851e4d467341f1b5927b6546d9f30c\@16924448'
+    });
+   // console.log(server)
+   //await server.listen(8545, async function (err, blockchain) {
+        //const provider = server.provider;
+    console.log(provider.getOptions());
+    const accounts = await provider.request({
+            method: "debug_traceTransaction",
+            params: ['0xc660499c88814c243919ad08337ae88fc3e2395e5d7587da6b13e1dc7c58f46d', {
+                "tracer": "prestateTracer"
+            }]
+        });
+        console.log(accounts);
+   // });
+
+}
+altroGiro()
 //etTraces(blockNumber)
 
 async function getStorageFromTrace(pid, blockNumber, txAddress){
