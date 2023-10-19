@@ -10,6 +10,8 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@ethereumjs/common": "^4.0.0",
+    "@ethereumjs/vm": "^7.0.0",
     "alchemy-sdk": "^2.10.1",
     "axios": "^1.5.1",
     "childprocess": "^2.0.2",
@@ -18,6 +20,7 @@
     "ethers": "^5.4.0",
     "ganache": "^7.9.1",
     "ganache-cli": "^6.12.2",
+    "hardhat-tracer": "^2.6.0",
     "node-fetch": "^3.3.2",
     "pm4js": "^0.0.28",
     "solc": "^0.8.12",

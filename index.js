@@ -26,7 +26,8 @@ let input = {
     settings: {
         outputSelection: {
             '*': {
-                '*': ["storageLayout"]
+                //'*': ["storageLayout"]
+                '*': ["*"]
             }
         }
     }
@@ -137,36 +138,74 @@ if(indiceProva < 10) {
 }
 
 //getTraces(16924448, 0xc660499c88814c243919ad08337ae88fc3e2395e5d7587da6b13e1dc7c58f46d)
-async function altroGiro(){
+function myCustomTracerFunction(data, op, gas, gasCost, memory, stack) {
+    /*const { op, gas, gasCost, memory, stack } = data;
+      console.log("Operation: ", op);
+      console.log("Gas Used: ", gas);
+      console.log("Gas Cost: ", gasCost.toString());
+      console.log("Memory: ", memory);
+      console.log("Stack: ", stack);*/
+}
+async function getTraceFromGanache(blockNumber, txHash){
     const ganache = require("ganache");
 
     const provider = ganache.provider({
         network_id: 1,
-        chainId: 1,
-      //  url: 'https://mainnet.infura.io/v3/f3851e4d467341f1b5927b6546d9f30c',
-        fork: 'https://mainnet.infura.io/v3/f3851e4d467341f1b5927b6546d9f30c\@16924448'
+        fork: 'https://mainnet.infura.io/v3/f3851e4d467341f1b5927b6546d9f30c\@'+blockNumber
+
+
     });
-   // console.log(server)
-   //await server.listen(8545, async function (err, blockchain) {
+    console.log(ganache.server);
+    //await server.listen(8545, async function (err, blockchain) {
         //const provider = server.provider;
-    console.log(provider.getOptions());
-    const accounts = await provider.request({
+    const transactionTrace = await provider.request({
             method: "debug_traceTransaction",
-            params: ['0xc660499c88814c243919ad08337ae88fc3e2395e5d7587da6b13e1dc7c58f46d', {
-                "tracer": "prestateTracer"
-            }]
+            params: [txHash,
+                //{
+                //"tracer": "callTracer"}
+        ]
         });
-        console.log(accounts);
+        console.log('-------------------------------------------Trace taken');
+    let storageValues = [];
+    console.log(transactionTrace);
+    for(const trace of transactionTrace.structLogs){
+        //console.log(trace);
+        //STOP AND return takes all storages
+        //SLOAD can take read storage variables
+        //SSTORE takes all updated variables
+        //CALL and DELEGATECALL and CALLCODE reads internal
+        console.log(trace);
+
+        /*if(trace.op === 'RETURN'){
+           console.log('a CALL is terminated');
+            console.log(trace);
+
+            const keys = Object.keys(trace.storage);
+            for(const key of keys){
+                const decimalKey = parseInt(key, 16);
+                //console.log("Storage Key:", key);
+                storageValues.push(trace.storage[key])
+            }
+        }*/
+    }
+    return storageValues;
+
    // });
 
 }
-altroGiro()
-//etTraces(blockNumber)
+//getTraceFromGanache(16924488, '0xc660499c88814c243919ad08337ae88fc3e2395e5d7587da6b13e1dc7c58f46d')
+async function main(){
+console.log('una chiamata al main')
+    await getTraceFromGanache(
+       55, '0x00dcf16e3b93cb428fcbf310d6bf7c15cd2669489383e6806e68f9beda7842f0')
+  //  await getInternalTransactions('0x5f92755579cb5621d885f54ae656109f18d48416fc15aae8796ef1ac4b442d22')
+}
+main()
 
 async function getStorageFromTrace(pid, blockNumber, txAddress){
     let storageValues = []
     axios.post('http://127.0.0.1:8545', {"method": "debug_traceTransaction", "params" :  [txAddress,  {
-            "tracer": "prestateTracer"
+            "tracer": "callTracer"
         }]}).then((response) => {
         const rawData = response.data;
        // console.log(rawData.result.structLogs);
@@ -176,7 +215,7 @@ async function getStorageFromTrace(pid, blockNumber, txAddress){
             //console.log(log.op)
             //console.log(log.storage)
 
-            if(log.op === 'STOP'){
+            if(log.op === 'STOP' ){
                 console.log(log.storage);
                 const keys = Object.keys(log.storage);
                 for(const key of keys){
@@ -210,7 +249,8 @@ async function getStorageData(){
     let partialInt = 0;
     console.log(contractTransactions.length);
     for(const tx of contractTransactions){
-        if(partialInt < 10){
+        if(partialInt < 5){
+            await getInternalTransactions(tx.hash);
         let newLog = {
             activity: '',
             timestamp: '',
@@ -242,8 +282,11 @@ async function getStorageData(){
                 console.log("Input BOOLEAN: " + result.inputs[i])
             newLog.inputValues[i] = result.inputs[i];
             }
-        }
 
+
+        }
+            const storageVal = await getTraceFromGanache(tx.blockNumber, tx.hash);
+            newLog.storageValues = storageVal;
         //WORKS WITH STORAGE
         /*let index = 0;
         for (const storageVar of generalStorageLayout.storage){
@@ -275,8 +318,6 @@ async function getStorageData(){
                 }
             index ++;
         }*/
-            const storageVal = await getTraces(tx.blockNumber);
-            newLog.storageValues = storageVal;
         console.log("FINITOOO!!!")
     blockchainLog.push(newLog)
             partialInt++;
@@ -356,6 +397,29 @@ async function getAllTransactions(){
 }
 //getAllTransactions();
 
+async function getInternalTransactions(txHash){
+    const apiKey = 'I81RM42RCBH3HIC9YEK1GX6KYQ12U73K1C';
+
+// Replace with the contract address you want to retrieve transactions for
+
+// Etherscan API endpoint for contract transactions
+    const endpoint = `https://api.etherscan.io/api?module=account&action=txlistinternal&txhash=${txHash}&apikey=${apiKey}`;
+
+    axios
+        .get(endpoint)
+        .then((response) => {
+            const data = response.data;
+
+            if (data.status === '1') {
+                console.log(data);
+            } else {
+                console.error('Error: Unable to retrieve transactions.');
+            }
+        })
+        .catch((error) => {
+            console.error(`An error occurred: ${error}`);
+        });
+}
 async function getContractCodeEtherscan(firstRun, chosenContract){
     const axios = require('axios');
     const apiKey = 'I81RM42RCBH3HIC9YEK1GX6KYQ12U73K1C';
@@ -373,13 +437,9 @@ let buffer;
                 //fs.writeFileSync('solcOutput', jsonCode);
                 const realResult = fs.readFileSync('solcOutput');
                 jsonCode = JSON.parse(realResult).sources
-                //console.log(jsonCode);
                 for(const contract in jsonCode){
-                    //console.log(jsonCode[contract]);
-                    //for(const code in jsonCode){
                     let actualContract = 'contract' + i;
                     let code = jsonCode[contract].content;
-                    //console.log(code);
                     input.sources[contract] = {}
                         input.sources[contract].content = code
                         if(firstRun){
@@ -388,22 +448,21 @@ let buffer;
                         i++;
 
                         buffer += code
-                    //}
                 }
                 if(firstRun){
                     fs.writeFileSync('abiEtherscan.json', data.result[0].ABI);
                 }
                 const output = JSON.parse(solc.compile(JSON.stringify(input)));
+               // console.log(output);
                 //fs.writeFileSync('solcOutput', output);
-                //console.log(output);
                 for(const contract in output.contracts){
                    let contractname = Object.keys(output.contracts[contract])[0];
                    if(contractname.includes(chosenContract)){
-                       generalStorageLayout = output.contracts[contract][contractname].storageLayout;
-                       console.log("Contract storage retrieved");
+                       console.log(output.contracts[contract][contractname]);
+                       generalStorageLayout = output.contracts[contract][contractname].storageLayout;;
                    }
                 }
-                getAllTransactions()
+               // getAllTransactions()
             } else {
                 console.error('Error: Unable to retrieve transactions.');
             }
@@ -413,10 +472,6 @@ let buffer;
         });
 }
 //getContractCodeEtherscan(false, 'CakeOFT')
-
-//getTransactionsByAddress()
-//readStorageLayout()
-//getContractCodeEtherscan()
 
 async function pp(){
 

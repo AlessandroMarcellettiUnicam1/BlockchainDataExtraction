@@ -20,66 +20,106 @@ const contractAddress = '0x152649eA73beAb28c5b49B26eb48f7EAD6d4c898';
 
 
 
-async function getTraces(blockNumber, txHash){
+    const nodeUrl = 'HTTP://127.0.0.1:8545\n'; // Replace with your Ethereum node or Infura URL
+    const transactionHash = '0xYourTransactionHash'; // Replace with the transaction you want to trace
+async function getTraceFromGanache(blockNumber, txHash){
+    const ganache = require("ganache");
+    const response = await axios.post("http://127.0.0.1:8545", {
+        "jsonrpc": '2.0',
+        "method": 'debug_traceTransaction',
+        "params": ['0x41fb50a60fe507a5ef7f57e478551ba19d872a05299b121b6b67ed03f680f42b', {}], // Replace {} with any optional parameters
+        "id": 1
 
-        const ls = spawn('ganache.cmd', ['--fork.network', 'mainnet', '--fork.blockNumber', blockNumber], {});
-        console.log(ls.pid);
-        ls.stdout.on('data', (data) => {
-            console.log("pippo");
-            console.log(`stdout: ${data}`);
-        });
+    });
+    //console.log(response.data.result.structLogs);
+    for(const trace of response.data.result.structLogs) {
 
-        ls.stderr.on('data', (data) => {
-            console.error(`stderr: ${data}`);
-        });
-
-        ls.on('close', (code, signal) => {
-            console.log(`child process exited with code ${code}`);
-        });
-        const vaa = setTimeout(async () => {
-           const p = await getStorageFromTrace(ls.pid, blockNumber, txHash);
-
-            console.log("terminatedd")
-            process.kill(ls.pid);
-            process.exit()
-            return p;
-
-        }, 5000);
+        console.log(trace);
     }
 
-async function getStorageFromTrace(pid, blockNumber, txAddress){
-    let storageValues = []
-    axios.post('http://127.0.0.1:8545', {"method": "debug_traceTransaction", "params" :  [txAddress,  {
-            "tracer": "prestateTracer"
-        }]}).then((response) => {
-        const rawData = response.data;
-        // console.log(rawData.result.structLogs);
+        /*const provider = ganache.provider({
+             network_id: 5777,
+             //url: 'HTTP://127.0.0.1:8545'
+             //network_id: 1,
+              fork: 'HTTP://127.0.0.1\@'+blockNumber
 
-        for (const log of rawData.result.structLogs) {
-            console.log('.........................................')
-            console.log(log.op)
-            console.log(log.storage)
 
-            if(log.op === 'STOP'){
-                console.log(log.storage);
-                const keys = Object.keys(log.storage);
-                for(const key of keys){
-                    console.log('sto isnerendo OP')
-                    storageValues.push(log.storage[key])
-                }
+         });*/
+    /*console.log(ganache.server);
 
-            }
-        }
-        // web3.eth.getStorageAt(contractAddress, "0x6fc3b8e7a837271ba00b731b2bd88ce48419283825eb0ec35420d4c59904f32e", 16924888)
-        process.kill(pid);
-        // processStorage(storageKeys, blockNumber)
-        //process.exit()
-        return storageValues;
-    }).catch((error) => {
-        console.error(`An error occurred: ${error}`);
+    const accounts = await provider.request({
+        method: "debug_traceTransaction",
+            params: [txHash,
+            //{
+            //"tracer": "callTracer"}
+        ]
     });
 
+    console.log(accounts);*/
 
 
 }
-getTraces(16924448, 0xc660499c88814c243919ad08337ae88fc3e2395e5d7587da6b13e1dc7c58f46d)
+getTraceFromGanache('59', '0x00dcf16e3b93cb428fcbf310d6bf7c15cd2669489383e6806e68f9beda7842f0')
+    async function traceTransaction() {
+        try {
+            const response = await axios.post(nodeUrl, {
+                "jsonrpc": '2.0',
+                "method": 'trace_transaction',
+                "params": ['0x4c253746668dca6ac3f7b9bc18248b558a95b5fc881d140872c2dff984d344a7', {}], // Replace {} with any optional parameters
+                "id": 1
+
+            });
+
+            console.log(response.data);
+        } catch (error) {
+            console.error(error);
+        }
+    }
+
+//traceTransaction()
+//getTraceFromGanache(16924488, '0xc660499c88814c243919ad08337ae88fc3e2395e5d7587da6b13e1dc7c58f46d')
+async function main(){
+    console.log('una chiamata al main')
+   // await getTraceFromGanache('0x3c5102440a911f3c740e0c3477ccd75d60bba3cadaff369975dbeb907d13a461')
+
+
+}
+
+async function getContractCodeEtherscan(){
+    let input = {
+        language: 'Solidity',
+        sources: {
+
+        },
+        settings: {
+            outputSelection: {
+                '*': {
+                    '*': ["storageLayout"]
+                }
+            }
+        }
+    };
+
+    const realResult = fs.readFileSync('solcOutput');
+    jsonCode = JSON.parse(realResult).sources
+    let i;
+    for(const contract in jsonCode){
+
+        let actualContract = 'contract' + i;
+        let code = jsonCode[contract].content;
+        input.sources[contract] = {}
+        input.sources[contract].content = code
+
+        i++;
+
+        buffer += code
+        //}
+
+    }
+
+    const output = JSON.parse(solc.compile(JSON.stringify(input)));
+    console.log(output);
+
+}
+//getContractCodeEtherscan()
+

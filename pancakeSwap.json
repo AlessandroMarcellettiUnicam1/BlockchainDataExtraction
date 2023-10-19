@@ -7,7 +7,8 @@
     "inputTypes": [],
     "inputValues": [],
     "storageVarTypes": [],
-    "storageVarNames": []
+    "storageVarNames": [],
+    "storageValues": []
   },
   {
     "activity": "setConfig",
@@ -31,7 +32,14 @@
       "0x000000000000000000000000000000000000000000000000000000000000000a"
     ],
     "storageVarTypes": [],
-    "storageVarNames": []
+    "storageVarNames": [],
+    "storageValues": [
+      "00000000000000000000000000000000000000000000000000000000000a0000",
+      "000000000000000000000003cda8e3add00c95e5035617f970096118ca2f4c92",
+      "00000000000000004d73adb72bc3dd368966edd0f0b2148401a178e200020002",
+      "0000000000000000000000004d73adb72bc3dd368966edd0f0b2148401a178e2",
+      "000000000000000000000000702099e284f23da733c03b461c7571a742782fc2"
+    ]
   },
   {
     "activity": "setConfig",
@@ -55,7 +63,14 @@
       "0x000000000000000000000000000000000000000000000000000000000000000a"
     ],
     "storageVarTypes": [],
-    "storageVarNames": []
+    "storageVarNames": [],
+    "storageValues": [
+      "00000000000000000000000000000000000000000000000000000000000a0000",
+      "000000000000000000000003cda8e3add00c95e5035617f970096118ca2f4c92",
+      "00000000000000004d73adb72bc3dd368966edd0f0b2148401a178e200020002",
+      "0000000000000000000000004d73adb72bc3dd368966edd0f0b2148401a178e2",
+      "000000000000000000000000702099e284f23da733c03b461c7571a742782fc2"
+    ]
   },
   {
     "activity": "setTrustedRemote",
@@ -73,7 +88,13 @@
       "0xb274202daba6ae180c665b4fbe59857b7c3a8091152649ea73beab28c5b49b26eb48f7ead6d4c898"
     ],
     "storageVarTypes": [],
-    "storageVarNames": []
+    "storageVarNames": [],
+    "storageValues": [
+      "000000000000000000000000702099e284f23da733c03b461c7571a742782fc2",
+      "0000000000000000000000000000000000000000000000000000000000000051",
+      "b274202daba6ae180c665b4fbe59857b7c3a8091152649ea73beab28c5b49b26",
+      "eb48f7ead6d4c898000000000000000000000000000000000000000000000000"
+    ]
   },
   {
     "activity": "setTrustedRemoteAddress",
@@ -91,96 +112,12 @@
       "0x159df6b7689437016108a019fd5bef736bac692b6d4a1f10c941f6fbb9a74ca6"
     ],
     "storageVarTypes": [],
-    "storageVarNames": []
-  },
-  {
-    "activity": "setInboundCap",
-    "timestamp": "1679994755",
-    "inputNames": [
-      "chainId",
-      "cap"
-    ],
-    "inputTypes": [
-      "uint16",
-      "uint256"
-    ],
-    "inputValues": [
-      102,
-      5e+25
-    ],
-    "storageVarTypes": [],
-    "storageVarNames": []
-  },
-  {
-    "activity": "setInboundCap",
-    "timestamp": "1679994911",
-    "inputNames": [
-      "chainId",
-      "cap"
-    ],
-    "inputTypes": [
-      "uint16",
-      "uint256"
-    ],
-    "inputValues": [
-      108,
-      5e+25
-    ],
-    "storageVarTypes": [],
-    "storageVarNames": []
-  },
-  {
-    "activity": "setOutboundCap",
-    "timestamp": "1679994959",
-    "inputNames": [
-      "chainId",
-      "cap"
-    ],
-    "inputTypes": [
-      "uint16",
-      "uint256"
-    ],
-    "inputValues": [
-      102,
-      5e+25
-    ],
-    "storageVarTypes": [],
-    "storageVarNames": []
-  },
-  {
-    "activity": "setOutboundCap",
-    "timestamp": "1679995007",
-    "inputNames": [
-      "chainId",
-      "cap"
-    ],
-    "inputTypes": [
-      "uint16",
-      "uint256"
-    ],
-    "inputValues": [
-      108,
-      5e+25
-    ],
-    "storageVarTypes": [],
-    "storageVarNames": []
-  },
-  {
-    "activity": "setTrustedRemoteAddress",
-    "timestamp": "1679996171",
-    "inputNames": [
-      "_remoteChainId",
-      "_remoteAddress"
-    ],
-    "inputTypes": [
-      "uint16",
-      "bytes"
-    ],
-    "inputValues": [
-      10108,
-      "0x0000000000000000000000000000000000000000"
-    ],
-    "storageVarTypes": [],
-    "storageVarNames": []
+    "storageVarNames": [],
+    "storageValues": [
+      "000000000000000000000000702099e284f23da733c03b461c7571a742782fc2",
+      "0000000000000000000000000000000000000000000000000000000000000069",
+      "159df6b7689437016108a019fd5bef736bac692b6d4a1f10c941f6fbb9a74ca6",
+      "152649ea73beab28c5b49b26eb48f7ead6d4c898000000000000000000000000"
+    ]
   }
 ]
