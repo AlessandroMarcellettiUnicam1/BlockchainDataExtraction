@@ -20,21 +20,114 @@ const contractAddress = '0x152649eA73beAb28c5b49B26eb48f7EAD6d4c898';
 
 
 
-    const nodeUrl = 'HTTP://127.0.0.1:8545\n'; // Replace with your Ethereum node or Infura URL
-    const transactionHash = '0xYourTransactionHash'; // Replace with the transaction you want to trace
-async function getTraceFromGanache(blockNumber, txHash){
-    const ganache = require("ganache");
+const nodeUrl = 'HTTP://127.0.0.1:8545'; // Replace with your Ethereum node or Infura URL
+
+
+async function cleanTest(){
     const response = await axios.post("http://127.0.0.1:8545", {
         "jsonrpc": '2.0',
         "method": 'debug_traceTransaction',
-        "params": ['0x41fb50a60fe507a5ef7f57e478551ba19d872a05299b121b6b67ed03f680f42b', {}], // Replace {} with any optional parameters
+        "params": ['0x8b91eb0715fa896550648b11c6b3fbc561e6c30ccc1ec3b08abaca521fcd075c', {}], // Replace {} with any optional parameters
+        "id": 1
+    });
+
+
+        //used to store the storage changed by the function. Used to compare the generated keys
+        let functionStorage;
+        //used to store all the keys potentially related to a dynamic structure
+        let functionKeys = [];
+        for(const trace of response.data.result.structLogs){
+            //if SHA3 is found then read all keys before being hashed
+            if(trace.op === "SHA3"){
+                const stackLength = trace.stack.length;
+                const memoryLocation = trace.stack[stackLength-1];
+                //todo understand the conversion index in the storage - index in the memory
+                const hexKey = trace.memory[web3.utils.hexToNumber("0x"+memoryLocation)];
+                functionKeys.push(hexKey);
+            }else if(trace.op === "STOP"){
+                //retrieve the entire storage after function execution
+                //for each storage key discard the ones of static variables and compare the remaining ones with the re-generated
+                functionStorage = trace.storage;
+            }
+        }
+    await generateMappingKey(functionKeys, functionStorage);
+
+
+}
+//cleanTest();
+
+//function for re-generating the key and understand the variable thanks to the tests on the storage location
+async function generateMappingKey(memoryKeys, functionStorage){
+
+    const storageKeys = await convertStorageKeys(functionStorage);
+    //todo take from compiled file
+    //storage slots taken from storage Layout, they correspond to the storage indexes of all state variables
+    const storageSlots = [0, 1];
+
+    for(const memoryKey of memoryKeys){
+        for(const storageSlot of storageSlots){
+            const storageIndex = web3.utils.padLeft(web3.utils.numberToHex(storageSlot), 64);
+            let newKey =  localweb3.utils.soliditySha3(memoryKey + storageIndex.replace('0x', ''));
+            if(storageKeys.includes(newKey)){
+                console.log("IT MATCHES address or int: " + newKey);
+            }else{
+                const trimmedHexString =  memoryKey.split('0')[0];
+                newKey = localweb3.utils.soliditySha3(trimmedHexString + web3.utils.padLeft(web3.utils.numberToHex(storageSlot), 64));
+                if(storageKeys.includes(newKey)) {
+                    console.log("IT MATCHES string: " + newKey);
+                }
+            }
+        }
+    }
+   // let newKey =  localweb3.utils.soliditySha3(hexKey + '0000000000000000000000000000000000000000000000000000000000000000');
+
+
+   // const hexKeyWithZeros = '6369616f00000000000000000000000000000000000000000000000000000000'
+    //const trimmedHexString =  hexKeyWithZeros.split('0')[0];
+
+   // let newKey =  localweb3.utils.soliditySha3('000000000000000000000000000000000000000000000000000000000000001f' + '0000000000000000000000000000000000000000000000000000000000000000');
+   // console.log("GETTING STORAGE VAR: " + await localweb3.eth.getStorageAt('0xefCa968983fFa3cF96A24A3Eb214cAE607ddEf83', newKey));
+
+
+}
+
+async function convertStorageKeys(functionStorage){
+    //console.log(functionStorage);
+    let storageKeys = [];
+const buffer = Object.keys(functionStorage);
+    for(const storageKey of buffer){
+        storageKeys.push('0x' + storageKey);
+    }
+    return storageKeys;
+}
+async function getTraceFromGanache(blockNumber, txHash){
+
+    const response = await axios.post("http://127.0.0.1:8545", {
+        "jsonrpc": '2.0',
+        "method": 'debug_traceTransaction',
+        "params": ['0xcbfe9e05dace16228ba30cbb6f7ef9e3b15670288fa0f5b02b7ad908654d4c7a', {}], // Replace {} with any optional parameters
         "id": 1
 
     });
+    const index = web3.utils.padLeft(web3.utils.numberToHex(2), 64);
+    console.log(index);
+    const key = web3.utils.padLeft(web3.utils.numberToHex(2), 64);
+    let newKey =  localweb3.utils.soliditySha3('00000000000000000000000016ddb4df2e84fbe3ceb47331e74b1e42e1de4bf7' + '0000000000000000000000000000000000000000000000000000000000000002');
+    console.log(newKey);
+    console.log(await localweb3.eth.getStorageAt('0xe2EeCB636b161f3CbAbd2058CeA9eCB4b4e0a3B2', newKey));
+
+if(newKey === '0x0c6cea2ff3d2084ff38980a465cd3b3d626dc03095879afa94f1f950e223a449'){
+    console.log("SIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII")
+}
     //console.log(response.data.result.structLogs);
     for(const trace of response.data.result.structLogs) {
 
-        console.log(trace);
+           //console.log(trace);
+            //console.log('................00000000000000000000000016ddb4df2e84fbe3ceb47331e74b1e42e1de4bf7
+        // 0c6cea2ff3d2084ff38980a465cd3b3d626dc03095879afa94f1f950e223a449...............................................');
+
+
+
     }
 
         /*const provider = ganache.provider({
@@ -59,7 +152,7 @@ async function getTraceFromGanache(blockNumber, txHash){
 
 
 }
-getTraceFromGanache('59', '0x00dcf16e3b93cb428fcbf310d6bf7c15cd2669489383e6806e68f9beda7842f0')
+//getTraceFromGanache('59', '0x00dcf16e3b93cb428fcbf310d6bf7c15cd2669489383e6806e68f9beda7842f0')
     async function traceTransaction() {
         try {
             const response = await axios.post(nodeUrl, {
@@ -76,15 +169,6 @@ getTraceFromGanache('59', '0x00dcf16e3b93cb428fcbf310d6bf7c15cd2669489383e6806e6
         }
     }
 
-//traceTransaction()
-//getTraceFromGanache(16924488, '0xc660499c88814c243919ad08337ae88fc3e2395e5d7587da6b13e1dc7c58f46d')
-async function main(){
-    console.log('una chiamata al main')
-   // await getTraceFromGanache('0x3c5102440a911f3c740e0c3477ccd75d60bba3cadaff369975dbeb907d13a461')
-
-
-}
-
 async function getContractCodeEtherscan(){
     let input = {
         language: 'Solidity',
@@ -93,17 +177,54 @@ async function getContractCodeEtherscan(){
         },
         settings: {
             outputSelection: {
-                '*': {
-                    '*': ["storageLayout"]
-                }
+                "*": {
+                    "*": ["storageLayout"],
+                    "": ["ast"]git co
+                },
             }
         }
     };
+    //todo reuse code in index.js to make this dynamic
+    input.sources['contract.sol'] = {}
+    input.sources['contract.sol'].content = fs.readFileSync("contract.sol", 'utf8');
 
-    const realResult = fs.readFileSync('solcOutput');
-    jsonCode = JSON.parse(realResult).sources
-    let i;
-    for(const contract in jsonCode){
+    const output = solc.compile(JSON.stringify(input));
+
+    fs.writeFileSync('testContract.json', output);
+
+    const source = JSON.parse(output).sources;
+
+    //todo take all of these dynamically from ast or storageLayout
+    const variablesAstIds = [5];
+    const variablesAstNames = {
+        5: {
+            name: "vediamo",
+            type: "mapping(address => uint256",
+            storageSlot: 0
+        }
+    }
+    let functionVariables = {}
+    for(const node of source['contract.sol'].ast.nodes[1].nodes){
+        //read the AST looking for functions
+        if(node.nodeType === "FunctionDefinition"){
+            //iterate the expression nodes in the body of the function
+            for(const bodyNode of node.body.statements){
+                //if the node in the body is an expression involving a variable then take its AST ID
+                const astId = bodyNode.expression.leftHandSide.baseExpression.referencedDeclaration;
+                if(bodyNode.nodeType ===  "ExpressionStatement" && variablesAstIds.includes(astId)){
+                    //console.log("variable found!: " + variablesAstNames[bodyNode.expression.leftHandSide.baseExpression.referencedDeclaration].name);
+                    functionVariables[node.name] = [];
+                    functionVariables[node.name].push({astId: astId,  name: variablesAstNames[astId].name,
+                        type: variablesAstNames[astId].type, storageSlot: variablesAstNames[astId].storageSlot});
+                }
+            }
+        }
+    }
+    //console.log(functionVariables);
+    return functionVariables;
+
+
+    /*for(const contract in jsonCode){
 
         let actualContract = 'contract' + i;
         let code = jsonCode[contract].content;
@@ -117,9 +238,13 @@ async function getContractCodeEtherscan(){
 
     }
 
-    const output = JSON.parse(solc.compile(JSON.stringify(input)));
-    console.log(output);
+
+    for (let contractName in output.contracts['contractEtherscan.sol']) {
+        //console.log(output.contracts['contract.sol'][contractName].storageLayout);
+        generalStorageLayout = output.contracts['contractEtherscan.sol'][contractName].storageLayout
+    }*/
 
 }
-//getContractCodeEtherscan()
+getContractCodeEtherscan()
+
 

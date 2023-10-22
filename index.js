@@ -138,14 +138,7 @@ if(indiceProva < 10) {
 }
 
 //getTraces(16924448, 0xc660499c88814c243919ad08337ae88fc3e2395e5d7587da6b13e1dc7c58f46d)
-function myCustomTracerFunction(data, op, gas, gasCost, memory, stack) {
-    /*const { op, gas, gasCost, memory, stack } = data;
-      console.log("Operation: ", op);
-      console.log("Gas Used: ", gas);
-      console.log("Gas Cost: ", gasCost.toString());
-      console.log("Memory: ", memory);
-      console.log("Stack: ", stack);*/
-}
+
 async function getTraceFromGanache(blockNumber, txHash){
     const ganache = require("ganache");
 
@@ -162,31 +155,31 @@ async function getTraceFromGanache(blockNumber, txHash){
             method: "debug_traceTransaction",
             params: [txHash,
                 //{
-                //"tracer": "callTracer"}
+                //"tracer": "callTracer"}c43c7e3c9db62df2391156b2affb91410494af669d064ea4ed2c3479e89170e9
         ]
         });
         console.log('-------------------------------------------Trace taken');
     let storageValues = [];
-    console.log(transactionTrace);
+   // console.log(transactionTrace);
     for(const trace of transactionTrace.structLogs){
         //console.log(trace);
         //STOP AND return takes all storages
         //SLOAD can take read storage variables
         //SSTORE takes all updated variables
         //CALL and DELEGATECALL and CALLCODE reads internal
-        console.log(trace);
+        //console.log(trace);
 
-        /*if(trace.op === 'RETURN'){
+        //if(trace.op === 'SHA3'){
            console.log('a CALL is terminated');
             console.log(trace);
 
-            const keys = Object.keys(trace.storage);
+           /* const keys = Object.keys(trace.storage);
             for(const key of keys){
                 const decimalKey = parseInt(key, 16);
                 //console.log("Storage Key:", key);
                 storageValues.push(trace.storage[key])
-            }
-        }*/
+            }*/
+        //}
     }
     return storageValues;
 
@@ -197,7 +190,7 @@ async function getTraceFromGanache(blockNumber, txHash){
 async function main(){
 console.log('una chiamata al main')
     await getTraceFromGanache(
-       55, '0x00dcf16e3b93cb428fcbf310d6bf7c15cd2669489383e6806e68f9beda7842f0')
+        18385438, '0x2f8e6e277aca58d56fd0e5ad0c9a0f54e89fc08b3521783ae8cfc51491827ee5')
   //  await getInternalTransactions('0x5f92755579cb5621d885f54ae656109f18d48416fc15aae8796ef1ac4b442d22')
 }
 main()
