@@ -193,7 +193,7 @@ console.log('una chiamata al main')
         18385438, '0x2f8e6e277aca58d56fd0e5ad0c9a0f54e89fc08b3521783ae8cfc51491827ee5')
   //  await getInternalTransactions('0x5f92755579cb5621d885f54ae656109f18d48416fc15aae8796ef1ac4b442d22')
 }
-main()
+//main()
 
 async function getStorageFromTrace(pid, blockNumber, txAddress){
     let storageValues = []
@@ -445,13 +445,14 @@ let buffer;
                 if(firstRun){
                     fs.writeFileSync('abiEtherscan.json', data.result[0].ABI);
                 }
+                console.log(input);
                 const output = JSON.parse(solc.compile(JSON.stringify(input)));
                // console.log(output);
                 //fs.writeFileSync('solcOutput', output);
                 for(const contract in output.contracts){
                    let contractname = Object.keys(output.contracts[contract])[0];
                    if(contractname.includes(chosenContract)){
-                       console.log(output.contracts[contract][contractname]);
+                       //console.log(output.contracts[contract][contractname]);
                        generalStorageLayout = output.contracts[contract][contractname].storageLayout;;
                    }
                 }
@@ -464,7 +465,7 @@ let buffer;
             console.error(`An error occurred: ${error}`);
         });
 }
-//getContractCodeEtherscan(false, 'CakeOFT')
+getContractCodeEtherscan(false, 'CakeOFT')
 
 async function pp(){
 
