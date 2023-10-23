@@ -8,6 +8,7 @@ const ethers = require("ethers");
 const https = require("https");
 const ganache = require("ganache");
 const { spawn  } = require('child_process');
+const buffer = require("buffer");
 const sourceCode = fs.readFileSync('contractEtherscan.sol', 'utf8');
 let contractAbi = fs.readFileSync('abiEtherscan.json', 'utf8');
 let localweb3 = new Web3('HTTP://127.0.0.1:8545')
@@ -26,9 +27,7 @@ const nodeUrl = 'HTTP://127.0.0.1:8545'; // Replace with your Ethereum node or I
 async function cleanTest(blockNumber, functionName, txHash){
     const provider = ganache.provider({
         network_id: 1,
-        fork: 'https://mainnet.infura.io/v3/f3851e4d467341f1b5927b6546d9f30c\@'+blockNumber
-
-
+        fork: 'https://mainnet.infura.io/v3/f3851e4d467341f1b5927b6546d9f30c\@' + blockNumber
     });
     const contracts = await getContractCodeEtherscan();
     const response = await provider.request({
@@ -48,58 +47,104 @@ async function cleanTest(blockNumber, functionName, txHash){
         //used to store the storage changed by the function. Used to compare the generated keys
         let functionStorage;
         //used to store all the keys potentially related to a dynamic structure
-        let functionKeys = [];
+       /* let functionKeys = [];
+        let functionStorageIndexes = [];*/
+    let index = 0;
+    let trackBuffer = [];
+        let bufferPC = -10;
         for(const trace of response.structLogs){
-            console.log(trace);
+          //  console.log(trace);
             //if SHA3 is found then read all keys before being hashed
             if(trace.op === "SHA3"){
+                bufferPC = trace.pc;
                 const stackLength = trace.stack.length;
                 const memoryLocation = trace.stack[stackLength-1];
                 //the memory contains 32 byte words so the hex index is converted to number and divided by 32
                 //in this way the index in the memory arrays is calculated
                 let numberLocation = web3.utils.hexToNumber("0x" + memoryLocation)/32;
+                let storageIndexLocation = numberLocation + 1;
                 //take the key from the memory
                 const hexKey = trace.memory[numberLocation];
-                functionKeys.push(hexKey);
+                //take the storage slot from the memory
+                const hexStorageIndex = trace.memory[storageIndexLocation];
+                trackBuffer[index] = {
+                    hexKey: hexKey,
+                    hexStorageIndex: hexStorageIndex
+                };
+                //functionKeys.push(hexKey);
+                //functionStorageIndexes.push(hexStorageIndex);
             }else if(trace.op === "STOP"){
                 //retrieve the entire storage after function execution
                 //for each storage key discard the ones of static variables and compare the remaining ones with the re-generated
                 functionStorage = trace.storage;
+            }else if(trace.pc === (bufferPC + 1)){
+                trackBuffer[index].finalKey = trace.stack[trace.stack.length - 1];
+                index++;
             }
         }
-    await generateMappingKey(functionKeys, functionStorage, functionName, contracts);
+
+    await generateMappingKey(trackBuffer, functionStorage, functionName, contracts);
 
 
 }
-cleanTest(16924868, "setInboundCap", "0x77f9327c329f72ca665660650a1d9705aa693257815a689898a5d4468da94ed8");
+cleanTest(16925027, "setMinDstGas", "0x491bde8548aede1aad8cf8eab1f70ca03a1cac573a6f360f9cc22c7755b38356");
 
 //function for re-generating the key and understand the variable thanks to the tests on the storage location
-async function generateMappingKey(memoryKeys, functionStorage, functionName, contracts){
+async function generateMappingKey(trackBuffer, functionStorage, functionName, contracts){
     const functionVariables = await getCompiledData(contracts)
-    //console.log(functionVariables);
     const storageKeys = await convertStorageKeys(functionStorage);
     let storageSlots = [];
 
     //storage slots filtered by all the variables modified in the function
-
     for(const variable of functionVariables[functionName]){
-        storageSlots.push(variable.storageSlot)
-        console.log(storageSlots);
+        storageSlots.push(variable.storageSlot);
+       // console.log(storageSlots);
     }
 
-    //iterate all keys in the memory of an SHA3 command
-    let aaa =  localweb3.utils.soliditySha3("0000000000000000000000000000000000000000000000000000000000000066" +
-        "0000000000000000000000000000000000000000000000000000000000000012", { encoding: "hex" });
-    console.log(aaa);
-    console.log(await web3.eth.getStorageAt(contractAddress, aaa, 16924868));
+    for(const trace of trackBuffer){
+        const numberIndex = await web3.utils.hexToNumber("0x" + trace.hexStorageIndex);
+        const variable = await getVarFromFunction(functionVariables, functionName, numberIndex);
+        const varVal = await decodeStorageValue(functionStorage[trace.finalKey], variable.type);
+        console.log("Varaible " + variable.name + "has value: " + varVal + " with type: " + variable.type );
+    }
+
+
+}
+//function for decoding the storage value
+//todo check arrays, structs and nested mappings
+async function decodeStorageValue(value, type){
+    if(type.includes("mapping")){
+        if(type.split(",")[0].includes("uint")){
+            return web3.utils.hexToNumber("0x" + value);
+        }else if(type.split(",")[0].includes("string") || type.split(",")[0].includes("address")){
+            return web3.utils.hexToAscii("0x" + value);
+        }else if(type.split(",")[0].includes("bool")){
+            console.log("bool to handle: " + value)
+        }
+    }else if(type.includes("array")){
+
+    }
+}
+async function shaRedo(){
+    //test statici vari
+    //let aaa =  localweb3.utils.sha3("0000000000000000000000000000000000000000000000000000000000000066" + "0000000000000000000000000000000000000000000000000000000000000012");
+    //console.log(aaa);
+    // console.log(await web3.eth.getStorageAt(contractAddress, aaa, 16924868));
     // console.log(localweb3.utils.soliditySha3("0000000000000000000000000000000000000000000000000000000000000066" + "0000000000000000000000000000000000000000000000000000000000000012"));
+
+    //from memory : key + storageIndex = hashedKey --> getStorage della variable con storage index x
+    //PRENDO ISTRUZIONE DOPO LO SHA PER VEDERE LA CHIAVE CHE STA NEL 1 POSIZIONE DELLO STACK
+
+    //iterate all keys in the memory of an SHA3 command
     for(const memoryKey of memoryKeys){
         //test the SHA with all possible storage slots of variables within specific the function
         for(const storageSlot of storageSlots){
-            const prova = web3.utils.padLeft(web3.utils.numberToHex("102"), 64)
+            // const prova = web3.utils.padLeft(web3.utils.numberToHex("102"), 64)
             const storageIndex = web3.utils.padLeft(web3.utils.numberToHex(storageSlot), 64).replace('0x', '');
-            let newKey =  localweb3.utils.soliditySha3(memoryKey + storageIndex, { encoding: "hex" });
-            console.log(newKey);
+            let newKey =  localweb3.utils.sha3Raw(memoryKey + storageIndex);
+            console.log("key is: " + web3.utils.asciiToHexmemoryKey + " storage index is: " + storageIndex);
+            console.log("hashed key is: " + newKey)
+            console.log("wanted key is: " + storageKeys)
             if(storageKeys.includes(newKey)){
                 const variable = await getVarFromFunction(functionVariables, functionName, storageSlot);
                 console.log("IT MATCHES address or int: " + JSON.stringify(variable));
@@ -115,15 +160,14 @@ async function generateMappingKey(memoryKeys, functionStorage, functionName, con
 
         }
     }
-   // let newKey =  localweb3.utils.soliditySha3(hexKey + '0000000000000000000000000000000000000000000000000000000000000000');
+    // let newKey =  localweb3.utils.soliditySha3(hexKey + '0000000000000000000000000000000000000000000000000000000000000000');
 
 
-   // const hexKeyWithZeros = '6369616f00000000000000000000000000000000000000000000000000000000'
+    // const hexKeyWithZeros = '6369616f00000000000000000000000000000000000000000000000000000000'
     //const trimmedHexString =  hexKeyWithZeros.split('0')[0];
 
-   // let newKey =  localweb3.utils.soliditySha3('000000000000000000000000000000000000000000000000000000000000001f' + '0000000000000000000000000000000000000000000000000000000000000000');
-   // console.log("GETTING STORAGE VAR: " + await localweb3.eth.getStorageAt('0xefCa968983fFa3cF96A24A3Eb214cAE607ddEf83', newKey));
-
+    // let newKey =  localweb3.utils.soliditySha3('000000000000000000000000000000000000000000000000000000000000001f' + '0000000000000000000000000000000000000000000000000000000000000000');
+    // console.log("GETTING STORAGE VAR: " + await localweb3.eth.getStorageAt('0xefCa968983fFa3cF96A24A3Eb214cAE607ddEf83', newKey));
 
 }
 
@@ -138,7 +182,8 @@ async function convertStorageKeys(functionStorage){
 }
 async function getVarFromFunction(functionVariables, functionName, storageSlot){
     for(const variable of functionVariables[functionName]){
-        if(variable.storageSlot === storageSlot){
+        if(Number(variable.storageSlot) === Number(storageSlot)){
+            //console.log("yes");
             return variable;
         }
     }

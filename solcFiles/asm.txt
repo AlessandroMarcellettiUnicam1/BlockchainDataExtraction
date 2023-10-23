@@ -1,0 +1,514 @@
+... */ "D:/Repos_git/BlockchainProcessMining/contract.sol":72:463  contract SimpleStorage {
+mstore(0x40, 0x80)
+callvalue
+dup1
+iszero
+tag_1
+jumpi
+0x00
+dup1
+revert
+tag_1:
+pop
+dataSize(sub_0)
+dup1
+dataOffset(sub_0)
+0x00
+codecopy
+0x00
+return
+stop
+
+sub_0: assembly {
+... */  /* "D:/Repos_git/BlockchainProcessMining/contract.sol":72:463  contract SimpleStorage {
+      mstore(0x40, 0x80)
+      callvalue
+      dup1
+      iszero
+      tag_1
+      jumpi
+      0x00
+      dup1
+      revert
+    tag_1:
+      pop
+      jumpi(tag_2, lt(calldatasize, 0x04))
+      shr(0xe0, calldataload(0x00))
+      dup1
+      0xc55501e7
+      eq
+      tag_3
+      jumpi
+      dup1
+      0xe5dc00b9
+      eq
+      tag_4
+      jumpi
+    tag_2:
+      0x00
+      dup1
+      revert
+... */  /* "D:/Repos_git/BlockchainProcessMining/contract.sol":183:295  function myFirstFunction(uint myFirstInput) public {
+    tag_3:
+      tag_5
+      0x04
+      dup1
+      calldatasize
+      sub
+      dup2
+      add
+      swap1
+      tag_6
+      swap2
+      swap1
+      tag_7
+      jump      // in
+    tag_6:
+      tag_8
+      jump      // in
+    tag_5:
+      stop
+... */  /* "D:/Repos_git/BlockchainProcessMining/contract.sol":303:460  function mySecondFunction(uint myFirstInput) public {
+    tag_4:
+      tag_9
+      0x04
+      dup1
+      calldatasize
+      sub
+      dup2
+      add
+      swap1
+      tag_10
+      swap2
+      swap1
+      tag_7
+      jump      // in
+    tag_10:
+      tag_11
+      jump      // in
+    tag_9:
+      stop
+... */  /* "D:/Repos_git/BlockchainProcessMining/contract.sol":183:295  function myFirstFunction(uint myFirstInput) public {
+    tag_8:
+        /* "D:/Repos_git/BlockchainProcessMining/contract.sol":275:287  myFirstInput */
+dup1
+/* "D:/Repos_git/BlockchainProcessMining/contract.sol":245:260  myFirstVariable */
+0x00
+/* "D:/Repos_git/BlockchainProcessMining/contract.sol":245:272  myFirstVariable[msg.sender] */
+dup1
+/* "D:/Repos_git/BlockchainProcessMining/contract.sol":261:271  msg.sender */
+caller
+/* "D:/Repos_git/BlockchainProcessMining/contract.sol":245:272  myFirstVariable[msg.sender] */
+0xffffffffffffffffffffffffffffffffffffffff
+and
+0xffffffffffffffffffffffffffffffffffffffff
+and
+dup2
+mstore
+0x20
+add
+swap1
+dup2
+mstore
+0x20
+add
+0x00
+keccak256
+/* "D:/Repos_git/BlockchainProcessMining/contract.sol":245:287  myFirstVariable[msg.sender] = myFirstInput */
+dup2
+swap1
+sstore
+pop
+... */  /* "D:/Repos_git/BlockchainProcessMining/contract.sol":183:295  function myFirstFunction(uint myFirstInput) public {
+      pop
+      jump      // out
+... */  /* "D:/Repos_git/BlockchainProcessMining/contract.sol":303:460  function mySecondFunction(uint myFirstInput) public {
+    tag_11:
+        /* "D:/Repos_git/BlockchainProcessMining/contract.sol":396:408  myFirstInput */
+dup1
+/* "D:/Repos_git/BlockchainProcessMining/contract.sol":366:381  myFirstVariable */
+0x00
+/* "D:/Repos_git/BlockchainProcessMining/contract.sol":366:393  myFirstVariable[msg.sender] */
+dup1
+/* "D:/Repos_git/BlockchainProcessMining/contract.sol":382:392  msg.sender */
+caller
+/* "D:/Repos_git/BlockchainProcessMining/contract.sol":366:393  myFirstVariable[msg.sender] */
+0xffffffffffffffffffffffffffffffffffffffff
+and
+0xffffffffffffffffffffffffffffffffffffffff
+and
+dup2
+mstore
+0x20
+add
+swap1
+dup2
+mstore
+0x20
+add
+0x00
+keccak256
+/* "D:/Repos_git/BlockchainProcessMining/contract.sol":366:408  myFirstVariable[msg.sender] = myFirstInput */
+dup2
+swap1
+sstore
+pop
+/* "D:/Repos_git/BlockchainProcessMining/contract.sol":419:452  mySecondVariable = "myFirstValue" */
+mload(0x40)
+dup1
+0x40
+add
+0x40
+mstore
+dup1
+0x0c
+dup2
+mstore
+0x20
+add
+0x6d79466972737456616c75650000000000000000000000000000000000000000
+dup2
+mstore
+pop
+/* "D:/Repos_git/BlockchainProcessMining/contract.sol":419:435  mySecondVariable */
+0x01
+/* "D:/Repos_git/BlockchainProcessMining/contract.sol":419:452  mySecondVariable = "myFirstValue" */
+swap1
+dup1
+mload
+swap1
+0x20
+add
+swap1
+tag_14
+swap3
+swap2
+swap1
+tag_15
+jump      // in
+tag_14:
+pop
+... */  /* "D:/Repos_git/BlockchainProcessMining/contract.sol":303:460  function mySecondFunction(uint myFirstInput) public {
+      pop
+      jump      // out
+    tag_15:
+      dup3
+      dup1
+      sload
+      tag_16
+      swap1
+      tag_17
+      jump      // in
+    tag_16:
+      swap1
+      0x00
+      mstore
+      keccak256(0x00, 0x20)
+      swap1
+      0x1f
+      add
+      0x20
+      swap1
+      div
+      dup2
+      add
+      swap3
+      dup3
+      tag_19
+      jumpi
+      0x00
+      dup6
+      sstore
+      jump(tag_18)
+    tag_19:
+      dup3
+      0x1f
+      lt
+      tag_20
+      jumpi
+      dup1
+      mload
+      not(0xff)
+      and
+      dup4
+      dup1
+      add
+      or
+      dup6
+      sstore
+      jump(tag_18)
+    tag_20:
+      dup3
+      dup1
+      add
+      0x01
+      add
+      dup6
+      sstore
+      dup3
+      iszero
+      tag_18
+      jumpi
+      swap2
+      dup3
+      add
+    tag_21:
+      dup3
+      dup2
+      gt
+      iszero
+      tag_22
+      jumpi
+      dup3
+      mload
+      dup3
+      sstore
+      swap2
+      0x20
+      add
+      swap2
+      swap1
+      0x01
+      add
+      swap1
+      jump(tag_21)
+    tag_22:
+    tag_18:
+      pop
+      swap1
+      pop
+      tag_23
+      swap2
+      swap1
+      tag_24
+      jump      // in
+    tag_23:
+      pop
+      swap1
+      jump      // out
+    tag_24:
+    tag_25:
+      dup1
+      dup3
+      gt
+      iszero
+      tag_26
+      jumpi
+      0x00
+      dup2
+      0x00
+      swap1
+      sstore
+      pop
+      0x01
+      add
+      jump(tag_25)
+    tag_26:
+      pop
+      swap1
+      jump      // out
+        /* "#utility.yul":7:146   */
+tag_28:
+/* "#utility.yul":53:58   */
+0x00
+/* "#utility.yul":91:97   */
+dup2
+/* "#utility.yul":78:98   */
+calldataload
+/* "#utility.yul":69:98   */
+swap1
+pop
+/* "#utility.yul":107:140   */
+tag_30
+/* "#utility.yul":134:139   */
+dup2
+/* "#utility.yul":107:140   */
+tag_31
+jump      // in
+tag_30:
+/* "#utility.yul":59:146   */
+swap3
+swap2
+pop
+pop
+jump      // out
+/* "#utility.yul":152:414   */
+tag_7:
+/* "#utility.yul":211:217   */
+0x00
+/* "#utility.yul":260:262   */
+0x20
+/* "#utility.yul":248:257   */
+dup3
+/* "#utility.yul":239:246   */
+dup5
+/* "#utility.yul":235:258   */
+sub
+/* "#utility.yul":231:263   */
+slt
+/* "#utility.yul":228:230   */
+iszero
+tag_33
+jumpi
+/* "#utility.yul":276:277   */
+0x00
+/* "#utility.yul":273:274   */
+dup1
+/* "#utility.yul":266:278   */
+revert
+/* "#utility.yul":228:230   */
+tag_33:
+/* "#utility.yul":319:320   */
+0x00
+/* "#utility.yul":344:397   */
+tag_34
+/* "#utility.yul":389:396   */
+dup5
+/* "#utility.yul":380:386   */
+dup3
+/* "#utility.yul":369:378   */
+dup6
+/* "#utility.yul":365:387   */
+add
+/* "#utility.yul":344:397   */
+tag_28
+jump      // in
+tag_34:
+/* "#utility.yul":334:397   */
+swap2
+pop
+/* "#utility.yul":290:407   */
+pop
+/* "#utility.yul":218:414   */
+swap3
+swap2
+pop
+pop
+jump      // out
+/* "#utility.yul":420:497   */
+tag_35:
+/* "#utility.yul":457:464   */
+0x00
+/* "#utility.yul":486:491   */
+dup2
+/* "#utility.yul":475:491   */
+swap1
+pop
+/* "#utility.yul":465:497   */
+swap2
+swap1
+pop
+jump      // out
+/* "#utility.yul":503:823   */
+tag_17:
+/* "#utility.yul":547:553   */
+0x00
+/* "#utility.yul":584:585   */
+0x02
+/* "#utility.yul":578:582   */
+dup3
+/* "#utility.yul":574:586   */
+div
+/* "#utility.yul":564:586   */
+swap1
+pop
+/* "#utility.yul":631:632   */
+0x01
+/* "#utility.yul":625:629   */
+dup3
+/* "#utility.yul":621:633   */
+and
+/* "#utility.yul":652:670   */
+dup1
+/* "#utility.yul":642:644   */
+tag_38
+jumpi
+/* "#utility.yul":708:712   */
+0x7f
+/* "#utility.yul":700:706   */
+dup3
+/* "#utility.yul":696:713   */
+and
+/* "#utility.yul":686:713   */
+swap2
+pop
+/* "#utility.yul":642:644   */
+tag_38:
+/* "#utility.yul":770:772   */
+0x20
+/* "#utility.yul":762:768   */
+dup3
+/* "#utility.yul":759:773   */
+lt
+/* "#utility.yul":739:757   */
+dup2
+/* "#utility.yul":736:774   */
+eq
+/* "#utility.yul":733:735   */
+iszero
+tag_39
+jumpi
+/* "#utility.yul":789:807   */
+tag_40
+tag_41
+jump      // in
+tag_40:
+/* "#utility.yul":733:735   */
+tag_39:
+/* "#utility.yul":554:823   */
+pop
+swap2
+swap1
+pop
+jump      // out
+/* "#utility.yul":829:1009   */
+tag_41:
+/* "#utility.yul":877:954   */
+0x4e487b7100000000000000000000000000000000000000000000000000000000
+/* "#utility.yul":874:875   */
+0x00
+/* "#utility.yul":867:955   */
+mstore
+/* "#utility.yul":974:978   */
+0x22
+/* "#utility.yul":971:972   */
+0x04
+/* "#utility.yul":964:979   */
+mstore
+/* "#utility.yul":998:1002   */
+0x24
+/* "#utility.yul":995:996   */
+0x00
+/* "#utility.yul":988:1003   */
+revert
+/* "#utility.yul":1015:1137   */
+tag_31:
+/* "#utility.yul":1088:1112   */
+tag_44
+/* "#utility.yul":1106:1111   */
+dup2
+/* "#utility.yul":1088:1112   */
+tag_35
+jump      // in
+tag_44:
+/* "#utility.yul":1081:1086   */
+dup2
+/* "#utility.yul":1078:1113   */
+eq
+/* "#utility.yul":1068:1070   */
+tag_45
+jumpi
+/* "#utility.yul":1127:1128   */
+0x00
+/* "#utility.yul":1124:1125   */
+dup1
+/* "#utility.yul":1117:1129   */
+revert
+/* "#utility.yul":1068:1070   */
+tag_45:
+/* "#utility.yul":1058:1137   */
+pop
+jump      // out
+
+auxdata: 0xa26469706673582212202a29a1570e68e1293e52cfc97962c234e9450a9b1ceb99ec8d20902afb56d93c64736f6c63430008040033
+}
