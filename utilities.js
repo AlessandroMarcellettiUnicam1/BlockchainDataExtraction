@@ -22,7 +22,7 @@ const contractAddress = '0x152649eA73beAb28c5b49B26eb48f7EAD6d4c898';
 
 const nodeUrl = 'HTTP://127.0.0.1:8545'; // Replace with your Ethereum node or Infura URL
 
-
+//todo 1) o rimuovere la funzione singola oppure 2) iterare per le chiamate interne perchè
 async function cleanTest(blockNumber, functionName, txHash) {
     const provider = ganache.provider({
         network_id: 1,
@@ -94,7 +94,7 @@ async function cleanTest(blockNumber, functionName, txHash) {
 
 }
 
-cleanTest(16971439, "_approve", "0xe6f8454ece3bb67b3f211cf0e23a86676af48f1485b4d7e00914a5b6173aa287");
+cleanTest(16971439, "approve", "0xe6f8454ece3bb67b3f211cf0e23a86676af48f1485b4d7e00914a5b6173aa287");
 
 //function for re-generating the key and understand the variable thanks to the tests on the storage location
 async function generateMappingKey(trackBuffer, functionStorage, functionName, contracts) {
@@ -250,9 +250,9 @@ async function getCompiledData(contracts) {
             //read the AST looking for functions todo take name dynamically from transaction
             if (node.nodeType.match("FunctionDefinition") && node.body != undefined) {
                 //iterate the expression nodes in the body of the function
+                console.log("funzione: " + node.name);
 
                 for (const bodyNode of node.body.statements) {
-
                  //   console.log(bodyNode);
                     if (bodyNode.hasOwnProperty("expression") && bodyNode.expression.leftHandSide != undefined) {
                         //if the node in the body is an expression involving a variable then take its AST ID
@@ -278,6 +278,10 @@ async function getCompiledData(contracts) {
 
                             }
                         }
+                    }else if(bodyNode.hasOwnProperty("expression") && bodyNode.expression.nodeType === "FunctionCall" &&
+                        bodyNode.expression.expression.name !== "require" && bodyNode.expression.expression.name !== undefined){
+
+                        console.log("ipotetica sub call: " + bodyNode.expression.expression.name);
                     }
 
                 }
