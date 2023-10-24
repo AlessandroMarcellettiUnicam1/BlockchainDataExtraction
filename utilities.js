@@ -82,7 +82,7 @@ async function cleanTest(blockNumber, functionName, txHash) {
     }
     let finalTraces = [];
     for(let i = 0; i < trackBuffer.length; i++){
-        //if sha3 is not present in the mapping means that it will used in the next one for nested value
+        //if sha3 is not present in the mapping means that it will be used in the next one for nested value
         if(!functionStorage.hasOwnProperty(trackBuffer[i].finalKey)){
             trackBuffer[i].finalKey = trackBuffer[i+1].finalKey;
             finalTraces.push(trackBuffer[i]);
@@ -161,8 +161,13 @@ async function convertStorageKeys(functionStorage) {
     return storageKeys;
 }
 
-async function getVarFromFunction(functionVariables, functionNames, storageSlot) {
-    console.log(functionNames);
+async function getVarFromFunction(functionVariables, functionNames, sourceFnName, storageSlot) {
+    console.log(functionVariables);
+    console.log(functionVariables["_approve"]);
+    console.log(functionVariables["approve"]);
+    //console.log(functionNames);
+
+
     for(const functionName of functionNames) {
         for (const variable of functionVariables[functionName].variables) {
             if (Number(variable.storageSlot) === Number(storageSlot)) {
@@ -205,8 +210,9 @@ async function getCompiledData(contracts) {
     //todo add only unique id
     const storageData = await getVariablesFromStorage(JSON.parse(output));
     const variablesAstIds = storageData.variablesAstIds;
+    //multiple variables can be referred to the sane ID, added also contract difference
     const variablesAstNames = storageData.storageVariables;
-
+    //console.log(variablesAstNames);
 
 
     let functionVariables = {};
@@ -222,7 +228,7 @@ async function getCompiledData(contracts) {
     }
     for(const contract of contractToIterate) {
         for (const node of contract.nodes) {
-            if (node.nodeType.match("FunctionDefinition") && node.body != undefined) {
+            if (node.nodeType.match("FunctionDefinition") && node.body != undefined && node.implemented == true) {
                 //iterate the expression nodes in the body of the function
                 functionVariables[node.name] = {};
                 for (const bodyNode of node.body.statements) {
@@ -244,15 +250,21 @@ async function getCompiledData(contracts) {
                                     //console.log("variable found!: " + variablesAstNames[bodyNode.expression.leftHandSide.baseExpression.referencedDeclaration].name);
                                     //create an object with
                                     // functionVariables[node.name] = []
-
-                                    functionVariables[node.name].baseContract = contract.canonicalName;
-                                    functionVariables[node.name].variables = [];
-                                    functionVariables[node.name].variables.push({
-                                        astId: astId, name: variablesAstNames[astId].name,
-                                        type: variablesAstNames[astId].type, storageSlot: variablesAstNames[astId].slot,
-                                        baseContract: variablesAstNames[astId].baseContract
-                                    });
-
+                                    //iterate the various possible variables
+                                    for(const variable of variablesAstNames[astId]){
+                                        //match the same current contract
+                                        if(variable.baseContract === contract.canonicalName) {
+                                            functionVariables[node.name].baseContract = contract.canonicalName;
+                                            functionVariables[node.name].variables = [];
+                                            functionVariables[node.name].variables.push({
+                                                astId: astId,
+                                                name: variable.name,
+                                                type: variable.type,
+                                                storageSlot: variable.slot,
+                                                baseContract: variable.baseContract
+                                            });
+                                        }
+                                    }
                                 }
                         }
                     }else if(bodyNode.hasOwnProperty("expression") && bodyNode.expression.nodeType === "FunctionCall" &&
@@ -272,6 +284,7 @@ async function getCompiledData(contracts) {
     //console.log(functionVariables);
   //  console.log(functionVariables);
    // console.log(functionVariables);
+    //console.log(functionVariables);
     return functionVariables;
 }
 
@@ -320,16 +333,23 @@ async function getVariablesFromStorage(compiled) {
                 const storageLay = compiled.contracts[contract][firstKey].storageLayout.storage;
                 for (const storageVar of storageLay) {
                     variablesAstIds.push(storageVar.astId);
-                    storageVariables[storageVar.astId] = {};
-                    storageVariables[storageVar.astId].name = storageVar.label;
-                    storageVariables[storageVar.astId].type = storageVar.type;
-                    storageVariables[storageVar.astId].slot = storageVar.slot;
-                    storageVariables[storageVar.astId].baseContract = firstKey;
-                    storageVariables[storageVar.astId].address = "todo";
+                    if(storageVariables[storageVar.astId] === undefined){
+                        storageVariables[storageVar.astId] = [];
+                        //console.log("undefined");
+                    }
+                    //console.log("defined");
+                    storageVariables[storageVar.astId].push({name : storageVar.label, type : storageVar.type,
+                        slot : storageVar.slot, baseContract : firstKey});
+                   /* storageVariables[storageVar.astId].
+                    storageVariables[storageVar.astId].;
+                    storageVariables[storageVar.astId].;
+                    storageVariables[storageVar.astId].address = "todo";*/
                 }
             }
         }
     }
+  //  console.log(storageVariables);
+   // console.log(variablesAstIds);
     //console.log(storageVariables);
 
 
@@ -342,6 +362,7 @@ async function getVariablesFromStorage(compiled) {
         storageVariables[storageVar.astId].type = storageVar.type;
         storageVariables[storageVar.astId].slot = storageVar.slot;
     }*/
+    console.log(storageVariables);
     return {variablesAstIds, storageVariables};
 }
 
