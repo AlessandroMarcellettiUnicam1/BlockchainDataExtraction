@@ -101,17 +101,32 @@ async function generateMappingKey(trackBuffer, functionStorage, functionName, co
     const functionVariables = await getCompiledData(contracts, functionName)
     const storageKeys = await convertStorageKeys(functionStorage);
     let storageSlots = [];
-    //storage slots filtered by all the variables modified in the function
-    for (const variable of functionVariables[functionName]) {
-        storageSlots.push(variable.storageSlot);
-        // console.log(storageSlots);
+    let functionNames = [];
+    //if function has subCall then take its variables
+    if(functionVariables[functionName].hasOwnProperty("functionCall")) {
+        //todo match astId for additional verification
+        functionNames.push(functionVariables[functionName].functionCall.name);
+        //storage slots filtered by all the variables modified in the function
+        for (const variable of functionVariables[functionVariables[functionName].functionCall.name].variables) {
+            storageSlots.push(variable.storageSlot);
+        }
+        //if function has also its own variables add them
+    }if(functionVariables[functionName].hasOwnProperty("variables")){
+        functionNames.push(functionVariables[functionName].name);
+        for (const variable of functionVariables[functionVariables[functionName].name].variables) {
+            storageSlots.push(variable.storageSlot);
+        }
     }
 
     for (const trace of trackBuffer) {
         const numberIndex = await web3.utils.hexToNumber("0x" + trace.hexStorageIndex);
-        const variable = await getVarFromFunction(functionVariables, functionName, numberIndex);
+        const variable = await getVarFromFunction(functionVariables, functionNames, numberIndex);
         const varVal = await decodeStorageValue(functionStorage[trace.finalKey], variable.type);
-        console.log("Varaible " + variable.name + "has value: " + varVal + " with type: " + variable.type);
+        console.log("Call: " + functionName + ", of Contract: " + functionVariables[functionName].baseContract + " ----internal call---> " +
+            functionVariables[functionName].functionCall.name + ", of Contract: " + functionVariables[functionVariables[functionName].functionCall.name].baseContract)
+        console.log("Updated variable: " + variable.name + ", with type: " + variable.type + ", and value: " + varVal + ", of Contrat: " + variable.baseContract);
+        //console.log(functionVariables);
+
     }
 
 
@@ -135,51 +150,6 @@ async function decodeStorageValue(value, type) {
     }
 }
 
-async function shaRedo() {
-    //test statici vari
-    //let aaa =  localweb3.utils.sha3("0000000000000000000000000000000000000000000000000000000000000066" + "0000000000000000000000000000000000000000000000000000000000000012");
-    //console.log(aaa);
-    // console.log(await web3.eth.getStorageAt(contractAddress, aaa, 16924868));
-    // console.log(localweb3.utils.soliditySha3("0000000000000000000000000000000000000000000000000000000000000066" + "0000000000000000000000000000000000000000000000000000000000000012"));
-
-    //from memory : key + storageIndex = hashedKey --> getStorage della variable con storage index x
-    //PRENDO ISTRUZIONE DOPO LO SHA PER VEDERE LA CHIAVE CHE STA NEL 1 POSIZIONE DELLO STACK
-
-    //iterate all keys in the memory of an SHA3 command
-    for (const memoryKey of memoryKeys) {
-        //test the SHA with all possible storage slots of variables within specific the function
-        for (const storageSlot of storageSlots) {
-            // const prova = web3.utils.padLeft(web3.utils.numberToHex("102"), 64)
-            const storageIndex = web3.utils.padLeft(web3.utils.numberToHex(storageSlot), 64).replace('0x', '');
-            let newKey = localweb3.utils.sha3Raw(memoryKey + storageIndex);
-            console.log("key is: " + web3.utils.asciiToHexmemoryKey + " storage index is: " + storageIndex);
-            console.log("hashed key is: " + newKey)
-            console.log("wanted key is: " + storageKeys)
-            if (storageKeys.includes(newKey)) {
-                const variable = await getVarFromFunction(functionVariables, functionName, storageSlot);
-                console.log("IT MATCHES address or int: " + JSON.stringify(variable));
-            } else {
-                const trimmedHexString = memoryKey.split('0')[0];
-                newKey = localweb3.utils.soliditySha3(trimmedHexString + storageIndex);
-                if (storageKeys.includes(newKey)) {
-                    const variable = await getVarFromFunction(functionVariables, functionName, storageSlot);
-                    console.log("IT MATCHES string: " + JSON.stringify(variable));
-                }
-            }
-            console.log("nada");
-
-        }
-    }
-    // let newKey =  localweb3.utils.soliditySha3(hexKey + '0000000000000000000000000000000000000000000000000000000000000000');
-
-
-    // const hexKeyWithZeros = '6369616f00000000000000000000000000000000000000000000000000000000'
-    //const trimmedHexString =  hexKeyWithZeros.split('0')[0];
-
-    // let newKey =  localweb3.utils.soliditySha3('000000000000000000000000000000000000000000000000000000000000001f' + '0000000000000000000000000000000000000000000000000000000000000000');
-    // console.log("GETTING STORAGE VAR: " + await localweb3.eth.getStorageAt('0xefCa968983fFa3cF96A24A3Eb214cAE607ddEf83', newKey));
-
-}
 
 async function convertStorageKeys(functionStorage) {
     //console.log(functionStorage);
@@ -191,11 +161,14 @@ async function convertStorageKeys(functionStorage) {
     return storageKeys;
 }
 
-async function getVarFromFunction(functionVariables, functionName, storageSlot) {
-    for (const variable of functionVariables[functionName]) {
-        if (Number(variable.storageSlot) === Number(storageSlot)) {
-            //console.log("yes");
-            return variable;
+async function getVarFromFunction(functionVariables, functionNames, storageSlot) {
+    console.log(functionNames);
+    for(const functionName of functionNames) {
+        for (const variable of functionVariables[functionName].variables) {
+            if (Number(variable.storageSlot) === Number(storageSlot)) {
+                //console.log("yes");
+                return variable;
+            }
         }
     }
 }
@@ -234,6 +207,8 @@ async function getCompiledData(contracts) {
     const variablesAstIds = storageData.variablesAstIds;
     const variablesAstNames = storageData.storageVariables;
 
+
+
     let functionVariables = {};
     let contractToIterate = [];
     for(const contract in source){
@@ -247,41 +222,47 @@ async function getCompiledData(contracts) {
     }
     for(const contract of contractToIterate) {
         for (const node of contract.nodes) {
-            //read the AST looking for functions todo take name dynamically from transaction
             if (node.nodeType.match("FunctionDefinition") && node.body != undefined) {
                 //iterate the expression nodes in the body of the function
-                console.log("funzione: " + node.name);
-
+                functionVariables[node.name] = {};
                 for (const bodyNode of node.body.statements) {
                  //   console.log(bodyNode);
                     if (bodyNode.hasOwnProperty("expression") && bodyNode.expression.leftHandSide != undefined) {
                         //if the node in the body is an expression involving a variable then take its AST ID
                         if(bodyNode.expression.leftHandSide.baseExpression != undefined) {
-                            let astId;
-                            //if the variable is a nested one it has two baseExpression
-                            if(bodyNode.expression.leftHandSide.baseExpression.baseExpression != undefined) {
-                                astId = bodyNode.expression.leftHandSide.baseExpression.baseExpression.referencedDeclaration;
-                            }
-                            //otherwise take its simple assignment
-                            if(bodyNode.expression.leftHandSide.baseExpression.referencedDeclaration != undefined){
-                                astId = bodyNode.expression.leftHandSide.baseExpression.referencedDeclaration;
-                            }
-                            //check if the variable astId is present
-                            if (bodyNode.nodeType === "ExpressionStatement" && variablesAstIds.includes(astId)) {
-                                //console.log("variable found!: " + variablesAstNames[bodyNode.expression.leftHandSide.baseExpression.referencedDeclaration].name);
+                                let astId;
+                                //if the variable is a nested one it has two baseExpression
+                                if (bodyNode.expression.leftHandSide.baseExpression.baseExpression != undefined) {
+                                    astId = bodyNode.expression.leftHandSide.baseExpression.baseExpression.referencedDeclaration;
+                                }
+                                //otherwise take its simple assignment
+                                if (bodyNode.expression.leftHandSide.baseExpression.referencedDeclaration != undefined) {
+                                    astId = bodyNode.expression.leftHandSide.baseExpression.referencedDeclaration;
+                                }
+                                //check if the variable astId is present
+                                if (bodyNode.nodeType === "ExpressionStatement" && variablesAstIds.includes(astId)) {
+                                    //console.log("variable found!: " + variablesAstNames[bodyNode.expression.leftHandSide.baseExpression.referencedDeclaration].name);
                                     //create an object with
-                                    functionVariables[node.name] = [];
-                                    functionVariables[node.name].push({
+                                    // functionVariables[node.name] = []
+
+                                    functionVariables[node.name].baseContract = contract.canonicalName;
+                                    functionVariables[node.name].variables = [];
+                                    functionVariables[node.name].variables.push({
                                         astId: astId, name: variablesAstNames[astId].name,
-                                        type: variablesAstNames[astId].type, storageSlot: variablesAstNames[astId].slot
+                                        type: variablesAstNames[astId].type, storageSlot: variablesAstNames[astId].slot,
+                                        baseContract: variablesAstNames[astId].baseContract
                                     });
 
-                            }
+                                }
                         }
                     }else if(bodyNode.hasOwnProperty("expression") && bodyNode.expression.nodeType === "FunctionCall" &&
                         bodyNode.expression.expression.name !== "require" && bodyNode.expression.expression.name !== undefined){
-
-                        console.log("ipotetica sub call: " + bodyNode.expression.expression.name);
+                        functionVariables[node.name].functionCall = {name: bodyNode.expression.expression.name,
+                        astId: bodyNode.expression.expression.referencedDeclaration};
+                        functionVariables[node.name].baseContract = contract.canonicalName;
+                        //todo per leggere le variabili delle sub call devo effettivamente leggermi il nodo main
+                        //ciò significa che se lo vedo com function call me lo metto da parte e quando lo becco sopra mi metto
+                        //le variabili dentro
                     }
 
                 }
@@ -290,6 +271,7 @@ async function getCompiledData(contracts) {
     }
     //console.log(functionVariables);
   //  console.log(functionVariables);
+   // console.log(functionVariables);
     return functionVariables;
 }
 
@@ -330,13 +312,11 @@ async function getContractCodeEtherscan() {
 async function getVariablesFromStorage(compiled) {
     const variablesAstIds = [];
     let storageVariables = {};
-    //todo all contracts
     for(const contract in compiled.contracts){
         const firstKey = Object.keys(compiled.contracts[contract])[0];
         if(compiled.contracts[contract][firstKey].storageLayout != undefined) {
             if(compiled.contracts[contract][firstKey].storageLayout.storage != undefined) {
                // console.log("daje" + compiled.contracts[contract]);
-
                 const storageLay = compiled.contracts[contract][firstKey].storageLayout.storage;
                 for (const storageVar of storageLay) {
                     variablesAstIds.push(storageVar.astId);
@@ -344,7 +324,7 @@ async function getVariablesFromStorage(compiled) {
                     storageVariables[storageVar.astId].name = storageVar.label;
                     storageVariables[storageVar.astId].type = storageVar.type;
                     storageVariables[storageVar.astId].slot = storageVar.slot;
-                    storageVariables[storageVar.astId].contract = "contract";
+                    storageVariables[storageVar.astId].baseContract = firstKey;
                     storageVariables[storageVar.astId].address = "todo";
                 }
             }
@@ -406,3 +386,49 @@ async function getTraceFromGanache(blockNumber, txHash) {
 }
 
 
+
+async function shaRedo() {
+    //test statici vari
+    //let aaa =  localweb3.utils.sha3("0000000000000000000000000000000000000000000000000000000000000066" + "0000000000000000000000000000000000000000000000000000000000000012");
+    //console.log(aaa);
+    // console.log(await web3.eth.getStorageAt(contractAddress, aaa, 16924868));
+    // console.log(localweb3.utils.soliditySha3("0000000000000000000000000000000000000000000000000000000000000066" + "0000000000000000000000000000000000000000000000000000000000000012"));
+
+    //from memory : key + storageIndex = hashedKey --> getStorage della variable con storage index x
+    //PRENDO ISTRUZIONE DOPO LO SHA PER VEDERE LA CHIAVE CHE STA NEL 1 POSIZIONE DELLO STACK
+
+    //iterate all keys in the memory of an SHA3 command
+    for (const memoryKey of memoryKeys) {
+        //test the SHA with all possible storage slots of variables within specific the function
+        for (const storageSlot of storageSlots) {
+            // const prova = web3.utils.padLeft(web3.utils.numberToHex("102"), 64)
+            const storageIndex = web3.utils.padLeft(web3.utils.numberToHex(storageSlot), 64).replace('0x', '');
+            let newKey = localweb3.utils.sha3Raw(memoryKey + storageIndex);
+            console.log("key is: " + web3.utils.asciiToHexmemoryKey + " storage index is: " + storageIndex);
+            console.log("hashed key is: " + newKey)
+            console.log("wanted key is: " + storageKeys)
+            if (storageKeys.includes(newKey)) {
+                const variable = await getVarFromFunction(functionVariables, functionName, storageSlot);
+                console.log("IT MATCHES address or int: " + JSON.stringify(variable));
+            } else {
+                const trimmedHexString = memoryKey.split('0')[0];
+                newKey = localweb3.utils.soliditySha3(trimmedHexString + storageIndex);
+                if (storageKeys.includes(newKey)) {
+                    const variable = await getVarFromFunction(functionVariables, functionName, storageSlot);
+                    console.log("IT MATCHES string: " + JSON.stringify(variable));
+                }
+            }
+            console.log("nada");
+
+        }
+    }
+    // let newKey =  localweb3.utils.soliditySha3(hexKey + '0000000000000000000000000000000000000000000000000000000000000000');
+
+
+    // const hexKeyWithZeros = '6369616f00000000000000000000000000000000000000000000000000000000'
+    //const trimmedHexString =  hexKeyWithZeros.split('0')[0];
+
+    // let newKey =  localweb3.utils.soliditySha3('000000000000000000000000000000000000000000000000000000000000001f' + '0000000000000000000000000000000000000000000000000000000000000000');
+    // console.log("GETTING STORAGE VAR: " + await localweb3.eth.getStorageAt('0xefCa968983fFa3cF96A24A3Eb214cAE607ddEf83', newKey));
+
+}
