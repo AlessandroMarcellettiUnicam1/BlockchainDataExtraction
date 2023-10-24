@@ -23,7 +23,8 @@ const contractAddress = '0x152649eA73beAb28c5b49B26eb48f7EAD6d4c898';
 const nodeUrl = 'HTTP://127.0.0.1:8545'; // Replace with your Ethereum node or Infura URL
 
 //todo 1) o rimuovere la funzione singola oppure 2) iterare per le chiamate interne perchè
-async function cleanTest(blockNumber, functionName, txHash) {
+async function cleanTest(blockNumber, functionName, txHash, mainContract) {
+    //console.log(await web3.eth.getTransaction(txHash));;
     const provider = ganache.provider({
         network_id: 1,
         fork: 'https://mainnet.infura.io/v3/f3851e4d467341f1b5927b6546d9f30c\@' + blockNumber
@@ -86,19 +87,24 @@ async function cleanTest(blockNumber, functionName, txHash) {
         if(!functionStorage.hasOwnProperty(trackBuffer[i].finalKey)){
             trackBuffer[i].finalKey = trackBuffer[i+1].finalKey;
             finalTraces.push(trackBuffer[i]);
+        }else{
+            finalTraces.push(trackBuffer[i]);
         }
     }
 
-    await generateMappingKey(finalTraces, functionStorage, functionName, contracts);
+    await generateMappingKey(finalTraces, functionStorage, functionName, contracts, mainContract);
 
 
 }
 
-cleanTest(16971439, "approve", "0xe6f8454ece3bb67b3f211cf0e23a86676af48f1485b4d7e00914a5b6173aa287");
+cleanTest(18421569, "transfer", "0x48fa149344df4a4bb2cd7e5f9bfed3271e010fed6d337ee05aa46368708cbbbd", "CakeOFT");
 
-//function for re-generating the key and understand the variable thanks to the tests on the storage location
-async function generateMappingKey(trackBuffer, functionStorage, functionName, contracts) {
-    const functionVariables = await getCompiledData(contracts, functionName)
+//function for re-generating the key and understand the variable thanks to the tests on the storage locationapprove(address spender,uint256 amount)0x095ea7b3
+async function generateMappingKey(trackBuffer, functionStorage, functionName, contracts, mainContract) {
+    //get variables changed respective functions in teh contracts
+    const data = await getCompiledData(contracts, functionName)
+    const functionVariables = data.functionVariables;
+    const variableAstTree =  data.variablesAstNames;
     const storageKeys = await convertStorageKeys(functionStorage);
     let storageSlots = [];
     let functionNames = [];
@@ -120,9 +126,9 @@ async function generateMappingKey(trackBuffer, functionStorage, functionName, co
 
     for (const trace of trackBuffer) {
         const numberIndex = await web3.utils.hexToNumber("0x" + trace.hexStorageIndex);
-        const variable = await getVarFromFunction(functionVariables, functionNames, numberIndex);
+        const variable = await getVarFromFunction(functionVariables, functionNames, numberIndex, variableAstTree, mainContract);
         const varVal = await decodeStorageValue(functionStorage[trace.finalKey], variable.type);
-        console.log("Call: " + functionName + ", of Contract: " + functionVariables[functionName].baseContract + " ----internal call---> " +
+        console.log("Call: " + functionName + ", of Contract: " + functionVariables[functionName].baseContract + " ----internal function call---> " +
             functionVariables[functionName].functionCall.name + ", of Contract: " + functionVariables[functionVariables[functionName].functionCall.name].baseContract)
         console.log("Updated variable: " + variable.name + ", with type: " + variable.type + ", and value: " + varVal + ", of Contrat: " + variable.baseContract);
         //console.log(functionVariables);
@@ -161,21 +167,28 @@ async function convertStorageKeys(functionStorage) {
     return storageKeys;
 }
 
-async function getVarFromFunction(functionVariables, functionNames, sourceFnName, storageSlot) {
-    console.log(functionVariables);
-    console.log(functionVariables["_approve"]);
-    console.log(functionVariables["approve"]);
+async function getVarFromFunction(functionVariables, functionNames, storageSlot, variableAstTree, mainContract) {
+    //console.log(functionVariables);
+    //console.log(functionVariables["_approve"]);
+    //console.log(functionVariables["approve"]);
     //console.log(functionNames);
-
-
-    for(const functionName of functionNames) {
-        for (const variable of functionVariables[functionName].variables) {
-            if (Number(variable.storageSlot) === Number(storageSlot)) {
-                //console.log("yes");
-                return variable;
+    //console.log(functionVariables["_approve"]);
+    for(const astVar in variableAstTree){
+        for(const _var of variableAstTree[astVar]){
+            if(_var.baseContract === mainContract && Number(_var.slot) === Number(storageSlot)){
+                return _var;
             }
         }
     }
+
+    /* for(const functionName of functionNames) {
+         for (const variable of functionVariables[functionName].variables) {
+             if (Number(variable.storageSlot) === Number(storageSlot)) {
+                 //console.log("yes");
+                 return variable;
+             }
+         }
+     }*/
 }
 
 async function getCompiledData(contracts) {
@@ -285,7 +298,7 @@ async function getCompiledData(contracts) {
   //  console.log(functionVariables);
    // console.log(functionVariables);
     //console.log(functionVariables);
-    return functionVariables;
+    return {functionVariables, variablesAstNames};
 }
 
 
@@ -362,7 +375,7 @@ async function getVariablesFromStorage(compiled) {
         storageVariables[storageVar.astId].type = storageVar.type;
         storageVariables[storageVar.astId].slot = storageVar.slot;
     }*/
-    console.log(storageVariables);
+    //console.log(storageVariables);
     return {variablesAstIds, storageVariables};
 }
 
