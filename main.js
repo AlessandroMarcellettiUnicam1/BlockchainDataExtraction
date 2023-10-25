@@ -45,7 +45,11 @@ async function cleanTest(blockNumber, functionName, txHash, mainContract) {
     let index = 0;
     let trackBuffer = [];
     let bufferPC = -10;
+    let sstoreBuffer = [];
     fs.writeFileSync("out.json", JSON.stringify(response.structLogs));
+    const contractTree = await getCompiledData(contracts, functionName);
+
+
     for (const trace of response.structLogs) {
         //if SHA3 is found then read all keys before being hashed
         if (trace.op === "SHA3") {
@@ -65,12 +69,6 @@ async function cleanTest(blockNumber, functionName, txHash, mainContract) {
                 hexKey: hexKey,
                 hexStorageIndex: hexStorageIndex
             };
-           // console.log("---------Ecco uno SHA3 --------------")
-           // console.log("storageIndex: " + hexStorageIndex);
-           // console.log("key: " + hexKey);
-
-            //functionKeys.push(hexKey);
-            //functionStorageIndexes.push(hexStorageIndex);
         } else if (trace.op === "STOP" || trace.op === "RETURN") {
             //retrieve the entire storage after function execution
             //for each storage key discard the ones of static variables and compare the remaining ones with the re-generated
@@ -85,36 +83,54 @@ async function cleanTest(blockNumber, functionName, txHash, mainContract) {
             index++;
         }
         else if (trace.op === "SSTORE") {
-            //console.log(trace);
+            sstoreBuffer.push(trace.stack[trace.stack.length - 1]);
         }
     }
     let finalTraces = [];
     //console.log(trackBuffer);
+//    console.log(trackBuffer);
+   // console.log("storageeeeeeeeeeeeeeeeeeee")
     //console.log(functionStorage);
+for (let i = 0; i < trackBuffer.length; i++){
+    if(sstoreBuffer.includes(trackBuffer[i].finalKey)){
+        let flag = false;
+        let test = i;
+      /*  if((await web3.utils.hexToNumber("0x" + trackBuffer[i].hexStorageIndex) < 30)){
+            console.log(trackBuffer[i].hexStorageIndex);
+        }*/
+            while(flag === false){
+                if (!(await web3.utils.hexToNumber("0x" + trackBuffer[test].hexStorageIndex) < 30)) {
+                    test++;
+                } else {
+                    flag = true;
+                    //console.log(trackBuffer[i].hexStorageIndex);
+                    finalTraces.push(trackBuffer[i]);
+                }
+            }
+
+    }else{
+
+    }
+}
+
 
     for(let i = 0; i < trackBuffer.length; i++){
-        //console.log("final key: " + trackBuffer[i].finalKey);
-            //if sha3 is not present in the mapping means that it will be used in the next one for nested value
+        //if sha3 is not present in the mapping means that it will be used in the next one for nested value
         let flag = false;
         let test = i;
         while(flag === false){
-
              //   trackBuffer[i].finalKey = trackBuffer[test].finalKey;
                 if (!functionStorage.hasOwnProperty(trackBuffer[test].finalKey)) {
                     test++;
-                    //takes the next key as the valid one, assumed to be of a nested mapping
-                   // console.log("chiave trovata " + trackBuffer[i].finalKey);
-                    //finalTraces.push(trackBuffer[i]);
                 } else {
                     flag = true;
                     trackBuffer[i].finalKey = trackBuffer[test].finalKey;
                     finalTraces.push(trackBuffer[i]);
                 }
         }
-
     }
     const uniqueTraces = Array.from(new Set(finalTraces.map(JSON.stringify))).map(JSON.parse);
-    await decodeValues(uniqueTraces, functionStorage, functionName, contracts, mainContract);
+    await decodeValues(contractTree, uniqueTraces, functionStorage, functionName, contracts, mainContract);
 
 
 }
@@ -123,8 +139,8 @@ cleanTest(18424870, "sendFrom", "0x446f97e43687382fefbc6a9c4cccd055829ef2909997f
 
 //function for re-generating the key and understand the variable thanks to the tests on the storage locationapprove(address spender,uint256 amount)0x095ea7b3
 
-async function decodeValues(trackBuffer, functionStorage, functionName, contracts, mainContract){
-    const contractTree = await getCompiledData(contracts, functionName);
+async function decodeValues(contractTree, trackBuffer, functionStorage, functionName, contracts, mainContract){
+    //console.log(functionStorage);
     //iterate the tree of contracts
     for(const contractId in contractTree){
         //if the contract is the main one then check the storage
@@ -139,13 +155,14 @@ async function decodeValues(trackBuffer, functionStorage, functionName, contract
                 for(const contractVariable of contractTree[contractId].storage){
                     //if the variable has the same slot then it is
                     if(Number(contractVariable.slot) === Number(slotIndex)){
-                       // console.log("variabile " + contractVariable.name + " di tipo: " + contractVariable.type + " allo slot: " + contractVariable.slot);
-                       // console.log("dallo storage: " + slotIndex + " e la chiave FORSE è: " + trace.finalKey);
+                        //console.log("variabile " + contractVariable.name + " di tipo: " + contractVariable.type + " allo slot: " + contractVariable.slot);
+                        //console.log("dallo storage: " + slotIndex + " e la chiave FORSE è: " + trace.finalKey);
                         const varVal = await decodeStorageValue(contractVariable, functionStorage[trace.finalKey]);
-                        console.log(slotIndex, functionStorage[trace.finalKey]);
+                        //console.log(slotIndex, functionStorage[trace.finalKey]);
                         //todo capire se ha cancellato, creato o aggiornato
-                        console.log("Ha modificato la variable: " + contractVariable.name + ", di tipo: " + contractVariable.type);
-                        console.log("Che ora ha valore: " + varVal);
+                        //console.log("Ha modificato la variable: " + contractVariable.name + ", di tipo: " + contractVariable.type);
+                        //console.log("Che ora ha valore: " + varVal);
+                        //console.log(await web3.eth.getStorageAt(contractAddress, Number(slotIndex), 18424870));
                     }
                 }
             }
@@ -198,9 +215,9 @@ async function decodeStorageValue(variable, value) {
         const typeBuffer = variable.type.split(",");
         if (typeBuffer[typeBuffer.length -1].includes("uint")) {
             return web3.utils.hexToNumber("0x" + value);
-        } else if (typeBuffer[typeBuffer.length -1].includes("string") || variable.type.split(",")[0].includes("address")) {
+        } else if (typeBuffer[typeBuffer.length -1].includes("string") || typeBuffer[typeBuffer.length -1].includes("address")) {
             return web3.utils.hexToAscii("0x" + value);
-        } else if (typeBuffer[typeBuffer.length -1].includes("bool")) {
+        } else if (typeBuffer[typeBuffer.length -1].includes("t_bool")) {
             if(value === "0000000000000000000000000000000000000000000000000000000000000000"){
                 return false;
             }else {
@@ -208,6 +225,7 @@ async function decodeStorageValue(variable, value) {
             }
         } else if (typeBuffer[typeBuffer.length -1].includes("bytes")) {
            return web3.utils.hexToBytes("0x" + value);
+        }else{
         }
     } else if (variable.type.includes("array")) {
 
@@ -215,7 +233,7 @@ async function decodeStorageValue(variable, value) {
         if (variable.type.includes("uint")) {
             return web3.utils.hexToNumber("0x" + value);
         } else if (variable.type.includes("string") || variable.type.includes("address")) {
-            return web3.utils.hexToAscii("0x" + value);
+            return web3.utils.hexToString("0x" + value);
         } else if (variable.type.includes("bool")) {
             if(value === "0000000000000000000000000000000000000000000000000000000000000000"){
                 return false;
