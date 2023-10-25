@@ -36,25 +36,20 @@ async function cleanTest(blockNumber, functionName, txHash, mainContract) {
 
         ]
     });
-    /*const response = await axios.post("http://127.0.0.1:8545", {
-        "jsonrpc": '2.0',
-        "method": 'debug_traceTransaction',
-        "params": ['0x77f9327c329f72ca665660650a1d9705aa693257815a689898a5d4468da94ed8', {}], // Replace {} with any optional parameters
-        "id": 1
-    });*/
-
 
     //used to store the storage changed by the function. Used to compare the generated keys
-    let functionStorage;
+    let functionStorage = {};
     //used to store all the keys potentially related to a dynamic structure
     /* let functionKeys = [];
      let functionStorageIndexes = [];*/
     let index = 0;
     let trackBuffer = [];
     let bufferPC = -10;
+    fs.writeFileSync("out.json", JSON.stringify(response.structLogs));
     for (const trace of response.structLogs) {
-            //if SHA3 is found then read all keys before being hashed
+        //if SHA3 is found then read all keys before being hashed
         if (trace.op === "SHA3") {
+            //console.log(trace);
             bufferPC = trace.pc;
             const stackLength = trace.stack.length;
             const memoryLocation = trace.stack[stackLength - 1];
@@ -70,26 +65,53 @@ async function cleanTest(blockNumber, functionName, txHash, mainContract) {
                 hexKey: hexKey,
                 hexStorageIndex: hexStorageIndex
             };
+           // console.log("---------Ecco uno SHA3 --------------")
+           // console.log("storageIndex: " + hexStorageIndex);
+           // console.log("key: " + hexKey);
+
             //functionKeys.push(hexKey);
             //functionStorageIndexes.push(hexStorageIndex);
         } else if (trace.op === "STOP" || trace.op === "RETURN") {
             //retrieve the entire storage after function execution
             //for each storage key discard the ones of static variables and compare the remaining ones with the re-generated
-            functionStorage = trace.storage;
+            for(const slot in trace.storage){
+                functionStorage[slot] = trace.storage[slot];
+            }
         } else if (trace.pc === (bufferPC + 1)) {
+           // console.log("---------Ecco quello dopo --------------")
+           // console.log(trace.stack[trace.stack.length - 1]);
+            bufferPC = 0;
             trackBuffer[index].finalKey = trace.stack[trace.stack.length - 1];
             index++;
         }
+        else if (trace.op === "SSTORE") {
+            //console.log(trace);
+        }
     }
     let finalTraces = [];
+    //console.log(trackBuffer);
+    //console.log(functionStorage);
+
     for(let i = 0; i < trackBuffer.length; i++){
-        //if sha3 is not present in the mapping means that it will be used in the next one for nested value
-        if(!functionStorage.hasOwnProperty(trackBuffer[i].finalKey)){
-            trackBuffer[i].finalKey = trackBuffer[i+1].finalKey;
-            finalTraces.push(trackBuffer[i]);
-        }else{
-            finalTraces.push(trackBuffer[i]);
+        //console.log("final key: " + trackBuffer[i].finalKey);
+            //if sha3 is not present in the mapping means that it will be used in the next one for nested value
+        let flag = false;
+        let test = i;
+        while(flag === false){
+
+             //   trackBuffer[i].finalKey = trackBuffer[test].finalKey;
+                if (!functionStorage.hasOwnProperty(trackBuffer[test].finalKey)) {
+                    test++;
+                    //takes the next key as the valid one, assumed to be of a nested mapping
+                   // console.log("chiave trovata " + trackBuffer[i].finalKey);
+                    //finalTraces.push(trackBuffer[i]);
+                } else {
+                    flag = true;
+                    trackBuffer[i].finalKey = trackBuffer[test].finalKey;
+                    finalTraces.push(trackBuffer[i]);
+                }
         }
+
     }
     const uniqueTraces = Array.from(new Set(finalTraces.map(JSON.stringify))).map(JSON.parse);
     await decodeValues(uniqueTraces, functionStorage, functionName, contracts, mainContract);
@@ -108,19 +130,21 @@ async function decodeValues(trackBuffer, functionStorage, functionName, contract
         //if the contract is the main one then check the storage
         if(contractTree[contractId].name === mainContract && contractTree[contractId].functions.includes(functionName)){
             //iterate the trace
-            console.log("Contratto: " + mainContract + ", attività: " + functionName);
+            //console.log("Contratto: " + mainContract + ", attività: " + functionName);
             for (const trace of trackBuffer) {
                 //convert storage index to integer
                 const slotIndex = await web3.utils.hexToNumber("0x" + trace.hexStorageIndex);
+
                 //iterate the possible variables of the matching contract
                 for(const contractVariable of contractTree[contractId].storage){
                     //if the variable has the same slot then it is
                     if(Number(contractVariable.slot) === Number(slotIndex)){
-                       // console.log(contractVariable);
+                       // console.log("variabile " + contractVariable.name + " di tipo: " + contractVariable.type + " allo slot: " + contractVariable.slot);
+                       // console.log("dallo storage: " + slotIndex + " e la chiave FORSE è: " + trace.finalKey);
                         const varVal = await decodeStorageValue(contractVariable, functionStorage[trace.finalKey]);
+                        console.log(slotIndex, functionStorage[trace.finalKey]);
                         //todo capire se ha cancellato, creato o aggiornato
                         console.log("Ha modificato la variable: " + contractVariable.name + ", di tipo: " + contractVariable.type);
-                        //console.log("Valore per chiave del mapping: " + trace.hexKey);
                         console.log("Che ora ha valore: " + varVal);
                     }
                 }
@@ -168,6 +192,7 @@ async function decodeValues(trackBuffer, functionStorage, functionName, contract
 //function for decoding the storage value
 //todo check arrays, structs and nested mappings
 async function decodeStorageValue(variable, value) {
+    //console.log("variable to handle: --------->" + value);
     //if it is a mapping check for last type of value by splitting it so to cover also nested case
     if (variable.type.includes("mapping")) {
         const typeBuffer = variable.type.split(",");
@@ -176,11 +201,32 @@ async function decodeStorageValue(variable, value) {
         } else if (typeBuffer[typeBuffer.length -1].includes("string") || variable.type.split(",")[0].includes("address")) {
             return web3.utils.hexToAscii("0x" + value);
         } else if (typeBuffer[typeBuffer.length -1].includes("bool")) {
-            console.log("bool to handle: " + value)
+            if(value === "0000000000000000000000000000000000000000000000000000000000000000"){
+                return false;
+            }else {
+                return true;
+            }
+        } else if (typeBuffer[typeBuffer.length -1].includes("bytes")) {
+           return web3.utils.hexToBytes("0x" + value);
         }
     } else if (variable.type.includes("array")) {
 
+    } else{
+        if (variable.type.includes("uint")) {
+            return web3.utils.hexToNumber("0x" + value);
+        } else if (variable.type.includes("string") || variable.type.includes("address")) {
+            return web3.utils.hexToAscii("0x" + value);
+        } else if (variable.type.includes("bool")) {
+            if(value === "0000000000000000000000000000000000000000000000000000000000000000"){
+                return false;
+            }else {
+                return true;
+            }
+        } else if (variable.type.includes("bytes")) {
+            return web3.utils.hexToBytes("0x" + value);
+        }
     }
+    return value;
 }
 
 
@@ -195,11 +241,7 @@ async function convertStorageKeys(functionStorage) {
 }
 
 async function getVarFromFunction(functionVariables, functionNames, storageSlot, variableAstTree, mainContract) {
-    //console.log(functionVariables);
-    //console.log(functionVariables["_approve"]);
-    //console.log(functionVariables["approve"]);
-    //console.log(functionNames);
-    //console.log(functionVariables["_approve"]);
+
     for(const astVar in variableAstTree){
         for(const _var of variableAstTree[astVar]){
             if(_var.baseContract === mainContract && Number(_var.slot) === Number(storageSlot)){
@@ -260,7 +302,7 @@ async function getCompiledData(contracts) {
     const contractFunctionTree = await constructFullFunctionContractTree(contractTree);
     //construct full contract tree including also variables
     const fullContractTree = await injectVariablesToTree(contractFunctionTree, contractStorageTree);
-
+    //console.log(fullContractTree["4514"]);
     return fullContractTree;
 }
 
