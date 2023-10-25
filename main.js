@@ -91,8 +91,12 @@ async function cleanTest(blockNumber, functionName, txHash, mainContract) {
 //    console.log(trackBuffer);
    // console.log("storageeeeeeeeeeeeeeeeeeee")
     //console.log(functionStorage);
+    let finalShaTraces = [];
 for (let i = 0; i < trackBuffer.length; i++){
     if(sstoreBuffer.includes(trackBuffer[i].finalKey)){
+        const trace = {
+            finalKey: trackBuffer[i].finalKey
+        }
         let flag = false;
         let test = i;
       /*  if((await web3.utils.hexToNumber("0x" + trackBuffer[i].hexStorageIndex) < 30)){
@@ -100,21 +104,20 @@ for (let i = 0; i < trackBuffer.length; i++){
         }*/
             while(flag === false){
                 if (!(await web3.utils.hexToNumber("0x" + trackBuffer[test].hexStorageIndex) < 30)) {
-                    test++;
+                    test--;
                 } else {
+                    trace.hexStorageIndex = trackBuffer[test].hexStorageIndex;
                     flag = true;
                     //console.log(trackBuffer[i].hexStorageIndex);
-                    finalTraces.push(trackBuffer[i]);
+                    finalShaTraces.push(trace);
                 }
             }
-
-    }else{
 
     }
 }
 
 
-    for(let i = 0; i < trackBuffer.length; i++){
+    /*for(let i = 0; i < trackBuffer.length; i++){
         //if sha3 is not present in the mapping means that it will be used in the next one for nested value
         let flag = false;
         let test = i;
@@ -129,8 +132,8 @@ for (let i = 0; i < trackBuffer.length; i++){
                 }
         }
     }
-    const uniqueTraces = Array.from(new Set(finalTraces.map(JSON.stringify))).map(JSON.parse);
-    await decodeValues(contractTree, uniqueTraces, functionStorage, functionName, contracts, mainContract);
+    const uniqueTraces = Array.from(new Set(finalTraces.map(JSON.stringify))).map(JSON.parse);*/
+    await decodeValues(contractTree, finalShaTraces, functionStorage, functionName, contracts, mainContract);
 
 
 }
@@ -160,8 +163,8 @@ async function decodeValues(contractTree, trackBuffer, functionStorage, function
                         const varVal = await decodeStorageValue(contractVariable, functionStorage[trace.finalKey]);
                         //console.log(slotIndex, functionStorage[trace.finalKey]);
                         //todo capire se ha cancellato, creato o aggiornato
-                        //console.log("Ha modificato la variable: " + contractVariable.name + ", di tipo: " + contractVariable.type);
-                        //console.log("Che ora ha valore: " + varVal);
+                        console.log("Ha modificato la variable: " + contractVariable.name + ", di tipo: " + contractVariable.type);
+                        console.log("Che ora ha valore: " + varVal);
                         //console.log(await web3.eth.getStorageAt(contractAddress, Number(slotIndex), 18424870));
                     }
                 }
