@@ -191,6 +191,8 @@ async function getVarFromFunction(functionVariables, functionNames, storageSlot,
      }*/
 }
 
+
+
 async function getCompiledData(contracts) {
     let input = {
         language: 'Solidity',
@@ -226,64 +228,101 @@ async function getCompiledData(contracts) {
     //multiple variables can be referred to the sane ID, added also contract difference
     const variablesAstNames = storageData.storageVariables;
     //console.log(variablesAstNames);
+    const functionVariables = await getFunctionTree(source, variablesAstIds, variablesAstNames);
 
 
+
+    //console.log(functionVariables);
+  //  console.log(functionVariables);
+   // console.log(functionVariables);
+    //console.log(functionVariables);
+    return {functionVariables, variablesAstNames};
+}
+
+async function getContractTree(source, mainContract, variablesAstNames){
     let functionVariables = {};
     let contractToIterate = [];
-    for(const contract in source){
 
-    for (const directive of source[contract].ast.nodes) {
-        //reads the nodes of the ast searching for the contract and not for the imports
+    for(const contract in source){
+        for (const directive of source[contract].ast.nodes) {
+            //reads the nodes of the ast searching for the contract and not for the imports
             if (directive.nodeType === "ContractDefinition") {
                 contractToIterate.push(directive);
             }
         }
     }
+    const contractTree = {};
+    for(const contract of contractToIterate) {
+        for (const node of contract.nodes) {
+            if (node.nodeType.match("FunctionDefinition") && node.name === mainContract) {
+                //iterate the expression nodes in the body of the function
+                const inheritedBuffer = node.linearizedBaseContracts;
+
+                }
+            }
+        }
+}
+
+async function getFunctionTree(source, variablesAstIds, variablesAstNames){
+    console.log(variablesAstNames);
+    let functionVariables = {};
+    let contractToIterate = [];
+
+    for(const contract in source){
+
+        for (const directive of source[contract].ast.nodes) {
+            //reads the nodes of the ast searching for the contract and not for the imports
+            if (directive.nodeType === "ContractDefinition") {
+                contractToIterate.push(directive);
+            }
+        }
+    }
+
     for(const contract of contractToIterate) {
         for (const node of contract.nodes) {
             if (node.nodeType.match("FunctionDefinition") && node.body != undefined && node.implemented == true) {
                 //iterate the expression nodes in the body of the function
                 functionVariables[node.name] = {};
                 for (const bodyNode of node.body.statements) {
-                 //   console.log(bodyNode);
+                    //   console.log(bodyNode);
                     if (bodyNode.hasOwnProperty("expression") && bodyNode.expression.leftHandSide != undefined) {
                         //if the node in the body is an expression involving a variable then take its AST ID
                         if(bodyNode.expression.leftHandSide.baseExpression != undefined) {
-                                let astId;
-                                //if the variable is a nested one it has two baseExpression
-                                if (bodyNode.expression.leftHandSide.baseExpression.baseExpression != undefined) {
-                                    astId = bodyNode.expression.leftHandSide.baseExpression.baseExpression.referencedDeclaration;
-                                }
-                                //otherwise take its simple assignment
-                                if (bodyNode.expression.leftHandSide.baseExpression.referencedDeclaration != undefined) {
-                                    astId = bodyNode.expression.leftHandSide.baseExpression.referencedDeclaration;
-                                }
-                                //check if the variable astId is present
-                                if (bodyNode.nodeType === "ExpressionStatement" && variablesAstIds.includes(astId)) {
-                                    //console.log("variable found!: " + variablesAstNames[bodyNode.expression.leftHandSide.baseExpression.referencedDeclaration].name);
-                                    //create an object with
-                                    // functionVariables[node.name] = []
-                                    //iterate the various possible variables
-                                    for(const variable of variablesAstNames[astId]){
-                                        //match the same current contract
-                                        if(variable.baseContract === contract.canonicalName) {
-                                            functionVariables[node.name].baseContract = contract.canonicalName;
-                                            functionVariables[node.name].variables = [];
-                                            functionVariables[node.name].variables.push({
-                                                astId: astId,
-                                                name: variable.name,
-                                                type: variable.type,
-                                                storageSlot: variable.slot,
-                                                baseContract: variable.baseContract
-                                            });
-                                        }
+                            let astId;
+                            //if the variable is a nested one it has two baseExpression
+                            if (bodyNode.expression.leftHandSide.baseExpression.baseExpression != undefined) {
+                                astId = bodyNode.expression.leftHandSide.baseExpression.baseExpression.referencedDeclaration;
+                            }
+                            //otherwise take its simple assignment
+                            if (bodyNode.expression.leftHandSide.baseExpression.referencedDeclaration != undefined) {
+                                astId = bodyNode.expression.leftHandSide.baseExpression.referencedDeclaration;
+                            }
+                            //check if the variable astId is present
+                            if (bodyNode.nodeType === "ExpressionStatement" && variablesAstIds.includes(astId)) {
+                                //console.log("variable found!: " + variablesAstNames[bodyNode.expression.leftHandSide.baseExpression.referencedDeclaration].name);
+                                //create an object with
+                                // functionVariables[node.name] = []
+                                //iterate the various possible variables
+                                for(const variable of variablesAstNames[astId]){
+                                    //match the same current contract
+                                    if(variable.baseContract === contract.canonicalName) {
+                                        functionVariables[node.name].baseContract = contract.canonicalName;
+                                        functionVariables[node.name].variables = [];
+                                        functionVariables[node.name].variables.push({
+                                            astId: astId,
+                                            name: variable.name,
+                                            type: variable.type,
+                                            storageSlot: variable.slot,
+                                            baseContract: variable.baseContract
+                                        });
                                     }
                                 }
+                            }
                         }
                     }else if(bodyNode.hasOwnProperty("expression") && bodyNode.expression.nodeType === "FunctionCall" &&
                         bodyNode.expression.expression.name !== "require" && bodyNode.expression.expression.name !== undefined){
                         functionVariables[node.name].functionCall = {name: bodyNode.expression.expression.name,
-                        astId: bodyNode.expression.expression.referencedDeclaration};
+                            astId: bodyNode.expression.expression.referencedDeclaration};
                         functionVariables[node.name].baseContract = contract.canonicalName;
                         //todo per leggere le variabili delle sub call devo effettivamente leggermi il nodo main
                         //ciò significa che se lo vedo com function call me lo metto da parte e quando lo becco sopra mi metto
@@ -294,11 +333,7 @@ async function getCompiledData(contracts) {
             }
         }
     }
-    //console.log(functionVariables);
-  //  console.log(functionVariables);
-   // console.log(functionVariables);
-    //console.log(functionVariables);
-    return {functionVariables, variablesAstNames};
+    return functionVariables;
 }
 
 
