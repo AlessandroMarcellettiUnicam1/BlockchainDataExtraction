@@ -12,6 +12,7 @@
   "dependencies": {
     "@ethereumjs/common": "^4.0.0",
     "@ethereumjs/vm": "^7.0.0",
+    "@moralisweb3/common-evm-utils": "^2.23.1",
     "abi-decoder": "^2.4.0",
     "alchemy-sdk": "^2.10.1",
     "axios": "^1.5.1",
@@ -22,6 +23,7 @@
     "ganache": "^7.9.1",
     "ganache-cli": "^6.12.2",
     "hardhat-tracer": "^2.6.0",
+    "moralis": "^2.23.1",
     "node-fetch": "^3.3.2",
     "pm4js": "^0.0.28",
     "solc": "^0.8.12",

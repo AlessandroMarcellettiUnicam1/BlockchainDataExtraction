@@ -9,6 +9,8 @@ const https = require("https");
 const ganache = require("ganache");
 const {spawn} = require('child_process');
 const buffer = require("buffer");
+const Moralis = require("moralis").default;
+
 const sourceCode = fs.readFileSync('contractEtherscan.sol', 'utf8');
 let contractAbi = fs.readFileSync('abiEtherscan.json', 'utf8');
 let localweb3 = new Web3('HTTP://127.0.0.1:8545')
@@ -18,6 +20,7 @@ let generalStorageLayout;
 let contractTransactions = [];
 let blockchainLog = [{}];
 const abiDecoder = require('abi-decoder');
+const {EvmChain} = require("@moralisweb3/common-evm-utils");
 const contractAddress = '0x152649eA73beAb28c5b49B26eb48f7EAD6d4c898';
 
 
@@ -37,6 +40,7 @@ async function cleanTest(blockNumber, functionName, txHash, mainContract) {
 
         ]
     });
+    await getInternalTransactions(txHash);
 
     //used to store the storage changed by the function. Used to compare the generated keys
     let functionStorage = {};
@@ -86,14 +90,11 @@ async function cleanTest(blockNumber, functionName, txHash, mainContract) {
         else if (trace.op === "SSTORE") {
             sstoreBuffer.push(trace.stack[trace.stack.length - 1]);
         }else if(trace.op === "CALL" || trace.op === "DELEGATECALL" || trace.op === "STATICCALL"){
-           // console.log(trace);
+            console.log(trace);
         }
     }
-    let finalTraces = [];
-    // console.log(trackBuffer);
-    // console.log(functionStorage);
+
     let finalShaTraces = [];
-    //console.log(sstoreBuffer);
     //todo se una chiave è presente eliminare lo sstore così rimangono solo variabili normali che possono essere lette dopo
 for (let i = 0; i < trackBuffer.length; i++){
     //check if the SAH3 key is contained in an SSTORE
@@ -106,6 +107,7 @@ for (let i = 0; i < trackBuffer.length; i++){
         let test = i;
         //Iterate previous SHA3 looking for a simple integer slot index
             while(flag === false){
+                //if the storage key is not a standard number then check for the previous one
                 if (!(await web3.utils.hexToNumber("0x" + trackBuffer[test].hexStorageIndex) < 30)) {
                     test--;
                 } else {
@@ -120,23 +122,8 @@ for (let i = 0; i < trackBuffer.length; i++){
 
 }
 
-    //console.log(sstoreBuffer);
-    /*for(let i = 0; i < trackBuffer.length; i++){
-        //if sha3 is not present in the mapping means that it will be used in the next one for nested value
-        let flag = false;
-        let test = i;
-        while(flag === false){
-             //   trackBuffer[i].finalKey = trackBuffer[test].finalKey;
-                if (!functionStorage.hasOwnProperty(trackBuffer[test].finalKey)) {
-                    test++;
-                } else {
-                    flag = true;
-                    trackBuffer[i].finalKey = trackBuffer[test].finalKey;
-                    finalTraces.push(trackBuffer[i]);
-                }
-        }
-    }
-    const uniqueTraces = Array.from(new Set(finalTraces.map(JSON.stringify))).map(JSON.parse);*/
+    //const uniqueTraces = Array.from(new Set(finalTraces.map(JSON.stringify))).map(JSON.parse);
+    //removes duplicate storing keys, it will catch only the last update done on a variable
     const uniqueSStore = Array.from(new Set(sstoreBuffer.map(JSON.stringify))).map(JSON.parse);
     //console.log(uniqueSStore);
     //console.log(functionStorage);
@@ -309,7 +296,7 @@ async function getCompiledData(contracts) {
         settings: {
             outputSelection: {
                 "*": {
-                    "*": ["storageLayout", "ast"],
+                    "*": ["storageLayout", "ast", "abi"],
                     "": ["ast"]
                 }
             }
@@ -485,4 +472,36 @@ async function getContractVariableTree(compiled) {
     }
 
     return {variablesAstIds, contractStorageTree};
+}
+async function getInternalTransactions(txHash){
+    const apiKey = 'I81RM42RCBH3HIC9YEK1GX6KYQ12U73K1C';
+    const endpoint = `https://api.etherscan.io/api?module=account&action=txlistinternal&txhash=${txHash}&apikey=${apiKey}`;
+    axios
+        .get(endpoint)
+        .then((response) => {
+            const data = response.data;
+            if (data.status === '1') {
+                console.log(data);
+            } else {
+                console.error('Error: Unable to retrieve transactions.');
+            }
+        })
+        .catch((error) => {
+            console.error(`An error occurred: ${error}`);
+        });
+
+    const MORALIS_API_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJub25jZSI6ImJjOGVkMDZjLTc5YmEtNDIxYS1iMzE1LTQ0NTIxYWVjNDE0OSIsIm9yZ0lkIjoiMzU5NDk5IiwidXNlcklkIjoiMzY5NDY1IiwidHlwZUlkIjoiN2Q4YTNkOWEtOTNhMi00MjdlLTg5ZTEtMzM5ZTkwNjdlMWVhIiwidHlwZSI6IlBST0pFQ1QiLCJpYXQiOjE2OTYyMzQwNjcsImV4cCI6NDg1MTk5NDA2N30.O28eO9rDl_wGDt0LJ9i7LaeVwp3auYrHrwo8dDmN2Yw";
+    const chain = EvmChain.ETHEREUM;
+    await Moralis.start({
+        apiKey: MORALIS_API_KEY,
+    });
+    const response = await Moralis.EvmApi.transaction.getInternalTransactions({
+        "chain": "0x1",
+        "transactionHash": txHash
+    });
+    for(const internTx of response.raw){
+        console.log(internTx.input);
+        console.log(" ------------------------------------------------------------------------------------- ")
+
+    }
 }
