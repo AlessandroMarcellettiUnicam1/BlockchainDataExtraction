@@ -10,7 +10,6 @@ const ganache = require("ganache");
 const {spawn} = require('child_process');
 const buffer = require("buffer");
 const Moralis = require("moralis").default;
-
 const sourceCode = fs.readFileSync('contractEtherscan.sol', 'utf8');
 let contractAbi = fs.readFileSync('abiEtherscan.json', 'utf8');
 let localweb3 = new Web3('HTTP://127.0.0.1:8545')
@@ -26,21 +25,93 @@ const contractAddress = '0x152649eA73beAb28c5b49B26eb48f7EAD6d4c898';
 
 const nodeUrl = 'HTTP://127.0.0.1:8545'; // Replace with your Ethereum node or Infura URL
 
-//todo 1) o rimuovere la funzione singola oppure 2) iterare per le chiamate interne perchè
-async function cleanTest(blockNumber, functionName, txHash, mainContract) {
+async function getAllTransactions(mainContract) {
+    const apiKey = 'I81RM42RCBH3HIC9YEK1GX6KYQ12U73K1C';
+    const endpoint = `https://api.etherscan.io/api?module=account&action=txlist&address=${contractAddress}&startblock=0&endblock=99999999&sort=asc&apikey=${apiKey}`;
+
+    const data = await axios.get(endpoint);
+    contractTransactions = data.data.result;
+    const contracts = await getContractCodeEtherscan();
+    const contractTree = await getCompiledData(contracts);
+    //console.log(contractTree);
+    await getStorageData(contractTransactions, contracts, mainContract, contractTree);
+
+}
+
+getAllTransactions("CakeOFT");
+
+async function getStorageData(contractTransactions, contracts, mainContract, contractTree){
+    let partialInt = 0;
+    for(const tx of contractTransactions){
+        if(partialInt < 5){
+            //const internalTxs = await getInternalTransactions(tx.hash);
+            let newLog = {
+                activity: '',
+                timestamp: '',
+                inputNames: [],
+                inputTypes: [],
+                inputValues: [],
+               // storageVarTypes: [],
+               // storageVarNames: [],
+                storageState: [],
+                internalTxs: []
+            };
+            const decoder = new InputDataDecoder(contractAbi);
+
+            const result = decoder.decodeData(tx.input);
+            newLog.activity = result.method;
+            newLog.timestamp = tx.timeStamp;
+            for (let i = 0; i < result.inputs.length; i++) {
+
+                newLog.inputTypes[i] = result.types[i];
+                newLog.inputNames[i] = result.names[i];
+
+                //todo with abi decoder
+                if(result.types[i] === 'uint256'){
+                    newLog.inputValues[i] = Number(web3.utils.hexToNumber(result.inputs[i]._hex));
+                }else if(result.types[i] === 'string'){
+                    newLog.inputValues[i] = web3.utils.hexToAscii(result.inputs[i]);
+                }else{
+                    newLog.inputValues[i] = result.inputs[i];
+                }
+            }
+            const storageVal = await getTraceStorage(tx.blockNumber, tx.functionName.split("(")[0], tx.hash,
+                mainContract, contracts, contractTree);
+            console.log(storageVal);
+            newLog.storageState = storageVal.decodedValues;
+            newLog.internalTxs = storageVal.internalCalls;
+            //console.log("FINITOOO!!!")
+            blockchainLog.push(newLog)
+            partialInt++;
+        }else{
+            break;
+        }
+    }
+    try {
+        // Serialize the object-centric event log data to JSON
+        const finalParsedLog = JSON.stringify(blockchainLog, null, 2);
+        // Write the  JSON to the output file
+        fs.writeFileSync('pancakeSwap.json', finalParsedLog);
+        console.log(`JSON file created`);
+    } catch (error) {
+        console.error(`Error writing output file: ${error}`);
+    }
+}
+
+async function getTraceStorage(blockNumber, functionName, txHash, mainContract, contracts, contractTree) {
+
     //console.log(await web3.eth.getTransaction(txHash));;
     const provider = ganache.provider({
         network_id: 1,
         fork: 'https://mainnet.infura.io/v3/f3851e4d467341f1b5927b6546d9f30c\@' + blockNumber
     });
-    const contracts = await getContractCodeEtherscan();
+   // const contracts = await getContractCodeEtherscan();
+
     const response = await provider.request({
         method: "debug_traceTransaction",
-        params: [txHash,
-
-        ]
+        params: [txHash]
     });
-    await getInternalTransactions(txHash);
+    //await getInternalTransactions(txHash);
 
     //used to store the storage changed by the function. Used to compare the generated keys
     let functionStorage = {};
@@ -51,8 +122,9 @@ async function cleanTest(blockNumber, functionName, txHash, mainContract) {
     let trackBuffer = [];
     let bufferPC = -10;
     let sstoreBuffer = [];
+    let internalCalls = [];
     fs.writeFileSync("out.json", JSON.stringify(response.structLogs));
-    const contractTree = await getCompiledData(contracts, functionName);
+
 
 
     for (const trace of response.structLogs) {
@@ -90,7 +162,7 @@ async function cleanTest(blockNumber, functionName, txHash, mainContract) {
         else if (trace.op === "SSTORE") {
             sstoreBuffer.push(trace.stack[trace.stack.length - 1]);
         }else if(trace.op === "CALL" || trace.op === "DELEGATECALL" || trace.op === "STATICCALL"){
-            console.log(trace);
+            internalCalls.push(trace.stack[trace.stack.length - 2]);
         }
     }
 
@@ -127,28 +199,33 @@ for (let i = 0; i < trackBuffer.length; i++){
     const uniqueSStore = Array.from(new Set(sstoreBuffer.map(JSON.stringify))).map(JSON.parse);
     //console.log(uniqueSStore);
     //console.log(functionStorage);
-    await decodeValues(uniqueSStore, contractTree, finalShaTraces, functionStorage, functionName, contracts, mainContract);
-
+    const decodedValues = await decodeValues(uniqueSStore, contractTree, finalShaTraces, functionStorage, functionName, contracts, mainContract);
+    return {decodedValues, internalCalls};
 
 }
 
-cleanTest(18424870, "sendFrom", "0x446f97e43687382fefbc6a9c4cccd055829ef2909997fb102a1728db6b37b76a", "CakeOFT");
+//cleanTest(18424870, "sendFrom", "0x446f97e43687382fefbc6a9c4cccd055829ef2909997fb102a1728db6b37b76a", "CakeOFT");
 
 //function for re-generating the key and understand the variable thanks to the tests on the storage locationapprove(address spender,uint256 amount)0x095ea7b3
 
 async function decodeValues(sstore, contractTree, trackBuffer, functionStorage, functionName, contracts, mainContract){
     //console.log(functionStorage);
     //iterate the tree of contracts
+    let decodedValues = [];
+   // console.log(contractTree);
     for(const contractId in contractTree){
         //if the contract is the main one then check the storage
+
         if(contractTree[contractId].name === mainContract && contractTree[contractId].functions.includes(functionName)){
             //iterate the trace
-            console.log("Contratto: " + mainContract + ", attività: " + functionName);
+
             for (const trace of trackBuffer) {
                 //convert storage index to integer
                 const slotIndex = await web3.utils.hexToNumber("0x" + trace.hexStorageIndex);
+
                 //iterate the possible variables of the matching contract
                 for(const contractVariable of contractTree[contractId].storage){
+                    let bufferVariable = {};
                     //if the variable has the same slot then it is
                     if(Number(contractVariable.slot) === Number(slotIndex)){
                         //console.log("variabile " + contractVariable.name + " di tipo: " + contractVariable.type + " allo slot: " + contractVariable.slot);
@@ -156,16 +233,20 @@ async function decodeValues(sstore, contractTree, trackBuffer, functionStorage, 
                         const varVal = await decodeStorageValue(contractVariable, functionStorage[trace.finalKey]);
                         //console.log(slotIndex, functionStorage[trace.finalKey]);
                         //todo capire se ha cancellato, creato o aggiornato
-                        console.log("Ha modificato la variable speciale: " + contractVariable.name + ", di tipo: " + contractVariable.type);
-                        console.log("Che ora ha valore: " + varVal);
+                        //console.log("Ha modificato la variable speciale: " + contractVariable.name + ", di tipo: " + contractVariable.type);
+                       // console.log("Che ora ha valore: " + varVal);
+                        bufferVariable = {name: contractVariable.name, type: contractVariable.type, value: varVal};
+                        decodedValues.push(bufferVariable);
                         //console.log(await web3.eth.getStorageAt(contractAddress, Number(slotIndex), 18424870));
                     }else{
                         for(const sstoreIndex of sstore){
                             const integerSlot = await web3.utils.hexToNumber("0x"+sstoreIndex);
                             if(integerSlot === Number(contractVariable.slot)){
                                 const varVal = await decodeStorageValue(contractVariable, functionStorage[sstoreIndex]);
-                                console.log("Ha modificato la variable normale: " + contractVariable.name + ", di tipo: " + contractVariable.type);
-                                console.log("Che ora ha valore: " + varVal);
+                                bufferVariable = {name: contractVariable.name, type: contractVariable.type, value: varVal};
+                                decodedValues.push(bufferVariable);
+                              //  console.log("Ha modificato la variable normale: " + contractVariable.name + ", di tipo: " + contractVariable.type);
+                               // console.log("Che ora ha valore: " + varVal);
                             }
                         }
                     }
@@ -173,43 +254,9 @@ async function decodeValues(sstore, contractTree, trackBuffer, functionStorage, 
             }
         }
     }
-    // console.log(contractTree);
+    return decodedValues;
 
 }
-/*async function generateMappingKey(trackBuffer, functionStorage, functionName, contracts, mainContract) {
-    //get variables changed respective functions in teh contracts
-    const data = await getCompiledData(contracts, functionName)
-    const functionVariables = data.functionVariables;
-    const variableAstTree =  data.variablesAstNames;
-    const storageKeys = await convertStorageKeys(functionStorage);
-    let storageSlots = [];
-    let functionNames = [];
-    //if function has subCall then take its variables
-    if(functionVariables[functionName].hasOwnProperty("functionCall")) {
-        //todo match astId for additional verification
-        functionNames.push(functionVariables[functionName].functionCall.name);
-        //storage slots filtered by all the variables modified in the function
-        for (const variable of functionVariables[functionVariables[functionName].functionCall.name].variables) {
-            storageSlots.push(variable.storageSlot);
-        }
-        //if function has also its own variables add them
-    }if(functionVariables[functionName].hasOwnProperty("variables")){
-        functionNames.push(functionVariables[functionName].name);
-        for (const variable of functionVariables[functionVariables[functionName].name].variables) {
-            storageSlots.push(variable.storageSlot);
-        }
-    }
-
-    for (const trace of trackBuffer) {
-        const numberIndex = await web3.utils.hexToNumber("0x" + trace.hexStorageIndex);
-        const variable = await getVarFromFunction(functionVariables, functionNames, numberIndex, variableAstTree, mainContract);
-        const varVal = await decodeStorageValue(functionStorage[trace.finalKey], variable.type);
-        console.log("Call: " + functionName + ", of Contract: " + functionVariables[functionName].baseContract + " ----internal function call---> " +
-            functionVariables[functionName].functionCall.name + ", of Contract: " + functionVariables[functionVariables[functionName].functionCall.name].baseContract)
-        console.log("Updated variable: " + variable.name + ", with type: " + variable.type + ", and value: " + varVal + ", of Contrat: " + variable.baseContract);
-        //console.log(functionVariables);
-    }
-}*/
 
 //function for decoding the storage value
 //todo check arrays and structs, use abiDecoder
