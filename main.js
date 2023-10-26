@@ -17,6 +17,7 @@ let transactions = [];
 let generalStorageLayout;
 let contractTransactions = [];
 let blockchainLog = [{}];
+const abiDecoder = require('abi-decoder');
 const contractAddress = '0x152649eA73beAb28c5b49B26eb48f7EAD6d4c898';
 
 
@@ -84,39 +85,42 @@ async function cleanTest(blockNumber, functionName, txHash, mainContract) {
         }
         else if (trace.op === "SSTORE") {
             sstoreBuffer.push(trace.stack[trace.stack.length - 1]);
+        }else if(trace.op === "CALL" || trace.op === "DELEGATECALL" || trace.op === "STATICCALL"){
+           // console.log(trace);
         }
     }
     let finalTraces = [];
-    //console.log(trackBuffer);
-//    console.log(trackBuffer);
-   // console.log("storageeeeeeeeeeeeeeeeeeee")
-    //console.log(functionStorage);
+    // console.log(trackBuffer);
+    // console.log(functionStorage);
     let finalShaTraces = [];
+    //console.log(sstoreBuffer);
+    //todo se una chiave è presente eliminare lo sstore così rimangono solo variabili normali che possono essere lette dopo
 for (let i = 0; i < trackBuffer.length; i++){
+    //check if the SAH3 key is contained in an SSTORE
     if(sstoreBuffer.includes(trackBuffer[i].finalKey)){
+        //create a final trace for that key
         const trace = {
             finalKey: trackBuffer[i].finalKey
         }
         let flag = false;
         let test = i;
-      /*  if((await web3.utils.hexToNumber("0x" + trackBuffer[i].hexStorageIndex) < 30)){
-            console.log(trackBuffer[i].hexStorageIndex);
-        }*/
+        //Iterate previous SHA3 looking for a simple integer slot index
             while(flag === false){
                 if (!(await web3.utils.hexToNumber("0x" + trackBuffer[test].hexStorageIndex) < 30)) {
                     test--;
                 } else {
+                    //if the storage location is a simple one then save it in the final trace with the correct key
                     trace.hexStorageIndex = trackBuffer[test].hexStorageIndex;
                     flag = true;
-                    //console.log(trackBuffer[i].hexStorageIndex);
                     finalShaTraces.push(trace);
                 }
             }
-
+            sstoreBuffer.splice(sstoreBuffer.indexOf(trackBuffer[i].finalKey), 1);
     }
+
 }
 
-
+    //console.log(sstoreBuffer);
     /*for(let i = 0; i < trackBuffer.length; i++){
         //if sha3 is not present in the mapping means that it will be used in the next one for nested value
         let flag = false;
@@ -133,7 +137,10 @@ for (let i = 0; i < trackBuffer.length; i++){
         }
     }
     const uniqueTraces = Array.from(new Set(finalTraces.map(JSON.stringify))).map(JSON.parse);*/
-    await decodeValues(contractTree, finalShaTraces, functionStorage, functionName, contracts, mainContract);
+    const uniqueSStore = Array.from(new Set(sstoreBuffer.map(JSON.stringify))).map(JSON.parse);
+    //console.log(uniqueSStore);
+    //console.log(functionStorage);
+    await decodeValues(uniqueSStore, contractTree, finalShaTraces, functionStorage, functionName, contracts, mainContract);
 
 
 }
@@ -142,18 +149,17 @@ cleanTest(18424870, "sendFrom", "0x446f97e43687382fefbc6a9c4cccd055829ef2909997f
 
 //function for re-generating the key and understand the variable thanks to the tests on the storage locationapprove(address spender,uint256 amount)0x095ea7b3
 
-async function decodeValues(contractTree, trackBuffer, functionStorage, functionName, contracts, mainContract){
+async function decodeValues(sstore, contractTree, trackBuffer, functionStorage, functionName, contracts, mainContract){
     //console.log(functionStorage);
     //iterate the tree of contracts
     for(const contractId in contractTree){
         //if the contract is the main one then check the storage
         if(contractTree[contractId].name === mainContract && contractTree[contractId].functions.includes(functionName)){
             //iterate the trace
-            //console.log("Contratto: " + mainContract + ", attività: " + functionName);
+            console.log("Contratto: " + mainContract + ", attività: " + functionName);
             for (const trace of trackBuffer) {
                 //convert storage index to integer
                 const slotIndex = await web3.utils.hexToNumber("0x" + trace.hexStorageIndex);
-
                 //iterate the possible variables of the matching contract
                 for(const contractVariable of contractTree[contractId].storage){
                     //if the variable has the same slot then it is
@@ -163,9 +169,18 @@ async function decodeValues(contractTree, trackBuffer, functionStorage, function
                         const varVal = await decodeStorageValue(contractVariable, functionStorage[trace.finalKey]);
                         //console.log(slotIndex, functionStorage[trace.finalKey]);
                         //todo capire se ha cancellato, creato o aggiornato
-                        console.log("Ha modificato la variable: " + contractVariable.name + ", di tipo: " + contractVariable.type);
+                        console.log("Ha modificato la variable speciale: " + contractVariable.name + ", di tipo: " + contractVariable.type);
                         console.log("Che ora ha valore: " + varVal);
                         //console.log(await web3.eth.getStorageAt(contractAddress, Number(slotIndex), 18424870));
+                    }else{
+                        for(const sstoreIndex of sstore){
+                            const integerSlot = await web3.utils.hexToNumber("0x"+sstoreIndex);
+                            if(integerSlot === Number(contractVariable.slot)){
+                                const varVal = await decodeStorageValue(contractVariable, functionStorage[sstoreIndex]);
+                                console.log("Ha modificato la variable normale: " + contractVariable.name + ", di tipo: " + contractVariable.type);
+                                console.log("Che ora ha valore: " + varVal);
+                            }
+                        }
                     }
                 }
             }
@@ -210,7 +225,7 @@ async function decodeValues(contractTree, trackBuffer, functionStorage, function
 }*/
 
 //function for decoding the storage value
-//todo check arrays, structs and nested mappings
+//todo check arrays and structs, use abiDecoder
 async function decodeStorageValue(variable, value) {
     //console.log("variable to handle: --------->" + value);
     //if it is a mapping check for last type of value by splitting it so to cover also nested case
@@ -218,7 +233,7 @@ async function decodeStorageValue(variable, value) {
         const typeBuffer = variable.type.split(",");
         if (typeBuffer[typeBuffer.length -1].includes("uint")) {
             return web3.utils.hexToNumber("0x" + value);
-        } else if (typeBuffer[typeBuffer.length -1].includes("string") || typeBuffer[typeBuffer.length -1].includes("address")) {
+        } else if (typeBuffer[typeBuffer.length -1].includes("string")) {
             return web3.utils.hexToAscii("0x" + value);
         } else if (typeBuffer[typeBuffer.length -1].includes("t_bool")) {
             if(value === "0000000000000000000000000000000000000000000000000000000000000000"){
@@ -228,14 +243,16 @@ async function decodeStorageValue(variable, value) {
             }
         } else if (typeBuffer[typeBuffer.length -1].includes("bytes")) {
            return web3.utils.hexToBytes("0x" + value);
-        }else{
+        }else if(typeBuffer[typeBuffer.length -1].includes("address")){
+            return value;
         }
     } else if (variable.type.includes("array")) {
+        return value;
 
     } else{
         if (variable.type.includes("uint")) {
             return web3.utils.hexToNumber("0x" + value);
-        } else if (variable.type.includes("string") || variable.type.includes("address")) {
+        } else if (variable.type.includes("string")) {
             return web3.utils.hexToString("0x" + value);
         } else if (variable.type.includes("bool")) {
             if(value === "0000000000000000000000000000000000000000000000000000000000000000"){
@@ -245,6 +262,8 @@ async function decodeStorageValue(variable, value) {
             }
         } else if (variable.type.includes("bytes")) {
             return web3.utils.hexToBytes("0x" + value);
+        }else if(variable.type.includes("address")){
+            return value;
         }
     }
     return value;

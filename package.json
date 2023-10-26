@@ -12,6 +12,7 @@
   "dependencies": {
     "@ethereumjs/common": "^4.0.0",
     "@ethereumjs/vm": "^7.0.0",
+    "abi-decoder": "^2.4.0",
     "alchemy-sdk": "^2.10.1",
     "axios": "^1.5.1",
     "childprocess": "^2.0.2",
