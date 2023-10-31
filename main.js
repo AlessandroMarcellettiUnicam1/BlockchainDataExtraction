@@ -44,7 +44,7 @@ getAllTransactions("CakeOFT");
 async function getStorageData(contractTransactions, contracts, mainContract, contractTree){
     let partialInt = 0;
     for(const tx of contractTransactions){
-        if(partialInt < 10){
+        if(partialInt < 50){
             const pastEvents = await getEvents(tx.hash, Number(tx.blockNumber));
             //const internalTxs = await getInternalTransactions(tx.hash);
             //todo take progressive id
@@ -76,7 +76,7 @@ async function getStorageData(contractTransactions, contracts, mainContract, con
                 }else if(result.types[i] === 'string'){
                     newLog.inputValues[i] = web3.utils.hexToAscii(result.inputs[i]);
                 }else if(result.types[i].includes("byte")){
-                    newLog.inputValues[i] = JSON.stringify(web3.utils.hexToBytes(result.inputs[i]));
+                    newLog.inputValues[i] = JSON.stringify(web3.utils.hexToBytes(result.inputs[i])).replace("\"", "");
                 }else if(result.types[i].includes("address")){
                     newLog.inputValues[i] = result.inputs[i];
                 }else{
@@ -303,7 +303,7 @@ async function decodeStorageValue(variable, value) {
     if (variable.type.includes("mapping")) {
         const typeBuffer = variable.type.split(",");
         if (typeBuffer[typeBuffer.length -1].includes("uint")) {
-            return web3.utils.hexToNumber("0x" + value);
+            return Number(web3.utils.hexToNumber("0x" + value));
         } else if (typeBuffer[typeBuffer.length -1].includes("string")) {
             return web3.utils.hexToAscii("0x" + value);
         } else if (typeBuffer[typeBuffer.length -1].includes("t_bool")) {
@@ -322,7 +322,7 @@ async function decodeStorageValue(variable, value) {
 
     } else{
         if (variable.type.includes("uint")) {
-            return web3.utils.hexToNumber("0x" + value);
+            return Number(web3.utils.hexToNumber("0x" + value));
         } else if (variable.type.includes("string")) {
             return web3.utils.hexToString("0x" + value);
         } else if (variable.type.includes("bool")) {
@@ -597,11 +597,17 @@ async function getEvents(txHash, block){
     let filteredEvents = [];
     const pastEvents = await myContract.getPastEvents("allEvents", {fromBlock: block, toBlock: block});
     for(let i = 0; i < pastEvents.length; i++){
+        for(const value in pastEvents[i].returnValues) {
+            if(typeof pastEvents[i].returnValues[value] === "bigint"){
+               pastEvents[i].returnValues[value] = Number(pastEvents[i].returnValues[value]);
+            }
+        }
         const event = {
             name: pastEvents[i].event,
             values: pastEvents[i].returnValues
         };
         filteredEvents.push(event);
+
     }
 
     return filteredEvents;
