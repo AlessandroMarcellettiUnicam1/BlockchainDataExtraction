@@ -5,8 +5,8 @@ module.exports = {
   networks: {
     hardhat: {
       forking: {
-        url: "https://mainnet.infura.io/v3/f3851e4d467341f1b5927b6546d9f30c",
-        blockNumber: 16924137
+        url: "https://eth-mainnet.g.alchemy.com/v2/ISHV03DLlGo2K1-dqE6EnsyrP2GF44Gt",
+        blockNumber: 18471094
       }
     }
   },

@@ -60,28 +60,37 @@ async function getStorageData(contractTransactions, contracts, mainContract, con
                 internalTxs: [],
                 events: pastEvents
             };
-            console.log(tx.hash);
+            console.log("-----------------------------------------------------------------------");
             const decoder = new InputDataDecoder(contractAbi);
 
             const result = decoder.decodeData(tx.input);
             newLog.activity = result.method;
             newLog.timestamp = tx.timeStamp;
-            for (let i = 0; i < result.inputs.length; i++) {
 
+            for (let i = 0; i < result.inputs.length; i++) {
                 newLog.inputTypes[i] = result.types[i];
                 newLog.inputNames[i] = result.names[i];
+                //check if the input value is an array or a struct
+                if(Array.isArray(result.inputs[i])){
+                    let bufferTuple = [];
+                    //if it is a struct split the sub-attributes
+                    if(result.types[i].includes(",")){
+                        const bufferTypes = result.types[i].split(",");
+                        for(let z = 0; z < result.inputs[i].length; z++){
+                            bufferTuple.push(await decodeInput(bufferTypes[z], result.inputs[i][z]));
+                        }
+                    }else{
+                        for(let z = 0; z < result.inputs[i].length; z++){
+                            bufferTuple.push(await decodeInput(result.types[i], result.inputs[i][z]));
+                        }
+                    }
 
-                if(result.types[i] === 'uint256'){
-                    newLog.inputValues[i] = Number(web3.utils.hexToNumber(result.inputs[i]._hex));
-                }else if(result.types[i] === 'string'){
-                    newLog.inputValues[i] = web3.utils.hexToAscii(result.inputs[i]);
-                }else if(result.types[i].includes("byte")){
-                    newLog.inputValues[i] = JSON.stringify(web3.utils.hexToBytes(result.inputs[i])).replace("\"", "");
-                }else if(result.types[i].includes("address")){
-                    newLog.inputValues[i] = result.inputs[i];
+                    newLog.inputValues[i] = bufferTuple;
                 }else{
-                    newLog.inputValues[i] = result.inputs[i];
+                    newLog.inputValues[i] = await decodeInput(result.types[i], result.inputs[i]);
                 }
+
+
             }
             const storageVal = await getTraceStorage(tx.blockNumber, tx.functionName.split("(")[0], tx.hash,
                 mainContract, contracts, contractTree);
@@ -105,7 +114,19 @@ async function getStorageData(contractTransactions, contracts, mainContract, con
         console.error(`Error writing output file: ${error}`);
     }
 }
-
+async function decodeInput(type, value){
+    if(type === 'uint256'){
+        return Number(web3.utils.hexToNumber(value._hex));
+    }else if(type === 'string'){
+       return web3.utils.hexToAscii(value);
+    }else if(type.includes("byte")){
+        return JSON.stringify(web3.utils.hexToBytes(value)).replace("\"", "");
+    }else if(type.includes("address")){
+        return value;
+    }else{
+        return value;
+    }
+}
 async function getTraceStorage(blockNumber, functionName, txHash, mainContract, contracts, contractTree) {
 
    /* const provider = ganache.provider({
@@ -116,7 +137,7 @@ async function getTraceStorage(blockNumber, functionName, txHash, mainContract, 
         method: "debug_traceTransaction",
         params: [txHash]
     });*/
-    await helpers.reset("https://mainnet.infura.io/v3/f3851e4d467341f1b5927b6546d9f30c", Number(blockNumber));
+    await helpers.reset("https://eth-mainnet.g.alchemy.com/v2/ISHV03DLlGo2K1-dqE6EnsyrP2GF44Gt", Number(blockNumber));
   //  hre.network.config.forking.blockNumber = Number(blockNumber);
    // console.log(hre.config);
     //check for historical fork
@@ -126,7 +147,7 @@ async function getTraceStorage(blockNumber, functionName, txHash, mainContract, 
     ]);
 
     const t1 = new Date();
-    console.log(t1 - t);
+    //console.log(t1 - t);
     //used to store the storage changed by the function. Used to compare the generated keys
     let functionStorage = {};
     //used to store all the keys potentially related to a dynamic structure
@@ -273,6 +294,8 @@ async function decodeValues(sstore, contractTree, trackBuffer, functionStorage, 
                     let bufferVariable = {};
                     //if the variable has the same slot then it is
                     if(Number(contractVariable.slot) === Number(slotIndex)){
+                        console.log(trace);
+                        console.log(functionStorage);
                         const varVal = await decodeStorageValue(contractVariable, functionStorage[trace.finalKey]);
                         //todo capire se ha cancellato, creato o aggiornato
                         bufferVariable = {name: contractVariable.name, type: contractVariable.type, value: varVal};
@@ -298,6 +321,8 @@ async function decodeValues(sstore, contractTree, trackBuffer, functionStorage, 
 //function for decoding the storage value
 //todo check arrays and structs, use abiDecoder
 async function decodeStorageValue(variable, value) {
+    console.log(variable);
+    console.log(value);
     //console.log("variable to handle: --------->" + value);
     //if it is a mapping check for last type of value by splitting it so to cover also nested case
     if (variable.type.includes("mapping")) {
