@@ -61,6 +61,7 @@ async function getStorageData(contractTransactions, contracts, mainContract, con
                 events: pastEvents
             };
             console.log("-----------------------------------------------------------------------");
+            console.log(tx.hash);
             const decoder = new InputDataDecoder(contractAbi);
 
             const result = decoder.decodeData(tx.input);
@@ -181,7 +182,7 @@ async function getTraceStorage(blockNumber, functionName, txHash, mainContract, 
                 hexKey: hexKey,
                 hexStorageIndex: hexStorageIndex
             };
-        } else if (trace.op === "STOP" || trace.op === "RETURN") {
+        } else if (trace.op === "STOP") {
             //retrieve the entire storage after function execution
             //for each storage key discard the ones of static variables and compare the remaining ones with the re-generated
             for(const slot in trace.storage){
@@ -194,9 +195,9 @@ async function getTraceStorage(blockNumber, functionName, txHash, mainContract, 
             trackBuffer[index].finalKey = trace.stack[trace.stack.length - 1];
             index++;
         }
+        //in case the trace is a SSTORE save the key. CAUTION: not every SSTORE changes the final storage state but every storage state change has an sstore
         else if (trace.op === "SSTORE") {
             sstoreBuffer.push(trace.stack[trace.stack.length - 1]);
-            //console.log(trace);
         }else if(trace.op === "CALL"){
             //read the offset from the stack
             const offsetBytes = trace.stack[trace.stack.length - 4];
@@ -261,9 +262,11 @@ async function getTraceStorage(blockNumber, functionName, txHash, mainContract, 
     //removes duplicate storing keys, it will catch only the last update done on a variable
    // console.log(sstoreBuffer);
     const uniqueSStore = Array.from(new Set(sstoreBuffer.map(JSON.stringify))).map(JSON.parse);
+   // const uniqueStorage = Array.from(new Set(functionStorage.map(JSON.stringify))).map(JSON.parse);
+
     //console.log(uniqueSStore);
     //console.log(functionStorage);
-    const decodedValues = await decodeValues(uniqueSStore, contractTree, finalShaTraces, functionStorage, functionName, contracts, mainContract);
+    const decodedValues = await newDecodeValues(uniqueSStore, contractTree, finalShaTraces, functionStorage, functionName, contracts, mainContract);
     return {decodedValues, internalCalls};
 
 }
@@ -272,6 +275,88 @@ async function getTraceStorage(blockNumber, functionName, txHash, mainContract, 
 
 //function for re-generating the key and understand the variable thanks to the tests on the storage locationapprove(address spender,uint256 amount)0x095ea7b3
 
+
+async function getContractVariable(slotIndex, contractTree, functionName, contracts, mainContract){
+    for(const contractId in contractTree) {
+        if (contractTree[contractId].name === mainContract && contractTree[contractId].functions.includes(functionName)) {
+            for (const contractVariable of contractTree[contractId].storage) {
+                if(Number(contractVariable.slot) === Number(slotIndex)) {
+                    return contractVariable;
+                }
+            }
+        }
+    }
+}
+async function newDecodeValues(sstore, contractTree, shaTraces, functionStorage, functionName, contracts, mainContract){
+    //iterate storage keys looking for complex keys coming from SHA3
+    for(const storageVar of functionStorage){
+        for(const shaTrace of shaTraces){
+           if(storageVar === shaTraces[shaTrace].finalKey){
+               const slotIndex = await web3.utils.hexToNumber("0x" + trace.hexStorageIndex);
+               const contractVar = getContractVariable(slotIndex, contractTree, functionName, contracts, mainContract);
+               delete functionStorage[storageVar];
+           }
+        }
+
+    }
+    //storage should have only non-complex keys so only simple numbers representing slots
+    for(const storageVar of functionStorage) {
+        for (let sstoreIndex = 0; sstoreIndex < sstore.length; sstoreIndex++) {
+            if (storageVar === sstore[sstoreIndex]) {
+                const contractVar = getContractVariable(sstore[sstoreIndex], contractTree, functionName, contracts, mainContract);
+                delete functionStorage[storageVar];
+            }
+        }
+    }
+
+    /*let decodedValues = [];
+    for(const contractId in contractTree){
+        if(contractTree[contractId].name === mainContract && contractTree[contractId].functions.includes(functionName)){
+            for (const trace of trackBuffer) {
+                const slotIndex = await web3.utils.hexToNumber("0x" + trace.hexStorageIndex);
+                for(const contractVariable of contractTree[contractId].storage){
+                    let bufferVariable = {};
+                    if(Number(contractVariable.slot) === Number(slotIndex) && (functionStorage[trace.finalKey] !== undefined)){
+                        console.log(functionStorage[trace.finalKey]);
+                        const varVal = await decodeStorageValue(contractVariable, functionStorage[trace.finalKey]);
+                        bufferVariable = {name: contractVariable.name, type: contractVariable.type, value: varVal};
+                        decodedValues.push(bufferVariable);
+                    }else{
+                        for(const sstoreIndex of sstore){
+                            const integerSlot = await web3.utils.hexToNumber("0x"+sstoreIndex);
+                            if(integerSlot === Number(contractVariable.slot) && (functionStorage[sstoreIndex] !== undefined)){
+                                console.log(functionStorage[sstoreIndex]);
+                                const varVal = await decodeStorageValue(contractVariable, functionStorage[sstoreIndex]);
+                                bufferVariable = {name: contractVariable.name, type: contractVariable.type, value: varVal};
+                                decodedValues.push(bufferVariable);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    return decodedValues;*/
+
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 async function decodeValues(sstore, contractTree, trackBuffer, functionStorage, functionName, contracts, mainContract){
     //console.log(functionStorage);
     //iterate the tree of contracts
@@ -279,10 +364,8 @@ async function decodeValues(sstore, contractTree, trackBuffer, functionStorage, 
    // console.log(contractTree);
     for(const contractId in contractTree){
         //if the contract is the main one then check the storage
-
         if(contractTree[contractId].name === mainContract && contractTree[contractId].functions.includes(functionName)){
-            //iterate the trace
-           // console.log(trackBuffer);
+            //iterate the SHA3 traces for mappings
             for (const trace of trackBuffer) {
                 //convert storage index to integer
                 const slotIndex = await web3.utils.hexToNumber("0x" + trace.hexStorageIndex);
@@ -290,12 +373,11 @@ async function decodeValues(sstore, contractTree, trackBuffer, functionStorage, 
                 //iterate the possible variables of the matching contract
                // console.log(contractTree[contractId].storage);
                 //todo fix the double index case
+                //todo case of two variables in the same slot for optimization purpose
                 for(const contractVariable of contractTree[contractId].storage){
                     let bufferVariable = {};
                     //if the variable has the same slot then it is
-                    if(Number(contractVariable.slot) === Number(slotIndex)){
-                        console.log(trace);
-                        console.log(functionStorage);
+                    if(Number(contractVariable.slot) === Number(slotIndex) && (functionStorage[trace.finalKey] !== undefined)){
                         const varVal = await decodeStorageValue(contractVariable, functionStorage[trace.finalKey]);
                         //todo capire se ha cancellato, creato o aggiornato
                         bufferVariable = {name: contractVariable.name, type: contractVariable.type, value: varVal};
@@ -303,7 +385,7 @@ async function decodeValues(sstore, contractTree, trackBuffer, functionStorage, 
                     }else{
                         for(const sstoreIndex of sstore){
                             const integerSlot = await web3.utils.hexToNumber("0x"+sstoreIndex);
-                            if(integerSlot === Number(contractVariable.slot)){
+                            if(integerSlot === Number(contractVariable.slot) && (functionStorage[sstoreIndex] !== undefined)){
                                 const varVal = await decodeStorageValue(contractVariable, functionStorage[sstoreIndex]);
                                 bufferVariable = {name: contractVariable.name, type: contractVariable.type, value: varVal};
                                 decodedValues.push(bufferVariable);
@@ -321,8 +403,6 @@ async function decodeValues(sstore, contractTree, trackBuffer, functionStorage, 
 //function for decoding the storage value
 //todo check arrays and structs, use abiDecoder
 async function decodeStorageValue(variable, value) {
-    console.log(variable);
-    console.log(value);
     //console.log("variable to handle: --------->" + value);
     //if it is a mapping check for last type of value by splitting it so to cover also nested case
     if (variable.type.includes("mapping")) {
