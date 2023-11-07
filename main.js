@@ -44,7 +44,7 @@ getAllTransactions("CakeOFT");
 async function getStorageData(contractTransactions, contracts, mainContract, contractTree){
     let partialInt = 0;
     for(const tx of contractTransactions){
-        if(partialInt < 50){
+        if(partialInt < 40){
             const pastEvents = await getEvents(tx.hash, Number(tx.blockNumber));
             //const internalTxs = await getInternalTransactions(tx.hash);
             //todo take progressive id
@@ -217,9 +217,9 @@ async function getTraceStorage(blockNumber, functionName, txHash, mainContract, 
         }else if(trace.op === "DELEGATECALL" || trace.op === "STATICCALL"){
            // internalCalls.push(trace.stack[trace.stack.length - 2]);
             const offsetBytes = trace.stack[trace.stack.length - 3];
-            let offsetNumber = web3.utils.hexToNumber("0x" + offsetBytes) / 32;
+            let offsetNumber = await web3.utils.hexToNumber("0x" + offsetBytes) / 32;
             const lengthBytes = trace.stack[trace.stack.length - 4];
-            let lengthNumber = web3.utils.hexToNumber("0x" + lengthBytes) / 32;
+            let lengthNumber = await web3.utils.hexToNumber("0x" + lengthBytes) / 32;
             let call = {type: trace.op, to: trace.stack[trace.stack.length - 2], inputs: []}
             for(let i = offsetNumber; i <= offsetNumber + lengthNumber; i++){
                 call.inputs.push(trace.memory[i]);
@@ -277,37 +277,75 @@ async function getTraceStorage(blockNumber, functionName, txHash, mainContract, 
 
 
 async function getContractVariable(slotIndex, contractTree, functionName, contracts, mainContract){
+    let contractVariables = [];
+    //iterates all contracts in contract tree
     for(const contractId in contractTree) {
+        //if contract si the chosen one and it has function then take variable
         if (contractTree[contractId].name === mainContract && contractTree[contractId].functions.includes(functionName)) {
+            //iterate contract variables
             for (const contractVariable of contractTree[contractId].storage) {
+                //check if there are more variables for the same index due to optimization purposes
                 if(Number(contractVariable.slot) === Number(slotIndex)) {
-                    return contractVariable;
+                    contractVariables.push(contractVariable);
                 }
             }
         }
     }
+    return contractVariables;
 }
 async function newDecodeValues(sstore, contractTree, shaTraces, functionStorage, functionName, contracts, mainContract){
+   // console.log(contractTree["4514"].storage);
+    let decodedValues = [];
     //iterate storage keys looking for complex keys coming from SHA3
-    for(const storageVar of functionStorage){
+    for(const storageVar in functionStorage){
         for(const shaTrace of shaTraces){
-           if(storageVar === shaTraces[shaTrace].finalKey){
-               const slotIndex = await web3.utils.hexToNumber("0x" + trace.hexStorageIndex);
-               const contractVar = getContractVariable(slotIndex, contractTree, functionName, contracts, mainContract);
-               delete functionStorage[storageVar];
+            if(storageVar === shaTrace.finalKey){
+               const slotIndex = await web3.utils.hexToNumber("0x" + shaTrace.hexStorageIndex);
+               const contractVar = await getContractVariable(slotIndex, contractTree, functionName, contracts, mainContract);
+                const decodedValue = await decodeStorageValue(contractVar[0], functionStorage[storageVar]);
+               const bufferVariable = {name: contractVar[0].name, type: contractVar[0].type, value: decodedValue, rawValue: functionStorage[storageVar]};
+               decodedValues.push(bufferVariable);
+               //delete functionStorage[storageVar];
            }
         }
-
     }
     //storage should have only non-complex keys so only simple numbers representing slots
-    for(const storageVar of functionStorage) {
+    //todo deal with variables storage optimizations
+    //todo deal with sstore complex keys not present in any SHA
+    for(const storageVar in functionStorage) {
         for (let sstoreIndex = 0; sstoreIndex < sstore.length; sstoreIndex++) {
-            if (storageVar === sstore[sstoreIndex]) {
-                const contractVar = getContractVariable(sstore[sstoreIndex], contractTree, functionName, contracts, mainContract);
-                delete functionStorage[storageVar];
+            const numberIndex = await web3.utils.hexToNumber("0x" + sstore[sstoreIndex]);
+            if (storageVar === sstore[sstoreIndex] && numberIndex < 30) {
+                const contractVar = await getContractVariable(numberIndex, contractTree, functionName, contracts, mainContract);
+                if (contractVar.length > 1){
+                    const updatedVariables = await readVarFromOffset(contractVar, functionStorage[storageVar]);
+                    console.log("ci sono ottimizzazioni")
+                    console.log(updatedVariables);
+                    for(let varI = 0; varI < updatedVariables.length; varI ++){
+                        const decodedValue = await decodeStorageValue(updatedVariables[varI], updatedVariables[varI].value);
+                        const bufferVariable = {
+                            name: updatedVariables[varI].name,
+                            type: updatedVariables[varI].type,
+                            value: decodedValue,
+                            rawValue: functionStorage[storageVar]
+                        };
+                        decodedValues.push(bufferVariable);
+                    }
+                }else{
+                    const decodedValue = await decodeStorageValue(contractVar[0], functionStorage[storageVar]);
+                    const bufferVariable = {
+                        name: contractVar[0].name,
+                        type: contractVar[0].type,
+                        value: decodedValue,
+                        rawValue: functionStorage[storageVar]
+                    };
+                    decodedValues.push(bufferVariable);
+                    //delete functionStorage[storageVar];
+                }
             }
         }
     }
+    return decodedValues;
 
     /*let decodedValues = [];
     for(const contractId in contractTree){
@@ -339,22 +377,6 @@ async function newDecodeValues(sstore, contractTree, shaTraces, functionStorage,
     return decodedValues;*/
 
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 async function decodeValues(sstore, contractTree, trackBuffer, functionStorage, functionName, contracts, mainContract){
@@ -400,9 +422,43 @@ async function decodeValues(sstore, contractTree, trackBuffer, functionStorage, 
 
 }
 
+async function readVarFromOffset(variables, value){
+        const fullWord = value.split('');
+        let values = [];
+        let len = fullWord.length;
+        for(let i = 0; i < variables.length; i++){
+            variables[i].value = "";
+            // [0,0,0,0,0,0,0,0,0,0,0,0,1,1] takes from the bytes offset to the end of the array
+            //last values optimized are inserted at the end of the hex
+            if(variables[i + 1] !== undefined) {
+                //check if the offset is the first starting from 0
+                if (variables[i].offset === 0) {
+                    const nextOffset = (variables[i + 1].offset) * 2;
+                    len = len - nextOffset;
+                    const slicedWord = fullWord.splice(len, nextOffset);
+                    values.push(slicedWord.join(''));
+                    variables[i].value = slicedWord.join('');
+                } else {
+                    const nextOffset = (variables[i + 1].offset) * 2;
+                    len = len - nextOffset;
+                    const slicedWord = fullWord.slice(len, nextOffset);
+                    values.push(slicedWord.join(''));
+                    variables[i].value = slicedWord.join('');
+                }
+            }else{
+                const slicedWord = fullWord.join('');
+                values.push(slicedWord);
+                variables[i].value = slicedWord;
+            }
+        }
+    return variables;
+
+}
+
 //function for decoding the storage value
-//todo check arrays and structs, use abiDecoder
 async function decodeStorageValue(variable, value) {
+
+
     //console.log("variable to handle: --------->" + value);
     //if it is a mapping check for last type of value by splitting it so to cover also nested case
     if (variable.type.includes("mapping")) {
@@ -653,7 +709,7 @@ async function getContractVariableTree(compiled) {
                         contractStorageTree[firstKey].name = firstKey;
                     }
                     contractStorageTree[firstKey].storage.push({name : storageVar.label, type : storageVar.type,
-                        slot : storageVar.slot});
+                        slot : storageVar.slot, offset : storageVar.offset});
                 }
             }
         }
