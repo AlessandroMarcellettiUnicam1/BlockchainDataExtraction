@@ -3,24 +3,18 @@ const InputDataDecoder = require('ethereum-input-data-decoder');
 const solc = require('solc');
 const fs = require('fs');
 const axios = require("axios");
-const {Network, Alchemy} = require("alchemy-sdk");
-const ethers = require("ethers");
-const https = require("https");
-const ganache = require("ganache");
-const {spawn} = require('child_process');
-const buffer = require("buffer");
 const Moralis = require("moralis").default;
 const sourceCode = fs.readFileSync('contractEtherscan.sol', 'utf8');
 let contractAbi = fs.readFileSync('abiEtherscan.json', 'utf8');
-let localweb3 = new Web3('HTTP://127.0.0.1:8545')
 let web3 = new Web3('https://eth-mainnet.g.alchemy.com/v2/ISHV03DLlGo2K1-dqE6EnsyrP2GF44Gt')
-let transactions = [];
-let generalStorageLayout;
 let contractTransactions = [];
 let blockchainLog = [{}];
 const abiDecoder = require('abi-decoder');
 const {EvmChain} = require("@moralisweb3/common-evm-utils");
 const contractAddress = '0x152649eA73beAb28c5b49B26eb48f7EAD6d4c898';
+//const contractAddress = '0x5C1A0CC6DAdf4d0fB31425461df35Ba80fCBc110';
+//const contractAddress = '0xc9EEf4c46ABcb11002c9bB8A47445C96CDBcAffb';
+//const cotractAddressAdidas = 0x28472a58A490c5e09A238847F66A68a47cC76f0f
 const hre = require("hardhat");
 const helpers = require("@nomicfoundation/hardhat-toolbox/network-helpers");
 
@@ -38,13 +32,16 @@ async function getAllTransactions(mainContract) {
     await getStorageData(contractTransactions, contracts, mainContract, contractTree);
 
 }
-
+//CakeOFT
+//PixesFarmsLand
+//AdidasOriginals
 getAllTransactions("CakeOFT");
 
 async function getStorageData(contractTransactions, contracts, mainContract, contractTree){
     let partialInt = 0;
     for(const tx of contractTransactions){
-        if(partialInt < 40){
+        if(partialInt < 100){
+            console.log("processing transaction" + partialInt)
             const pastEvents = await getEvents(tx.hash, Number(tx.blockNumber));
             //const internalTxs = await getInternalTransactions(tx.hash);
             //todo take progressive id
@@ -62,9 +59,11 @@ async function getStorageData(contractTransactions, contracts, mainContract, con
             };
             console.log("-----------------------------------------------------------------------");
             console.log(tx.hash);
+
             const decoder = new InputDataDecoder(contractAbi);
 
             const result = decoder.decodeData(tx.input);
+            //console.log(result);
             newLog.activity = result.method;
             newLog.timestamp = tx.timeStamp;
 
@@ -99,6 +98,7 @@ async function getStorageData(contractTransactions, contracts, mainContract, con
             newLog.storageState = storageVal.decodedValues;
             newLog.internalTxs = storageVal.internalCalls;
             //console.log("FINITOOO!!!")
+            console.log(newLog);
             blockchainLog.push(newLog)
             partialInt++;
         }else{
@@ -121,7 +121,8 @@ async function decodeInput(type, value){
     }else if(type === 'string'){
        return web3.utils.hexToAscii(value);
     }else if(type.includes("byte")){
-        return JSON.stringify(web3.utils.hexToBytes(value)).replace("\"", "");
+        return value;
+        //return JSON.stringify(web3.utils.hexToBytes(value)).replace("\"", "");
     }else if(type.includes("address")){
         return value;
     }else{
