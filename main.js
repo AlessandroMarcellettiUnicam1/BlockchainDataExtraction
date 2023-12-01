@@ -4,14 +4,14 @@ const solc = require('solc');
 const fs = require('fs');
 const axios = require("axios");
 const Moralis = require("moralis").default;
-const sourceCode = fs.readFileSync('contractEtherscan.sol', 'utf8');
+//const sourceCode = fs.readFileSync('contractEtherscan.sol', 'utf8');
 let contractAbi = fs.readFileSync('abiEtherscan.json', 'utf8');
 let web3 = new Web3('https://eth-mainnet.g.alchemy.com/v2/ISHV03DLlGo2K1-dqE6EnsyrP2GF44Gt')
 let contractTransactions = [];
 let blockchainLog = [{}];
 const abiDecoder = require('abi-decoder');
 const {EvmChain} = require("@moralisweb3/common-evm-utils");
-const contractAddress = '0x152649eA73beAb28c5b49B26eb48f7EAD6d4c898';
+//const contractAddress = '0x152649eA73beAb28c5b49B26eb48f7EAD6d4c898'cake;
 //const contractAddress = '0x5C1A0CC6DAdf4d0fB31425461df35Ba80fCBc110';
 //const contractAddress = '0xc9EEf4c46ABcb11002c9bB8A47445C96CDBcAffb';
 //const cotractAddressAdidas = 0x28472a58A490c5e09A238847F66A68a47cC76f0f
@@ -21,28 +21,30 @@ const helpers = require("@nomicfoundation/hardhat-toolbox/network-helpers");
 
 const nodeUrl = 'HTTP://127.0.0.1:8545'; // Replace with your Ethereum node or Infura URL
 
-async function getAllTransactions(mainContract) {
+async function getAllTransactions(mainContract, contractAddress, fromBlock, toBlock) {
     const apiKey = 'I81RM42RCBH3HIC9YEK1GX6KYQ12U73K1C';
-    const endpoint = `https://api.etherscan.io/api?module=account&action=txlist&address=${contractAddress}&startblock=0&endblock=99999999&sort=asc&apikey=${apiKey}`;
+
+    const endpoint = `https://api.etherscan.io/api?module=account&action=txlist&address=${contractAddress}&startblock=${fromBlock}&endblock=${toBlock}&sort=asc&apikey=${apiKey}`;
 
     const data = await axios.get(endpoint);
     contractTransactions = data.data.result;
-    const contracts = await getContractCodeEtherscan();
-    const contractTree = await getCompiledData(contracts);
-    await getStorageData(contractTransactions, contracts, mainContract, contractTree);
+    const contracts = await getContractCodeEtherscan(contractAddress);
+    const contractTree = await getCompiledData(contracts, contractName);
+    await getStorageData(contractTransactions, contracts, mainContract, contractTree, contractAddress);
 
 }
+module.exports = getAllTransactions;
 //CakeOFT
 //PixesFarmsLand
 //AdidasOriginals
-getAllTransactions("CakeOFT");
+//getAllTransactions("CakeOFT");
 
-async function getStorageData(contractTransactions, contracts, mainContract, contractTree){
+async function getStorageData(contractTransactions, contracts, mainContract, contractTree, contractAddress){
     let partialInt = 0;
     for(const tx of contractTransactions){
         if(partialInt < 100){
             console.log("processing transaction" + partialInt)
-            const pastEvents = await getEvents(tx.hash, Number(tx.blockNumber));
+            const pastEvents = await getEvents(tx.hash, Number(tx.blockNumber), contractAddress);
             //const internalTxs = await getInternalTransactions(tx.hash);
             //todo take progressive id
             let newLog = {
@@ -535,7 +537,7 @@ async function getVarFromFunction(functionVariables, functionNames, storageSlot,
 
 
 
-async function getCompiledData(contracts) {
+async function getCompiledData(contracts, contractName) {
     let input = {
         language: 'Solidity',
         sources: {},
@@ -559,10 +561,10 @@ async function getCompiledData(contracts) {
     // input.sources['contract.sol'] = {}
     // input.sources['contract.sol'].content = fs.readFileSync("contract.sol", 'utf8');
     const output = solc.compile(JSON.stringify(input));
-
     fs.writeFileSync('testContract.json', output);
 
     const source = JSON.parse(output).sources;
+    const contractAbi = await getAbi(JSON.parse(output));
     //get all storage variable for contract, including inherited ones
     const storageData = await getContractVariableTree(JSON.parse(output));
     //take only astIds todo useless?
@@ -577,6 +579,24 @@ async function getCompiledData(contracts) {
     const fullContractTree = await injectVariablesToTree(contractFunctionTree, contractStorageTree);
     //console.log(fullContractTree["4514"]);
     return fullContractTree;
+}
+
+async function getAbi(compiled, contractName) {
+    console.log(compiled.contracts);
+    for(const contract in compiled.contracts){
+        const firstKey = Object.keys(compiled.contracts[contract])[0];
+        if(firstKey === contractName){
+
+        }
+
+       // if(compiled.contracts[contract][firstKey].storageLayout != undefined) {
+
+        console.log(contract);
+        console.log(Object.keys(compiled.contracts[contract])[0]);
+
+
+    }
+    //console.log(compiled.contracts);
 }
 
 
@@ -654,7 +674,7 @@ async function getFunctionContractTree(source){
 }
 
 
-async function getContractCodeEtherscan() {
+async function getContractCodeEtherscan(contractAddress) {
     const apiKey = 'I81RM42RCBH3HIC9YEK1GX6KYQ12U73K1C';
     const endpoint = `https://api.etherscan.io/api?module=contract&action=getsourcecode&address=${contractAddress}&apikey=${apiKey}`;
     let contracts = [];
@@ -680,10 +700,7 @@ async function getContractCodeEtherscan() {
         i++;
         buffer += code
     }
-
-
     return contracts;
-
 }
 
 
@@ -718,44 +735,9 @@ async function getContractVariableTree(compiled) {
 
     return {variablesAstIds, contractStorageTree};
 }
-async function getInternalTransactions(txHash){
-    const apiKey = 'I81RM42RCBH3HIC9YEK1GX6KYQ12U73K1C';
-    const endpoint = `https://api.etherscan.io/api?module=account&action=txlistinternal&txhash=${txHash}&apikey=${apiKey}`;
-    axios
-        .get(endpoint)
-        .then((response) => {
-            const data = response.data;
-            if (data.status === '1') {
-                console.log(data);
-            } else {
-                console.error('Error: Unable to retrieve transactions.');
-            }
-        })
-        .catch((error) => {
-            console.error(`An error occurred: ${error}`);
-        });
 
-    const MORALIS_API_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJub25jZSI6ImJjOGVkMDZjLTc5YmEtNDIxYS1iMzE1LTQ0NTIxYWVjNDE0OSIsIm9yZ0lkIjoiMzU5NDk5IiwidXNlcklkIjoiMzY5NDY1IiwidHlwZUlkIjoiN2Q4YTNkOWEtOTNhMi00MjdlLTg5ZTEtMzM5ZTkwNjdlMWVhIiwidHlwZSI6IlBST0pFQ1QiLCJpYXQiOjE2OTYyMzQwNjcsImV4cCI6NDg1MTk5NDA2N30.O28eO9rDl_wGDt0LJ9i7LaeVwp3auYrHrwo8dDmN2Yw";
-    const chain = EvmChain.ETHEREUM;
-    await Moralis.start({
-        apiKey: MORALIS_API_KEY,
-    });
-    const response = await Moralis.EvmApi.transaction.getInternalTransactions({
-        "chain": "0x1",
-        "transactionHash": txHash
-    });
-    for(const internTx of response.raw){
-        console.log(internTx.input);
-        console.log(" ------------------------------------------------------------------------------------- ")
-
-    }
-}
-
-async function getEvents(txHash, block){
+async function getEvents(txHash, block, contractAddress){
     const myContract = new web3.eth.Contract(JSON.parse(contractAbi), contractAddress);
-   // const receipt = await web3.eth.getTransactionReceipt(txHash);
-   // console.log(receipt.logs);
-    //const decodedLogs = await abiDecoder.decodeLogs(receipt.logs);
     let filteredEvents = [];
     const pastEvents = await myContract.getPastEvents("allEvents", {fromBlock: block, toBlock: block});
     for(let i = 0; i < pastEvents.length; i++){

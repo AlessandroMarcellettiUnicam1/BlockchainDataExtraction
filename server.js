@@ -1,7 +1,7 @@
 const express = require('express');
 const path = require('path');
 const bodyParser = require('body-parser');
-
+const getAllTransactions = require("./main");
 const app = express();
 const port = 3000;
 
@@ -17,17 +17,18 @@ app.use(bodyParser.urlencoded({ extended: true }));
 
 // Route: Home Page
 app.post('/submit', (req, res) => {
-    const input1 = req.body.input1; // Get data from input1
-    const input2 = req.body.input2; // Get data from input2
-    const startBlock = req.body.startBlock; // Get 'Start Block' value from form
-    const endBlock = req.body.endBlock; // Get 'End Block' value from form
+    const contractAddress = req.body.contractAddress; // Get data from input1
+    const contractName = req.body.contractName; // Get data from input2
+    const fromBlock = req.body.fromBlock; // Get 'Start Block' value from form
+    const toBlock = req.body.toBlock; // Get 'End Block' value from form
 
     // Perform actions based on the received data
-    console.log(`Start Block: ${startBlock}`);
-    console.log(`End Block: ${endBlock}`);
+    console.log(`Start Block: ${contractAddress}`);
+    console.log(`End Block: ${contractName}`);
     // Perform actions with the received data (you can customize this part)
-    console.log(`Received input1: ${input1}`);
-    console.log(`Received input2: ${input2}`);
+    console.log(`Received input1: ${fromBlock}`);
+    console.log(`Received input2: ${toBlock}`);
+    getAllTransactions(contractName, contractAddress, fromBlock, toBlock);
 
     // Send a response back to the client
     res.send('POST request received!');

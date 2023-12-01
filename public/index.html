@@ -8,22 +8,22 @@
 <body>
 <div class="container mt-5">
     <h1>Contract Details</h1>
-    <form>
+    <form id="myForm" action ="/submit" method="post">
         <div class="form-group">
             <label for="contractAddress">Contract Address:</label>
-            <input type="text" class="form-control" id="contractAddress" placeholder="Enter contract address">
+            <input type="text" class="form-control" id="contractAddress" name="contractAddress" placeholder="Enter contract address">
         </div>
         <div class="form-group">
             <label for="contractName">Contract Name:</label>
-            <input type="text" class="form-control" id="contractName" placeholder="Enter contract name">
+            <input type="text" class="form-control" id="contractName" name="contractName" placeholder="Enter contract name">
         </div>
         <div class="form-group">
             <label for="fromBlock">From Block:</label>
-            <input type="number" class="form-control" id="fromBlock" placeholder="Enter from block number">
+            <input type="number" class="form-control" id="fromBlock" name="fromBlock" placeholder="Enter from block number" value="0">
         </div>
         <div class="form-group">
             <label for="toBlock">To Block:</label>
-            <input type="number" class="form-control" id="toBlock" placeholder="Enter to block number">
+            <input type="number" class="form-control" id="toBlock" name="toBlock" placeholder="Enter to block number" value="99999999">
         </div>
         <button type="submit" class="btn btn-primary">Extract</button>
     </form>
