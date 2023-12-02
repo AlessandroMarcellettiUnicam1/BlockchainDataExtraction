@@ -16,7 +16,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 app.use(bodyParser.urlencoded({ extended: true }));
 
 // Route: Home Page
-app.post('/submit', (req, res) => {
+app.post('/submit', async (req, res) => {
     const contractAddress = req.body.contractAddress; // Get data from input1
     const contractName = req.body.contractName; // Get data from input2
     const fromBlock = req.body.fromBlock; // Get 'Start Block' value from form
@@ -28,9 +28,30 @@ app.post('/submit', (req, res) => {
     // Perform actions with the received data (you can customize this part)
     console.log(`contract Address: ${contractAddress}`);
     console.log(`Contract name: ${contractName}`);
-    getAllTransactions(contractName, contractAddress, fromBlock, toBlock).then(function(result) {
-        res.send(result);
-    })
+    const log = await getAllTransactions(contractName, contractAddress, fromBlock, toBlock)
+    //   .then(function(result) {
+    // res.send(result);
+    //})
+
+    const file = 'jsonLog.json'; // Replace this with your file path
+    const fileName = 'jsonLog.json'; // Replace this with your file name
+
+    const formattedFileName = encodeURIComponent(fileName);
+
+    // Set the appropriate headers for the file download
+    res.setHeader('Content-Disposition', `attachment; filename="${formattedFileName}"`);
+    res.setHeader('Content-Type', 'application/octet-stream');
+
+    // Send the file as a response
+    res.sendFile(path.resolve(file), (err) => {
+        if (err) {
+            // Handle error if file sending fails
+            console.error(err);
+            res.status(err.status).end();
+        } else {
+            console.log('File sent successfully');
+        }
+    });
 
     // Send a response back to the client
 });

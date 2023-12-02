@@ -97,7 +97,7 @@ async function getStorageData(contractTransactions, contracts, mainContract, con
         // Serialize the object-centric event log data to JSON
         const finalParsedLog = JSON.stringify(blockchainLog, null, 2);
         // Write the  JSON to the output file
-        fs.writeFileSync('pancakeSwap.json', finalParsedLog);
+        fs.writeFileSync('jsonLog.json', finalParsedLog);
         console.log(`JSON file created`);
         return blockchainLog;
     } catch (error) {
