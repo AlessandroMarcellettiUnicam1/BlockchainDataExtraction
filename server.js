@@ -23,15 +23,16 @@ app.post('/submit', (req, res) => {
     const toBlock = req.body.toBlock; // Get 'End Block' value from form
 
     // Perform actions based on the received data
-    console.log(`Start Block: ${contractAddress}`);
-    console.log(`End Block: ${contractName}`);
+    console.log(`Start Block: ${fromBlock}`);
+    console.log(`End Block: ${toBlock}`);
     // Perform actions with the received data (you can customize this part)
-    console.log(`Received input1: ${fromBlock}`);
-    console.log(`Received input2: ${toBlock}`);
-    getAllTransactions(contractName, contractAddress, fromBlock, toBlock);
+    console.log(`contract Address: ${contractAddress}`);
+    console.log(`Contract name: ${contractName}`);
+    getAllTransactions(contractName, contractAddress, fromBlock, toBlock).then(function(result) {
+        res.send(result);
+    })
 
     // Send a response back to the client
-    res.send('POST request received!');
 });
 
 app.get('/', (req, res) => {

@@ -3,23 +3,18 @@ const InputDataDecoder = require('ethereum-input-data-decoder');
 const solc = require('solc');
 const fs = require('fs');
 const axios = require("axios");
-const Moralis = require("moralis").default;
-//const sourceCode = fs.readFileSync('contractEtherscan.sol', 'utf8');
-let contractAbi = fs.readFileSync('abiEtherscan.json', 'utf8');
+//let contractAbi = fs.readFileSync('abiEtherscan.json', 'utf8');
+let contractAbi = {};
 let web3 = new Web3('https://eth-mainnet.g.alchemy.com/v2/ISHV03DLlGo2K1-dqE6EnsyrP2GF44Gt')
 let contractTransactions = [];
 let blockchainLog = [{}];
 const abiDecoder = require('abi-decoder');
-const {EvmChain} = require("@moralisweb3/common-evm-utils");
 //const contractAddress = '0x152649eA73beAb28c5b49B26eb48f7EAD6d4c898'cake;
 //const contractAddress = '0x5C1A0CC6DAdf4d0fB31425461df35Ba80fCBc110';
 //const contractAddress = '0xc9EEf4c46ABcb11002c9bB8A47445C96CDBcAffb';
 //const cotractAddressAdidas = 0x28472a58A490c5e09A238847F66A68a47cC76f0f
 const hre = require("hardhat");
 const helpers = require("@nomicfoundation/hardhat-toolbox/network-helpers");
-
-
-const nodeUrl = 'HTTP://127.0.0.1:8545'; // Replace with your Ethereum node or Infura URL
 
 async function getAllTransactions(mainContract, contractAddress, fromBlock, toBlock) {
     const apiKey = 'I81RM42RCBH3HIC9YEK1GX6KYQ12U73K1C';
@@ -29,8 +24,9 @@ async function getAllTransactions(mainContract, contractAddress, fromBlock, toBl
     const data = await axios.get(endpoint);
     contractTransactions = data.data.result;
     const contracts = await getContractCodeEtherscan(contractAddress);
-    const contractTree = await getCompiledData(contracts, contractName);
-    await getStorageData(contractTransactions, contracts, mainContract, contractTree, contractAddress);
+    const contractTree = await getCompiledData(contracts, mainContract);
+    const JSONlog = await getStorageData(contractTransactions, contracts, mainContract, contractTree, contractAddress);
+    return JSONlog;
 
 }
 module.exports = getAllTransactions;
@@ -42,19 +38,15 @@ module.exports = getAllTransactions;
 async function getStorageData(contractTransactions, contracts, mainContract, contractTree, contractAddress){
     let partialInt = 0;
     for(const tx of contractTransactions){
-        if(partialInt < 100){
+        //if(partialInt < 10){
             console.log("processing transaction" + partialInt)
             const pastEvents = await getEvents(tx.hash, Number(tx.blockNumber), contractAddress);
-            //const internalTxs = await getInternalTransactions(tx.hash);
-            //todo take progressive id
             let newLog = {
                 activity: '',
                 timestamp: '',
                 inputNames: [],
                 inputTypes: [],
                 inputValues: [],
-               // storageVarTypes: [],
-               // storageVarNames: [],
                 storageState: [],
                 internalTxs: [],
                 events: pastEvents
@@ -65,7 +57,6 @@ async function getStorageData(contractTransactions, contracts, mainContract, con
             const decoder = new InputDataDecoder(contractAbi);
 
             const result = decoder.decodeData(tx.input);
-            //console.log(result);
             newLog.activity = result.method;
             newLog.timestamp = tx.timeStamp;
 
@@ -96,16 +87,11 @@ async function getStorageData(contractTransactions, contracts, mainContract, con
             }
             const storageVal = await getTraceStorage(tx.blockNumber, tx.functionName.split("(")[0], tx.hash,
                 mainContract, contracts, contractTree);
-            //console.log(storageVal);
             newLog.storageState = storageVal.decodedValues;
             newLog.internalTxs = storageVal.internalCalls;
-            //console.log("FINITOOO!!!")
             console.log(newLog);
             blockchainLog.push(newLog)
             partialInt++;
-        }else{
-            break;
-        }
     }
     try {
         // Serialize the object-centric event log data to JSON
@@ -113,6 +99,7 @@ async function getStorageData(contractTransactions, contracts, mainContract, con
         // Write the  JSON to the output file
         fs.writeFileSync('pancakeSwap.json', finalParsedLog);
         console.log(`JSON file created`);
+        return blockchainLog;
     } catch (error) {
         console.error(`Error writing output file: ${error}`);
     }
@@ -558,13 +545,12 @@ async function getCompiledData(contracts, contractName) {
     }
 
 
-    // input.sources['contract.sol'] = {}
-    // input.sources['contract.sol'].content = fs.readFileSync("contract.sol", 'utf8');
     const output = solc.compile(JSON.stringify(input));
     fs.writeFileSync('testContract.json', output);
 
     const source = JSON.parse(output).sources;
-    const contractAbi = await getAbi(JSON.parse(output));
+    contractAbi = JSON.stringify(await getAbi(JSON.parse(output), contractName));
+    //fs.writeFileSync('abitest.json', JSON.stringify(contractAbi));
     //get all storage variable for contract, including inherited ones
     const storageData = await getContractVariableTree(JSON.parse(output));
     //take only astIds todo useless?
@@ -577,26 +563,16 @@ async function getCompiledData(contracts, contractName) {
     const contractFunctionTree = await constructFullFunctionContractTree(contractTree);
     //construct full contract tree including also variables
     const fullContractTree = await injectVariablesToTree(contractFunctionTree, contractStorageTree);
-    //console.log(fullContractTree["4514"]);
     return fullContractTree;
 }
 
 async function getAbi(compiled, contractName) {
-    console.log(compiled.contracts);
     for(const contract in compiled.contracts){
         const firstKey = Object.keys(compiled.contracts[contract])[0];
         if(firstKey === contractName){
-
+            return compiled.contracts[contract][firstKey].abi;
         }
-
-       // if(compiled.contracts[contract][firstKey].storageLayout != undefined) {
-
-        console.log(contract);
-        console.log(Object.keys(compiled.contracts[contract])[0]);
-
-
     }
-    //console.log(compiled.contracts);
 }
 
 
