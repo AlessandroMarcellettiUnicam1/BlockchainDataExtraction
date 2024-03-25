@@ -1,0 +1,55 @@
+[
+	{
+		"inputs": [
+			{
+				"components": [
+					{
+						"internalType": "uint16",
+						"name": "a",
+						"type": "uint16"
+					},
+					{
+						"internalType": "uint16",
+						"name": "b",
+						"type": "uint16"
+					},
+					{
+						"internalType": "string",
+						"name": "c",
+						"type": "string"
+					}
+				],
+				"internalType": "struct Prova.C",
+				"name": "input",
+				"type": "tuple"
+			}
+		],
+		"name": "inputStruct",
+		"outputs": [],
+		"stateMutability": "nonpayable",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "uint16",
+				"name": "x",
+				"type": "uint16"
+			},
+			{
+				"internalType": "uint16",
+				"name": "y",
+				"type": "uint16"
+			},
+			{
+				"internalType": "string",
+				"name": "z",
+				"type": "string"
+			}
+		],
+		"name": "parametersArray",
+		"outputs": [],
+		"stateMutability": "nonpayable",
+		"type": "function"
+	}
+]

@@ -5,7 +5,8 @@
   "main": "index.js",
   "scripts": {
     "ganache": "ganache --fork.network mainnet --fork.blockNumber 16924888",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "run": "node ./server.js"
   },
   "author": "",
   "license": "ISC",
