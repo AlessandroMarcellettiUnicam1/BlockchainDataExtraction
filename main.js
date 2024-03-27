@@ -7,7 +7,7 @@ const axios = require("axios");
 let contractAbi = {};
 let web3 = new Web3('https://eth-mainnet.g.alchemy.com/v2/ISHV03DLlGo2K1-dqE6EnsyrP2GF44Gt')
 let contractTransactions = [];
-let blockchainLog = [{}];
+let blockchainLog = [];
 const abiDecoder = require('abi-decoder');
 //const contractAddress = '0x152649eA73beAb28c5b49B26eb48f7EAD6d4c898'cake;
 //const contractAddress = '0x5C1A0CC6DAdf4d0fB31425461df35Ba80fCBc110';
@@ -15,7 +15,33 @@ const abiDecoder = require('abi-decoder');
 //const cotractAddressAdidas = 0x28472a58A490c5e09A238847F66A68a47cC76f0f
 const hre = require("hardhat");
 const helpers = require("@nomicfoundation/hardhat-toolbox/network-helpers");
-const { count } = require('console');
+const { stringify } = require('csv-stringify');
+
+function writeFiles(jsonLog) {
+
+    const filename = "csvLog.csv"
+    const writableStream = fs.createWriteStream(filename)
+
+    const columns = ["TxHash", "Activity", "Timestamp", "Sender", "GasFee", "StorageState", "Inputs", "Events", "InternalTxs"]
+    const stringifier = stringify({ header: true, columns: columns })
+    jsonLog.forEach(log => {
+        const txHash = log.txHash;
+        const activity = log.activity;
+        const timestamp = log.timestamp;
+        const sender = log.sender;
+        const gasFee = log.gasUsed;
+        const storageState = log.storageState.map(variable => variable.name).toString()
+        const inputs = log.inputValues.map(input => input.name).toString()
+        const events = log.events.map(event => event.name).toString()
+        const internalTxs = log.internalTxs.map(tx => tx.type).toString()
+        
+        stringifier.write({ TxHash: txHash, Activity: activity, Timestamp: timestamp, Sender: sender, GasFee: gasFee, StorageState: storageState, Inputs: inputs, Events: events, InternalTxs: internalTxs })
+    })
+    stringifier.pipe(writableStream)
+
+    const jsonLogParsed = JSON.stringify(jsonLog, null, 2);
+    fs.writeFileSync('jsonLog.json', jsonLogParsed);
+}
 
 async function getAllTransactions(mainContract, contractAddress, fromBlock, toBlock) {
     const apiKey = 'I81RM42RCBH3HIC9YEK1GX6KYQ12U73K1C';
@@ -28,10 +54,11 @@ async function getAllTransactions(mainContract, contractAddress, fromBlock, toBl
     const contracts = await getContractCodeEtherscan(contractAddress);
     // returns 
     const contractTree = await getCompiledData(contracts, mainContract);
-    const JSONlog = await getStorageData(contractTransactions, contracts, mainContract, contractTree, contractAddress);
-    return JSONlog;
+    const jsonLog = await getStorageData(contractTransactions, contracts, mainContract, contractTree, contractAddress);
 
+    writeFiles(jsonLog);
 }
+
 module.exports = getAllTransactions;
 //CakeOFT
 //PixesFarmsLand
@@ -45,28 +72,34 @@ async function getStorageData(contractTransactions, contracts, mainContract, con
         console.log("processing transaction " + partialInt)
         const pastEvents = await getEvents(tx.hash, Number(tx.blockNumber), contractAddress);
         let newLog = {
+            txHash: tx.hash,
+            sender: tx.from,
+            gasUsed: tx.gasUsed,
             activity: '',
             timestamp: '',
-            inputNames: [],
             inputTypes: [],
             inputValues: [],
             storageState: [],
             internalTxs: [],
             events: pastEvents
         };
-        console.log("-----------------------------------------------------------------------");
         console.log(tx.hash);
+        console.log("-----------------------------------------------------------------------");
 
         const decoder = new InputDataDecoder(contractAbi);
-
         const result = decoder.decodeData(tx.input);
-        newLog.activity = result.method;
-        newLog.timestamp = tx.timeStamp;
 
-        let counter = 0
+        const isoDate = new Date(tx.timeStamp * 1000).toISOString()
+        const customDate = isoDate.split(".")[0] + ".000+0100"
+
+        newLog.activity = result.method;
+        newLog.timestamp = customDate
+
         for (let i = 0; i < result.inputs.length; i++) {
-            newLog.inputTypes[i] = result.types[i];
-            newLog.inputNames[i] = result.names[i];
+            newLog.inputTypes[i] = {
+                name: result.names[i],
+                type: result.types[i]
+            }
             //check if the input value is an array or a struct
             // TODO -> check how a Struct array is represented
             // Deploy a SC in a Test Net and send a tx with input data to decode its structure
@@ -84,32 +117,42 @@ async function getStorageData(contractTransactions, contracts, mainContract, con
                     }
                 }
 
-                newLog.inputValues[i] = bufferTuple;
+                newLog.inputValues[i] = {
+                    name: result.names[i],
+                    value: bufferTuple
+                }
             } else {
-                newLog.inputValues[i] = await decodeInput(result.types[i], result.inputs[i]);
+                newLog.inputValues[i] = {
+                    name: result.names[i],
+                    value: await decodeInput(result.types[i], result.inputs[i])
+                }
             }
-
-
         }
+
         const storageVal = await getTraceStorage(tx.blockNumber, tx.functionName.split("(")[0], tx.hash,
             mainContract, contracts, contractTree, partialInt);
         newLog.storageState = storageVal.decodedValues;
         newLog.internalTxs = storageVal.internalCalls;
-        console.log(newLog);
+        // console.log(newLog);
         blockchainLog.push(newLog)
         partialInt++;
     }
     try {
         // Serialize the object-centric event log data to JSON
-        const finalParsedLog = JSON.stringify(blockchainLog, null, 2);
+        // const finalParsedLog = JSON.stringify(blockchainLog, null, 2);
         // Write the  JSON to the output file
-        fs.writeFileSync('jsonLog.json', finalParsedLog);
-        console.log(`JSON file created`);
+        // fs.writeFileSync('jsonLog.json', finalParsedLog);
+        // console.log(`JSON file created`);
+
+        console.log("///////////////////////////////")
+        console.log(blockchainLog)
         return blockchainLog;
     } catch (error) {
         console.error(`Error writing output file: ${error}`);
     }
 }
+
+
 async function decodeInput(type, value) {
     if (type === 'uint256') {
         return Number(web3.utils.hexToNumber(value._hex));

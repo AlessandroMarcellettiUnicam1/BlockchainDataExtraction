@@ -1,19 +1,29 @@
 [
-  {},
   {
+    "txHash": "0x19acbaf5d4d761b3cd826d1ccd68749e4316de787fa899ac5db6607bc32442fb",
+    "sender": "0x2e6998192a5990f07ec382946d08f54131b829a1",
+    "gasUsed": "26882",
     "activity": "transfer",
-    "timestamp": "1701511523",
-    "inputNames": [
-      "to",
-      "amount"
-    ],
+    "timestamp": "2023-12-02T10:05:23.000+0100",
     "inputTypes": [
-      "address",
-      "uint256"
+      {
+        "name": "to",
+        "type": "address"
+      },
+      {
+        "name": "amount",
+        "type": "uint256"
+      }
     ],
     "inputValues": [
-      "2e6998192a5990f07Ec382946d08F54131b829a1",
-      12010565012640647000
+      {
+        "name": "to",
+        "value": "2e6998192a5990f07Ec382946d08F54131b829a1"
+      },
+      {
+        "name": "amount",
+        "value": 12010565012640647000
+      }
     ],
     "storageState": [],
     "internalTxs": [],
@@ -33,19 +43,30 @@
     ]
   },
   {
+    "txHash": "0xaa0971e176e3bb98b15b7a41e2e8c48622df24505997ce35872a15b587d0515f",
+    "sender": "0x2023b331c4283b34d067eceb247a9dc4aa4202c3",
+    "gasUsed": "46597",
     "activity": "approve",
-    "timestamp": "1701512675",
-    "inputNames": [
-      "spender",
-      "amount"
-    ],
+    "timestamp": "2023-12-02T10:24:35.000+0100",
     "inputTypes": [
-      "address",
-      "uint256"
+      {
+        "name": "spender",
+        "type": "address"
+      },
+      {
+        "name": "amount",
+        "type": "uint256"
+      }
     ],
     "inputValues": [
-      "46A15B0b27311cedF172AB29E4f4766fbE7F4364",
-      1.157920892373162e+77
+      {
+        "name": "spender",
+        "value": "46A15B0b27311cedF172AB29E4f4766fbE7F4364"
+      },
+      {
+        "name": "amount",
+        "value": 1.157920892373162e+77
+      }
     ],
     "storageState": [],
     "internalTxs": [],
@@ -65,42 +86,80 @@
     ]
   },
   {
+    "txHash": "0x68976bc49bd0656ad143bc401307dcab0523ad1edff0772b4cff2b88f81a760b",
+    "sender": "0x39739a9cb5f7fc23a5370b940d4691018c2ca74e",
+    "gasUsed": "232289",
     "activity": "sendFrom",
-    "timestamp": "1701513539",
-    "inputNames": [
-      "_from",
-      "_dstChainId",
-      "_toAddress",
-      "_amount",
-      "_minAmount",
-      [
-        "_callParams",
-        [
-          "refundAddress",
-          "zroPaymentAddress",
-          "adapterParams"
-        ]
-      ]
-    ],
+    "timestamp": "2023-12-02T10:38:59.000+0100",
     "inputTypes": [
-      "address",
-      "uint16",
-      "bytes32",
-      "uint256",
-      "uint256",
-      "(address,address,bytes)"
+      {
+        "name": "_from",
+        "type": "address"
+      },
+      {
+        "name": "_dstChainId",
+        "type": "uint16"
+      },
+      {
+        "name": "_toAddress",
+        "type": "bytes32"
+      },
+      {
+        "name": "_amount",
+        "type": "uint256"
+      },
+      {
+        "name": "_minAmount",
+        "type": "uint256"
+      },
+      {
+        "name": [
+          "_callParams",
+          [
+            "refundAddress",
+            "zroPaymentAddress",
+            "adapterParams"
+          ]
+        ],
+        "type": "(address,address,bytes)"
+      }
     ],
     "inputValues": [
-      "0x39739A9CB5f7fC23A5370b940d4691018C2Ca74e",
-      102,
-      "0x00000000000000000000000039739a9cb5f7fc23a5370b940d4691018c2ca74e",
-      96079776827306230000,
-      95599377943169700000,
-      [
-        "0x39739A9CB5f7fC23A5370b940d4691018C2Ca74e",
-        "0x0000000000000000000000000000000000000000",
-        "0x00010000000000000000000000000000000000000000000000000000000000030d40"
-      ]
+      {
+        "name": "_from",
+        "value": "0x39739A9CB5f7fC23A5370b940d4691018C2Ca74e"
+      },
+      {
+        "name": "_dstChainId",
+        "value": 102
+      },
+      {
+        "name": "_toAddress",
+        "value": "0x00000000000000000000000039739a9cb5f7fc23a5370b940d4691018c2ca74e"
+      },
+      {
+        "name": "_amount",
+        "value": 96079776827306230000
+      },
+      {
+        "name": "_minAmount",
+        "value": 95599377943169700000
+      },
+      {
+        "name": [
+          "_callParams",
+          [
+            "refundAddress",
+            "zroPaymentAddress",
+            "adapterParams"
+          ]
+        ],
+        "value": [
+          "0x39739A9CB5f7fC23A5370b940d4691018C2Ca74e",
+          "0x0000000000000000000000000000000000000000",
+          "0x00010000000000000000000000000000000000000000000000000000000000030d40"
+        ]
+      }
     ],
     "storageState": [
       {
@@ -366,19 +425,30 @@
     ]
   },
   {
+    "txHash": "0x7996150ae5f830cec5448bffd481b27efc1060f64f5ff328c0b9c96c47ec1570",
+    "sender": "0x28c6c06298d514db089934071355e5743bf21d60",
+    "gasUsed": "34482",
     "activity": "transfer",
-    "timestamp": "1701515315",
-    "inputNames": [
-      "to",
-      "amount"
-    ],
+    "timestamp": "2023-12-02T11:08:35.000+0100",
     "inputTypes": [
-      "address",
-      "uint256"
+      {
+        "name": "to",
+        "type": "address"
+      },
+      {
+        "name": "amount",
+        "type": "uint256"
+      }
     ],
     "inputValues": [
-      "96528e0620E07753C0B66EBe9E59be053649aE2E",
-      320290554920000000000
+      {
+        "name": "to",
+        "value": "96528e0620E07753C0B66EBe9E59be053649aE2E"
+      },
+      {
+        "name": "amount",
+        "value": 320290554920000000000
+      }
     ],
     "storageState": [],
     "internalTxs": [],

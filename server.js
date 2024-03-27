@@ -28,10 +28,7 @@ app.post('/submit', async (req, res) => {
     // Perform actions with the received data (you can customize this part)
     console.log(`contract Address: ${contractAddress}`);
     console.log(`Contract name: ${contractName}`);
-    const log = await getAllTransactions(contractName, contractAddress, fromBlock, toBlock)
-    //   .then(function(result) {
-    // res.send(result);
-    //})
+    await getAllTransactions(contractName, contractAddress, fromBlock, toBlock)
 
     const file = 'jsonLog.json'; // Replace this with your file path
     const fileName = 'jsonLog.json'; // Replace this with your file name
