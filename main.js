@@ -133,19 +133,10 @@ async function getStorageData(contractTransactions, contracts, mainContract, con
             mainContract, contracts, contractTree, partialInt);
         newLog.storageState = storageVal.decodedValues;
         newLog.internalTxs = storageVal.internalCalls;
-        // console.log(newLog);
         blockchainLog.push(newLog)
         partialInt++;
     }
     try {
-        // Serialize the object-centric event log data to JSON
-        // const finalParsedLog = JSON.stringify(blockchainLog, null, 2);
-        // Write the  JSON to the output file
-        // fs.writeFileSync('jsonLog.json', finalParsedLog);
-        // console.log(`JSON file created`);
-
-        console.log("///////////////////////////////")
-        console.log(blockchainLog)
         return blockchainLog;
     } catch (error) {
         console.error(`Error writing output file: ${error}`);
@@ -225,11 +216,6 @@ async function getTraceStorage(blockNumber, functionName, txHash, mainContract, 
                 hexKey: hexKey,
                 hexStorageIndex: hexStorageIndex
             };
-            // console.log("/////////////////")
-            // console.log(trace);
-            // console.log("Memory Location -> ", memoryLocation)
-            // console.log("Hexk Key Memory -> ", hexKey)
-            // counter++
 
             // end of a function execution -> returns the storage state with the keys and values in the storage
         } else if (trace.op === "STOP") {
@@ -240,25 +226,10 @@ async function getTraceStorage(blockNumber, functionName, txHash, mainContract, 
                 functionStorage[slot] = trace.storage[slot];
             }
         } else if (trace.pc === (bufferPC + 1)) {
-            // console.log("---------Ecco quello dopo --------------")
-            // console.log(trace.stack[trace.stack.length - 1]);
             fs.writeFileSync("./temporaryTrials/trace.json", JSON.stringify(trace), { flag: "a+" });
             bufferPC = 0;
             trackBuffer[index].finalKey = trace.stack[trace.stack.length - 1];
             index++;
-            // console.log(trace);
-            // console.log("Memory Location -> ", memoryLocation)
-            // console.log("Hexk Key Memory -> ", hexKey)
-            // counter++
-            // console.log("/////////////////")
-            // if (txHash === "0x68976bc49bd0656ad143bc401307dcab0523ad1edff0772b4cff2b88f81a760b") {
-            //     if (counter === 1) {
-            //         console.log(trace);
-            //         console.log("Track Buffer -> ", trackBuffer)
-            //         console.log("/////////////////")
-            //         counter++
-            //     }
-            // }
         }
         //in case the trace is a SSTORE save the key. CAUTION: not every SSTORE changes the final storage state but every storage state change has an sstore
         // SSTORE -> updates the storage state 
@@ -299,7 +270,6 @@ async function getTraceStorage(blockNumber, functionName, txHash, mainContract, 
     }
 
     let finalShaTraces = [];
-    //console.log(trackBuffer);
     for (let i = 0; i < trackBuffer.length; i++) {
         //check if the SHA3 key is contained in an SSTORE
         if (sstoreBuffer.includes(trackBuffer[i].finalKey)) {
@@ -328,17 +298,13 @@ async function getTraceStorage(blockNumber, functionName, txHash, mainContract, 
 
     //const uniqueTraces = Array.from(new Set(finalTraces.map(JSON.stringify))).map(JSON.parse);
     //removes duplicate storing keys, it will catch only the last update done on a variable
-    // console.log(sstoreBuffer);
     const uniqueSStore = Array.from(new Set(sstoreBuffer.map(JSON.stringify))).map(JSON.parse);
     // const uniqueStorage = Array.from(new Set(functionStorage.map(JSON.stringify))).map(JSON.parse);
 
     if (Object.keys(functionStorage).length !== 0) {
-        // console.log("Function Name: ", functionName)
         fs.writeFileSync('./temporaryTrials/functionStorage.json', JSON.stringify(functionStorage));
         fs.writeFileSync('./temporaryTrials/finalShaTraces.json', JSON.stringify(finalShaTraces));
     }
-    //console.log(uniqueSStore);
-    //console.log(functionStorage);
     const decodedValues = await newDecodeValues(uniqueSStore, contractTree, finalShaTraces, functionStorage, functionName, contracts, mainContract);
     return { decodedValues, internalCalls };
 
@@ -393,8 +359,6 @@ async function newDecodeValues(sstore, contractTree, shaTraces, functionStorage,
                 const contractVar = await getContractVariable(numberIndex, contractTree, functionName, contracts, mainContract);
                 if (contractVar.length > 1) {
                     const updatedVariables = await readVarFromOffset(contractVar, functionStorage[storageVar]);
-                    console.log("ci sono ottimizzazioni")
-                    console.log(updatedVariables);
                     for (let varI = 0; varI < updatedVariables.length; varI++) {
                         const decodedValue = await decodeStorageValue(updatedVariables[varI], updatedVariables[varI].value);
                         const bufferVariable = {
@@ -405,7 +369,6 @@ async function newDecodeValues(sstore, contractTree, shaTraces, functionStorage,
                         };
                         decodedValues.push(bufferVariable);
                     }
-                    console.log("Fine ottimizzazioni")
                 } else {
                     const decodedValue = await decodeStorageValue(contractVar[0], functionStorage[storageVar]);
                     const bufferVariable = {
@@ -421,36 +384,6 @@ async function newDecodeValues(sstore, contractTree, shaTraces, functionStorage,
         }
     }
     return decodedValues;
-
-    /*let decodedValues = [];
-    for(const contractId in contractTree){
-        if(contractTree[contractId].name === mainContract && contractTree[contractId].functions.includes(functionName)){
-            for (const trace of trackBuffer) {
-                const slotIndex = await web3.utils.hexToNumber("0x" + trace.hexStorageIndex);
-                for(const contractVariable of contractTree[contractId].storage){
-                    let bufferVariable = {};
-                    if(Number(contractVariable.slot) === Number(slotIndex) && (functionStorage[trace.finalKey] !== undefined)){
-                        console.log(functionStorage[trace.finalKey]);
-                        const varVal = await decodeStorageValue(contractVariable, functionStorage[trace.finalKey]);
-                        bufferVariable = {name: contractVariable.name, type: contractVariable.type, value: varVal};
-                        decodedValues.push(bufferVariable);
-                    }else{
-                        for(const sstoreIndex of sstore){
-                            const integerSlot = await web3.utils.hexToNumber("0x"+sstoreIndex);
-                            if(integerSlot === Number(contractVariable.slot) && (functionStorage[sstoreIndex] !== undefined)){
-                                console.log(functionStorage[sstoreIndex]);
-                                const varVal = await decodeStorageValue(contractVariable, functionStorage[sstoreIndex]);
-                                bufferVariable = {name: contractVariable.name, type: contractVariable.type, value: varVal};
-                                decodedValues.push(bufferVariable);
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-    return decodedValues;*/
-
 }
 
 
@@ -553,14 +486,6 @@ async function decodeStorageValue(variable, value, storageVar) {
         } else if (valueType.includes("address")) {
             return value;
         } else if (valueType.includes("struct")) {
-            console.log(value)
-            // console.log("/////////////")
-            // console.log("This is a mapping");
-            // console.log(variable)
-            // console.log("This is a struct");
-            // console.log("Storage Var: ", storageVar)
-            // console.log("Value: ", value)
-            // console.log("/////////////")
         }
     } else if (variable.type.includes("array")) {
         return value;
@@ -604,15 +529,6 @@ async function getVarFromFunction(functionVariables, functionNames, storageSlot,
             }
         }
     }
-
-    /* for(const functionName of functionNames) {
-         for (const variable of functionVariables[functionName].variables) {
-             if (Number(variable.storageSlot) === Number(storageSlot)) {
-                 //console.log("yes");
-                 return variable;
-             }
-         }
-     }*/
 }
 
 
@@ -733,29 +649,6 @@ async function getFunctionContractTree(source) {
         }
     }
 
-    // for (const contract of contractToIterate) {
-    //     if (contract.nodeType === "ContractDefinition") {
-    //         //console.log(contract);
-    //         // basically contract and functions
-    //         contractTree[contract.id] = {};
-    //         contractTree[contract.id].name = contract.canonicalName;
-    //         contractTree[contract.id].inherited = contract.linearizedBaseContracts;
-    //         contractTree[contract.id].functions = [];
-    //         //console.log(contractTree[contract.id]);
-    //     }
-    //     for (const node of contract.nodes) {
-    //         //if node is the contract definition one initialize its structure
-    //         //if node is a function definition save it
-    //         if (node.nodeType.match("FunctionDefinition") && node.body != undefined && node.implemented == true) {
-
-    //             //create a buffer representing the function object to push to the function tree
-    //             contractTree[contract.id].functions.push(node.name);
-
-    //         }
-    //     }
-    // }
-
-
     return contractTree;
 }
 
@@ -784,7 +677,6 @@ async function getContractCodeEtherscan(contractAddress) {
 
             let actualContract = 'contract' + i;
             let code = jsonCode[contract].content;
-            //console.log(contract);
             contracts[contract] = {};
             contracts[contract].nameId = actualContract;
             contracts[contract].content = code;
@@ -795,13 +687,11 @@ async function getContractCodeEtherscan(contractAddress) {
             buffer += code
         }
     }else{
-        //console.log("eccomi");
         let actualContract = 'contract'+i;
         let code = jsonCode;
         contracts[actualContract] = {};
         contracts[actualContract].nameId = actualContract;
         contracts[actualContract].content = code;
-        //console.log(contracts);
     }
     return contracts;
 }
