@@ -94,12 +94,12 @@ app.post('/csv-download', (req, res) => {
         const timestamp = log.timestamp;
         const sender = log.sender;
         const gasFee = log.gasUsed;
-        const storageState = log.storageState.map(variable => variable.name).toString()
-        const inputs = log.inputValues.map(input => input.name).toString()
-        const events = log.events.map(event => event.name).toString()
-        const internalTxs = log.internalTxs.map(tx => tx.type).toString()
+        const storageState = log.storageState.map(variable => variable.name).toString();
+        const inputs = log.inputValues.map(input => input.name).toString();
+        const events = log.events.map(event => event.name).toString();
+        const internalTxs = log.internalTxs.map(tx => tx.type).toString();
 
-        stringifier.write({ TxHash: txHash, Activity: activity, Timestamp: timestamp, Sender: sender, GasFee: gasFee, StorageState: storageState, Inputs: inputs, Events: events, InternalTxs: internalTxs })
+        stringifier.write({ TxHash: txHash, Activity: activity, Timestamp: timestamp, Sender: sender, GasFee: gasFee, StorageState: '"' + storageState + '"', Inputs: '"' + inputs + '"', Events: '"' + events + '"', InternalTxs: '"' + internalTxs + '"' })
     })
     stringifier.pipe(writableStream)
 

@@ -14,35 +14,6 @@ const abiDecoder = require('abi-decoder');
 //const cotractAddressAdidas = 0x28472a58A490c5e09A238847F66A68a47cC76f0f
 const hre = require("hardhat");
 const helpers = require("@nomicfoundation/hardhat-toolbox/network-helpers");
-const { stringify } = require('csv-stringify');
-
-function writeFiles(jsonLog) {
-
-    const filename = "csvLog.csv"
-    const writableStream = fs.createWriteStream(filename)
-
-    const columns = ["TxHash", "Activity", "Timestamp", "Sender", "GasFee", "StorageState", "Inputs", "Events", "InternalTxs"]
-    const stringifier = stringify({ header: true, columns: columns })
-    jsonLog.forEach(log => {
-        const txHash = log.txHash;
-        const activity = log.activity;
-        const timestamp = log.timestamp;
-        const sender = log.sender;
-        const gasFee = log.gasUsed;
-        const storageState = log.storageState.map(variable => variable.name).toString()
-        const inputs = log.inputValues.map(input => input.name).toString()
-        const events = log.events.map(event => event.name).toString()
-        const internalTxs = log.internalTxs.map(tx => tx.type).toString()
-        
-        stringifier.write({ TxHash: txHash, Activity: activity, Timestamp: timestamp, Sender: sender, GasFee: gasFee, StorageState: storageState, Inputs: inputs, Events: events, InternalTxs: internalTxs })
-    })
-    stringifier.pipe(writableStream)
-
-    console.log(jsonLog)
-
-    const jsonLogParsed = JSON.stringify(jsonLog, null, 2);
-    fs.writeFileSync('jsonLog.json', jsonLogParsed);
-}
 
 async function getAllTransactions(mainContract, contractAddress, fromBlock, toBlock) {
     const apiKey = 'I81RM42RCBH3HIC9YEK1GX6KYQ12U73K1C';
