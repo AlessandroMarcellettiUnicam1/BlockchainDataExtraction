@@ -7,7 +7,6 @@ const axios = require("axios");
 let contractAbi = {};
 let web3 = new Web3('https://eth-mainnet.g.alchemy.com/v2/ISHV03DLlGo2K1-dqE6EnsyrP2GF44Gt')
 let contractTransactions = [];
-let blockchainLog = [];
 const abiDecoder = require('abi-decoder');
 //const contractAddress = '0x152649eA73beAb28c5b49B26eb48f7EAD6d4c898'cake;
 //const contractAddress = '0x5C1A0CC6DAdf4d0fB31425461df35Ba80fCBc110';
@@ -39,6 +38,8 @@ function writeFiles(jsonLog) {
     })
     stringifier.pipe(writableStream)
 
+    console.log(jsonLog)
+
     const jsonLogParsed = JSON.stringify(jsonLog, null, 2);
     fs.writeFileSync('jsonLog.json', jsonLogParsed);
 }
@@ -54,9 +55,9 @@ async function getAllTransactions(mainContract, contractAddress, fromBlock, toBl
     const contracts = await getContractCodeEtherscan(contractAddress);
     // returns 
     const contractTree = await getCompiledData(contracts, mainContract);
-    const jsonLog = await getStorageData(contractTransactions, contracts, mainContract, contractTree, contractAddress);
+    return await getStorageData(contractTransactions, contracts, mainContract, contractTree, contractAddress);
 
-    writeFiles(jsonLog);
+    // writeFiles(jsonLog);
 }
 
 module.exports = getAllTransactions;
@@ -66,6 +67,7 @@ module.exports = getAllTransactions;
 //getAllTransactions("CakeOFT");
 
 async function getStorageData(contractTransactions, contracts, mainContract, contractTree, contractAddress) {
+    let blockchainLog = [];
     let partialInt = 0;
     for (const tx of contractTransactions) {
         //if(partialInt < 10){
