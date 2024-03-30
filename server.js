@@ -2,7 +2,8 @@ const express = require('express');
 const cors = require('cors');
 const path = require('path');
 const bodyParser = require('body-parser');
-const fs= require('fs');
+const fs = require('fs');
+require('../pm4js-core/init.js')
 const getAllTransactions = require("./main");
 const {stringify} = require("csv-stringify");
 const app = express();
@@ -18,7 +19,7 @@ app.use((req, res, next) => {
 
 // Middleware: Serving static files from the "public" directory
 app.use(express.static(path.join(__dirname, 'public')));
-app.use(bodyParser.urlencoded({ extended: true }));
+app.use(bodyParser.urlencoded({extended: true}));
 app.use(bodyParser.json());
 
 // Route: Home Page
@@ -36,28 +37,7 @@ app.post('/submit', async (req, res) => {
     console.log(`Contract name: ${contractName}`);
     const logs = await getAllTransactions(contractName, contractAddress, fromBlock, toBlock)
 
-    const file = 'jsonLog.json'; // Replace this with your file path
-    const fileName = 'jsonLog.json'; // Replace this with your file name
-
-    const formattedFileName = encodeURIComponent(fileName);
     res.send(logs)
-
-    // Set the appropriate headers for the file download
-    // res.setHeader('Content-Disposition', `attachment; filename="${formattedFileName}"`);
-    // res.setHeader('Content-Type', 'application/octet-stream');
-
-    // Send the file as a response
-    // res.sendFile(path.resolve(file), (err) => {
-    //     if (err) {
-    //         // Handle error if file sending fails
-    //         console.error(err);
-    //         res.status(err.status).end();
-    //     } else {
-    //         console.log('File sent successfully');
-    //     }
-    // });
-
-    // Send a response back to the client
 });
 
 app.post('/json-download', (req, res) => {
@@ -75,20 +55,19 @@ app.post('/json-download', (req, res) => {
             console.error(err);
             res.status(err.status).end();
         } else {
+            fs.unlinkSync(path.resolve("jsonLog.json"))
             console.log('File sent successfully');
         }
     });
 })
 
-app.post('/csv-download', (req, res) => {
+app.post('/csv-download', async (req, res) => {
 
     const jsonToDownload = req.body.jsonLog;
     const fileName = 'jsonLog.csv';
-    const writableStream = fs.createWriteStream(fileName);
 
     const columns = ["TxHash", "Activity", "Timestamp", "Sender", "GasFee", "StorageState", "Inputs", "Events", "InternalTxs"]
-    const stringifier = stringify({ header: true, columns: columns })
-    jsonToDownload.forEach(log => {
+    const logs = jsonToDownload.map(log => {
         const txHash = log.txHash;
         const activity = log.activity;
         const timestamp = log.timestamp;
@@ -98,24 +77,60 @@ app.post('/csv-download', (req, res) => {
         const inputs = log.inputValues.map(input => input.name).toString();
         const events = log.events.map(event => event.name).toString();
         const internalTxs = log.internalTxs.map(tx => tx.type).toString();
-
-        stringifier.write({ TxHash: txHash, Activity: activity, Timestamp: timestamp, Sender: sender, GasFee: gasFee, StorageState: '"' + storageState + '"', Inputs: '"' + inputs + '"', Events: '"' + events + '"', InternalTxs: '"' + internalTxs + '"' })
+        return {
+            TxHash: txHash,
+            Activity: activity,
+            Timestamp: timestamp,
+            Sender: sender,
+            GasFee: gasFee,
+            StorageState: '"' + storageState + '"',
+            Inputs: '"' + inputs + '"',
+            Events: '"' + events + '"',
+            InternalTxs: '"' + internalTxs + '"'
+        }
     })
-    stringifier.pipe(writableStream)
+    stringify(logs, {header: true, columns: columns}, (err, output) => {
+        fs.writeFileSync(`./${fileName}`, output)
+        const formattedFileName = encodeURIComponent(fileName);
+        res.setHeader('Content-Disposition', `attachment; filename="${formattedFileName}"`);
+        res.setHeader('Content-Type', 'application/octet-stream');
 
-    const formattedFileName = encodeURIComponent(fileName);
+        res.sendFile(path.resolve(fileName), (err) => {
+            if (err) {
+                // Handle error if file sending fails
+                console.error(err);
+                res.status(err.status).end();
+            } else {
+                fs.unlinkSync(path.resolve("jsonLog.csv"))
+                console.log('File sent successfully');
+            }
+        })
+    })
+})
+
+app.post('/ocel-download', (req, res) => {
+
+    const jsonToDownload = req.body.ocel;
+    const filename = "ocelLogs.json"
+    // const jsonOcel = JsonOcelExporter.apply(jsonToDownload);
+
+    fs.writeFileSync(filename, JSON.stringify(jsonToDownload, null, 2));
+
+    const formattedFileName = encodeURIComponent(filename);
     res.setHeader('Content-Disposition', `attachment; filename="${formattedFileName}"`);
     res.setHeader('Content-Type', 'application/octet-stream');
 
-    res.sendFile(path.resolve("jsonLog.csv"), (err) => {
-      if (err) {
-        // Handle error if file sending fails
-        console.error(err);
-        res.status(err.status).end();
-      } else {
-        console.log('File sent successfully');
-      }
-    })
+    res.sendFile(path.resolve(filename), (err) => {
+        if (err) {
+            // Handle error if file sending fails
+            console.error(err);
+            res.status(err.status).end();
+        } else {
+            fs.unlinkSync(path.resolve(filename))
+            console.log('File sent successfully');
+        }
+    });
+
 })
 
 app.get('/', (req, res) => {
