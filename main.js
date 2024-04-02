@@ -50,8 +50,7 @@ async function getStorageData(contractTransactions, contracts, mainContract, con
             gasUsed: tx.gasUsed,
             activity: '',
             timestamp: '',
-            inputTypes: [],
-            inputValues: [],
+            inputs: [],
             storageState: [],
             internalTxs: [],
             events: pastEvents
@@ -63,16 +62,11 @@ async function getStorageData(contractTransactions, contracts, mainContract, con
         const result = decoder.decodeData(tx.input);
 
         const isoDate = new Date(tx.timeStamp * 1000).toISOString()
-        const customDate = isoDate.split(".")[0] + ".000+0100"
 
         newLog.activity = result.method;
-        newLog.timestamp = customDate
+        newLog.timestamp = isoDate
 
         for (let i = 0; i < result.inputs.length; i++) {
-            newLog.inputTypes[i] = {
-                name: result.names[i],
-                type: result.types[i]
-            }
             //check if the input value is an array or a struct
             // TODO -> check how a Struct array is represented
             // Deploy a SC in a Test Net and send a tx with input data to decode its structure
@@ -90,13 +84,15 @@ async function getStorageData(contractTransactions, contracts, mainContract, con
                     }
                 }
 
-                newLog.inputValues[i] = {
+                newLog.inputs[i] = {
                     name: result.names[i],
+                    type: result.types[i],
                     value: bufferTuple
                 }
             } else {
-                newLog.inputValues[i] = {
+                newLog.inputs[i] = {
                     name: result.names[i],
+                    type: result.types[i],
                     value: await decodeInput(result.types[i], result.inputs[i])
                 }
             }

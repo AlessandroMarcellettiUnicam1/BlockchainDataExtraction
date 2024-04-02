@@ -3,7 +3,6 @@ const cors = require('cors');
 const path = require('path');
 const bodyParser = require('body-parser');
 const fs = require('fs');
-require('../pm4js-core/init.js')
 const getAllTransactions = require("./main");
 const {stringify} = require("csv-stringify");
 const app = express();
@@ -68,13 +67,16 @@ app.post('/csv-download', async (req, res) => {
 
     const columns = ["TxHash", "Activity", "Timestamp", "Sender", "GasFee", "StorageState", "Inputs", "Events", "InternalTxs"]
     const logs = jsonToDownload.map(log => {
+
+        const customDate = log.timestamp.split(".")[0] + ".000+0100"
+
         const txHash = log.txHash;
         const activity = log.activity;
-        const timestamp = log.timestamp;
+        const timestamp = customDate;
         const sender = log.sender;
         const gasFee = log.gasUsed;
         const storageState = log.storageState.map(variable => variable.name).toString();
-        const inputs = log.inputValues.map(input => input.name).toString();
+        const inputs = log.inputs.map(input => input.name).toString();
         const events = log.events.map(event => event.name).toString();
         const internalTxs = log.internalTxs.map(tx => tx.type).toString();
         return {
@@ -113,6 +115,30 @@ app.post('/ocel-download', (req, res) => {
     const jsonToDownload = req.body.ocel;
     const filename = "ocelLogs.json"
     // const jsonOcel = JsonOcelExporter.apply(jsonToDownload);
+
+    fs.writeFileSync(filename, JSON.stringify(jsonToDownload, null, 2));
+
+    const formattedFileName = encodeURIComponent(filename);
+    res.setHeader('Content-Disposition', `attachment; filename="${formattedFileName}"`);
+    res.setHeader('Content-Type', 'application/octet-stream');
+
+    res.sendFile(path.resolve(filename), (err) => {
+        if (err) {
+            // Handle error if file sending fails
+            console.error(err);
+            res.status(err.status).end();
+        } else {
+            fs.unlinkSync(path.resolve(filename))
+            console.log('File sent successfully');
+        }
+    });
+
+})
+
+app.post('/jsonocel-download', (req, res) => {
+
+    const jsonToDownload = req.body.ocel;
+    const filename = "ocelLogs.jsonocel"
 
     fs.writeFileSync(filename, JSON.stringify(jsonToDownload, null, 2));
 
