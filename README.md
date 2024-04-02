@@ -23,7 +23,7 @@ npm install
 
 And in `BlockchainProcessMining_frontend` run:
 ```
-npm run
+npm run start
 ```
 
 This script will execute Express backend and React frontend together.
