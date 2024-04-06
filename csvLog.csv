@@ -1,5 +1,0 @@
-TxHash,Activity,Timestamp,Sender,GasFee,StorageState,Inputs,Events,InternalTxs
-0x19acbaf5d4d761b3cd826d1ccd68749e4316de787fa899ac5db6607bc32442fb,transfer,2023-12-02T10:05:23.000+0100,0x2e6998192a5990f07ec382946d08f54131b829a1,26882,,"to,amount",Transfer,
-0xaa0971e176e3bb98b15b7a41e2e8c48622df24505997ce35872a15b587d0515f,approve,2023-12-02T10:24:35.000+0100,0x2023b331c4283b34d067eceb247a9dc4aa4202c3,46597,,"spender,amount",Approval,
-0x68976bc49bd0656ad143bc401307dcab0523ad1edff0772b4cff2b88f81a760b,sendFrom,2023-12-02T10:38:59.000+0100,0x39739a9cb5f7fc23a5370b940d4691018c2ca74e,232289,"failedMessages,failedMessages,amountsForCall,_balances,chainIdToLastSentTimestamp,chainIdToSentTokenAmount,defaultFeeBp,feeOwner,_totalSupply","_from,_dstChainId,_toAddress,_amount,_minAmount,_callParams,refundAddress,zroPaymentAddress,adapterParams","Transfer,SendToChain","CALL,CALL,CALL,STATICCALL,CALL,DELEGATECALL,STATICCALL,DELEGATECALL,CALL,CALL,CALL,DELEGATECALL,STATICCALL"
-0x7996150ae5f830cec5448bffd481b27efc1060f64f5ff328c0b9c96c47ec1570,transfer,2023-12-02T11:08:35.000+0100,0x28c6c06298d514db089934071355e5743bf21d60,34482,,"to,amount",Transfer,
