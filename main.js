@@ -224,7 +224,7 @@ async function getTraceStorage(blockNumber, functionName, txHash, mainContract, 
             //convert the length to number
             let lengthNumber = web3.utils.hexToNumber("0x" + lengthBytes) / 32;
             //create the call object
-            let call = { callId: uuid.v4(), type: trace.op, to: trace.stack[trace.stack.length - 2], inputsCall: [] }
+            let call = { callId: uuid.v4(), callType: trace.op, to: trace.stack[trace.stack.length - 2], inputsCall: [] }
             //read all the inputs from the memory and insert it in the call object
             for (let i = offsetNumber; i <= offsetNumber + lengthNumber; i++) {
                 call.inputsCall.push(trace.memory[i]);
@@ -236,7 +236,7 @@ async function getTraceStorage(blockNumber, functionName, txHash, mainContract, 
             let offsetNumber = await web3.utils.hexToNumber("0x" + offsetBytes) / 32;
             const lengthBytes = trace.stack[trace.stack.length - 4];
             let lengthNumber = await web3.utils.hexToNumber("0x" + lengthBytes) / 32;
-            let call = { callId: uuid.v4(), type: trace.op, to: trace.stack[trace.stack.length - 2], inputsCall: [] }
+            let call = { callId: uuid.v4(), callType: trace.op, to: trace.stack[trace.stack.length - 2], inputsCall: [] }
             for (let i = offsetNumber; i <= offsetNumber + lengthNumber; i++) {
                 call.inputsCall.push(trace.memory[i]);
             }
