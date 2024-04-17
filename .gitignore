@@ -5,3 +5,5 @@ cache
 internal.js
 index.js
 utilities.js
+.env
+uploads/
