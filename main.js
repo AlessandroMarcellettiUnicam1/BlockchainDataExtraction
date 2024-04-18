@@ -247,7 +247,6 @@ async function getTraceStorage(blockNumber, functionName, txHash, mainContract, 
             } else if (trace.op === "STOP") {
                 //retrieve the entire storage after function execution
                 //for each storage key discard the ones of static variables and compare the remaining ones with the re-generated
-                fs.writeFileSync("./temporaryTrials/trace.json", JSON.stringify(trace), {flag: "a+"});
                 for (const slot in trace.storage) {
                     functionStorage[slot] = trace.storage[slot];
                 }
