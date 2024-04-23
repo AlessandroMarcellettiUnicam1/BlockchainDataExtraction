@@ -3,7 +3,6 @@ const InputDataDecoder = require('ethereum-input-data-decoder');
 const solc = require('solc');
 const fs = require('fs');
 const axios = require("axios");
-const uuid = require('uuid');
 //let contractAbi = fs.readFileSync('abiEtherscan.json', 'utf8');
 let contractAbi = {};
 let contractTransactions = [];
@@ -206,7 +205,6 @@ async function getTraceStorage(blockNumber, functionName, txHash, mainContract, 
     const response = await hre.network.provider.send("debug_traceTransaction", [
         txHash
     ]);
-
     const t1 = new Date();
     //console.log(t1 - t);
     //used to store the storage changed by the function. Used to compare the generated keys
@@ -413,7 +411,7 @@ async function newDecodeValues(sstore, contractTree, shaTraces, functionStorage,
                         };
                         decodedValues.push(bufferVariable);
                     }
-                } else {
+                } else if (contractVar.length === 1) {
                     const decodedValue = await decodeStorageValue(contractVar[0], functionStorage[storageVar]);
                     const bufferVariable = {
                         variableId: "variable_" + contractVar[0].name,
@@ -514,7 +512,6 @@ async function readVarFromOffset(variables, value) {
 
 //function for decoding the storage value
 async function decodeStorageValue(variable, value, storageVar) {
-
     //console.log("variable to handle: --------->" + value);
     //if it is a mapping check for last type of value by splitting it so to cover also nested case
     if (variable.type.includes("mapping")) {

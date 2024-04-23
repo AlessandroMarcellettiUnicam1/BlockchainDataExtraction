@@ -46,6 +46,11 @@ app.post('/submit', upload.single('file'), async (req, res) => {
             }
 
             logs = await getAllTransactions(contractName, contractAddress, fromBlock, toBlock, network, data)
+            fs.unlink(req.file.path, (err) => {
+                if (err) {
+                    console.error(err)
+                }
+            })
         })
     } else {
         logs = await getAllTransactions(contractName, contractAddress, fromBlock, toBlock, network)
