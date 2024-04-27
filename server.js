@@ -51,12 +51,12 @@ app.post('/submit', upload.single('file'), async (req, res) => {
                     console.error(err)
                 }
             })
+            res.send(logs)
         })
     } else {
         logs = await getAllTransactions(contractName, contractAddress, fromBlock, toBlock, network)
+        res.send(logs)
     }
-
-    res.send(logs)
 });
 
 app.post('/json-download', (req, res) => {
