@@ -55,7 +55,11 @@ app.post('/submit', upload.single('file'), async (req, res) => {
         })
     } else {
         logs = await getAllTransactions(contractName, contractAddress, fromBlock, toBlock, network)
-        res.send(logs)
+        if (logs instanceof Error) {
+            res.status(404).send(logs.message)
+        } else {
+            res.send(logs)
+        }
     }
 });
 

@@ -7,3 +7,5 @@ index.js
 utilities.js
 .env
 uploads/
+trialsScripts/
+temporaryTrials/*.json
