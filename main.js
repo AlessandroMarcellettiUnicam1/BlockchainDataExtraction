@@ -13,7 +13,6 @@ const abiDecoder = require('abi-decoder');
 //const cotractAddressAdidas = 0x28472a58A490c5e09A238847F66A68a47cC76f0f
 const hre = require("hardhat");
 const helpers = require("@nomicfoundation/hardhat-toolbox/network-helpers");
-const {parse} = require("dotenv");
 require('dotenv').config();
 
 let networkInUse = ""
@@ -30,7 +29,7 @@ let _contractAddress = ""
 
 let contractCompiled = null
 
-async function getAllTransactions(mainContract, contractAddress, fromBlock, toBlock, network, smartContract) {
+async function getAllTransactions(mainContract, contractAddress, fromBlock, toBlock, network, filters, smartContract) {
 
     _contractAddress = contractAddress
     networkInUse = network;
@@ -77,7 +76,7 @@ async function getAllTransactions(mainContract, contractAddress, fromBlock, toBl
     // returns
     const contractTree = await getCompiledData(contracts, mainContract);
 
-    const logs = await getStorageData(contractTransactions, contracts, mainContract, contractTree, contractAddress);
+    const logs = await getStorageData(contractTransactions, contracts, mainContract, contractTree, contractAddress, filters);
     inputId = 0
     internalTxId = 0
     eventId = 0
@@ -94,10 +93,23 @@ module.exports = {
 //AdidasOriginals
 //getAllTransactions("CakeOFT");
 
-async function getStorageData(contractTransactions, contracts, mainContract, contractTree, contractAddress) {
+async function getStorageData(contractTransactions, contracts, mainContract, contractTree, contractAddress, filters) {
     let blockchainLog = [];
     let partialInt = 0;
-    for (const tx of contractTransactions) {
+    const senders = filters.senders;
+    const functions = filters.functions;
+    contractTransactions.map(tx => {
+        const decoder = new InputDataDecoder(contractAbi);
+        tx.inputDecoded = decoder.decodeData(tx.input);
+    })
+    let contractTransactionsFiltered = contractTransactions
+    if (senders.length > 0) {
+        contractTransactionsFiltered = contractTransactions.filter(tx => senders.includes(tx.from.toLowerCase()))
+    }
+    if (functions.length > 0) {
+        contractTransactionsFiltered = contractTransactions.filter(tx => functions.includes(tx.inputDecoded.method))
+    }
+    for (const tx of contractTransactionsFiltered) {
         //if(partialInt < 10){
         console.log("processing transaction " + partialInt)
         const pastEvents = await getEvents(tx.hash, Number(tx.blockNumber), contractAddress);
@@ -106,7 +118,7 @@ async function getStorageData(contractTransactions, contracts, mainContract, con
             contractAddress: tx.to,
             sender: tx.from,
             gasUsed: tx.gasUsed,
-            activity: '',
+            activity: tx.inputDecoded.method,
             timestamp: '',
             inputs: [],
             storageState: [],
@@ -116,51 +128,51 @@ async function getStorageData(contractTransactions, contracts, mainContract, con
         console.log(tx.hash);
         console.log("-----------------------------------------------------------------------");
 
-        const decoder = new InputDataDecoder(contractAbi);
-        const result = decoder.decodeData(tx.input);
+        // const decoder = new InputDataDecoder(contractAbi);
+        // const result = decoder.decodeData(tx.input);
 
         const isoDate = new Date(tx.timeStamp * 1000).toISOString()
 
-        newLog.activity = result.method;
+        // newLog.activity = tx.method;
         newLog.timestamp = isoDate
 
-        for (let i = 0; i < result.inputs.length; i++) {
+        for (let i = 0; i < tx.inputDecoded.inputs.length; i++) {
             //check if the input value is an array or a struct
             // TODO -> check how a Struct array is represented
             // Deploy a SC in a Test Net and send a tx with input data to decode its structure
             let inputName = ""
-            if (Array.isArray(result.names[i])) {
-                inputName = result.names[i].toString()
+            if (Array.isArray(tx.inputDecoded.names[i])) {
+                inputName = tx.inputDecoded.names[i].toString()
             } else {
-                inputName = result.names[i]
+                inputName = tx.inputDecoded.names[i]
             }
 
-            if (Array.isArray(result.inputs[i])) {
+            if (Array.isArray(tx.inputDecoded.inputs[i])) {
                 let bufferTuple = [];
                 //if it is a struct split the sub-attributes
-                if (result.types[i].includes(",")) {
-                    const bufferTypes = result.types[i].split(",");
-                    for (let z = 0; z < result.inputs[i].length; z++) {
-                        bufferTuple.push(await decodeInput(bufferTypes[z], result.inputs[i][z]));
+                if (tx.inputDecoded.types[i].includes(",")) {
+                    const bufferTypes = tx.inputDecoded.types[i].split(",");
+                    for (let z = 0; z < tx.inputDecoded.inputs[i].length; z++) {
+                        bufferTuple.push(await decodeInput(bufferTypes[z], tx.inputDecoded.inputs[i][z]));
                     }
                 } else {
-                    for (let z = 0; z < result.inputs[i].length; z++) {
-                        bufferTuple.push(await decodeInput(result.types[i], result.inputs[i][z]));
+                    for (let z = 0; z < tx.inputDecoded.inputs[i].length; z++) {
+                        bufferTuple.push(await decodeInput(tx.inputDecoded.types[i], tx.inputDecoded.inputs[i][z]));
                     }
                 }
 
                 newLog.inputs[i] = {
                     inputId: "inputName_" + inputId + "_" + tx.hash,
                     inputName: inputName,
-                    type: result.types[i],
+                    type: tx.inputDecoded.types[i],
                     inputValue: bufferTuple.toString()
                 }
             } else {
                 newLog.inputs[i] = {
                     inputId: "inputName_" + inputId + "_" + tx.hash,
                     inputName: inputName,
-                    type: result.types[i],
-                    inputValue: await decodeInput(result.types[i], result.inputs[i])
+                    type: tx.inputDecoded.types[i],
+                    inputValue: await decodeInput(tx.inputDecoded.types[i], tx.inputDecoded.inputs[i])
                 }
             }
             inputId++
@@ -227,6 +239,7 @@ async function getTraceStorage(blockNumber, functionName, txHash, mainContract, 
     let sstoreBuffer = [];
     let internalCalls = [];
     if (response.structLogs) {
+        if (txHash === "0x336446b3502a06db0ec800d822f1da0d76ec40d9b668430622d3bede9be8be00") fs.writeFileSync("./temporaryTrials/trace.json", JSON.stringify(response.structLogs))
         for (const trace of response.structLogs) {
             //if SHA3 is found then read all keys before being hashed
             // computation of the memory location and the storage index of a complex variable (mapping or struct)
@@ -479,12 +492,11 @@ async function readVarFromOffset(variables, value) {
 
 function decodePrimitiveType(type, value) {
     if (type.includes("uint")) {
-        return Number(web3.eth.abi.decodeParameter("uint256", "0x" + value))
+        return Number(web3.utils.hexToNumber("0x" + value))
     } else if (type.includes("string")) {
         let chars = value.split("0")[0]
         if (chars.length % 2 !== 0) chars = chars + "0"
         return web3.utils.hexToAscii("0x" + chars)
-        // return web3.eth.abi.decodeParameter("string", "0x" + value);
     } else if (type.includes("bool")) {
         return web3.eth.abi.decodeParameter("bool", "0x" + value);
     } else if (type.includes("bytes")) {

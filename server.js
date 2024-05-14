@@ -30,6 +30,7 @@ app.post('/submit', upload.single('file'), async (req, res) => {
     const fromBlock = req.body.fromBlock; // Get 'Start Block' value from form
     const toBlock = req.body.toBlock; // Get 'End Block' value from form
     const network = req.body.network;
+    const filters = JSON.parse(req.body.filters);
 
     // Perform actions based on the received data
     console.log(`Start Block: ${fromBlock}`);
@@ -45,7 +46,7 @@ app.post('/submit', upload.single('file'), async (req, res) => {
                 return res.status(500).send("Error reading file")
             }
 
-            logs = await getAllTransactions(contractName, contractAddress, fromBlock, toBlock, network, data)
+            logs = await getAllTransactions(contractName, contractAddress, fromBlock, toBlock, network, filters, data)
             fs.unlink(req.file.path, (err) => {
                 if (err) {
                     console.error(err)
@@ -54,7 +55,7 @@ app.post('/submit', upload.single('file'), async (req, res) => {
             res.send(logs)
         })
     } else {
-        logs = await getAllTransactions(contractName, contractAddress, fromBlock, toBlock, network)
+        logs = await getAllTransactions(contractName, contractAddress, fromBlock, toBlock, network, filters)
         if (logs instanceof Error) {
             res.status(404).send(logs.message)
         } else {
