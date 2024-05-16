@@ -51,8 +51,8 @@ app.post('/submit', upload.single('file'), async (req, res) => {
                 if (err) {
                     console.error(err)
                 }
+                res.send(logs)
             })
-            res.send(logs)
         })
     } else {
         logs = await getAllTransactions(contractName, contractAddress, fromBlock, toBlock, network, filters)

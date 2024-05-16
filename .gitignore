@@ -9,3 +9,4 @@ utilities.js
 uploads/
 trialsScripts/
 temporaryTrials/*.json
+*.csv

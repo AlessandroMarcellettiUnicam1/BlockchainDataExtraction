@@ -3,6 +3,7 @@ const InputDataDecoder = require('ethereum-input-data-decoder');
 const solc = require('solc');
 const fs = require('fs');
 const axios = require("axios");
+const {stringify} = require("csv-stringify")
 //let contractAbi = fs.readFileSync('abiEtherscan.json', 'utf8');
 let contractAbi = {};
 let contractTransactions = [];
@@ -28,6 +29,11 @@ let eventId = 0
 let _contractAddress = ""
 
 let contractCompiled = null
+
+let traceTime = 0
+let decodeTime = 0
+const csvColumns = ["txHash", "debugTime (s)", "decodeTime (s)", "totalTime (s)"]
+const csvRows = []
 
 async function getAllTransactions(mainContract, contractAddress, fromBlock, toBlock, network, filters, smartContract) {
 
@@ -81,6 +87,10 @@ async function getAllTransactions(mainContract, contractAddress, fromBlock, toBl
     internalTxId = 0
     eventId = 0
 
+    csvRows.push({txHash: null, debugTime: null, decodeTime: null, totalTime: parseFloat((traceTime + decodeTime).toFixed(2))})
+    stringify(csvRows, {header: true, columns: csvColumns}, (err, output) => {
+      fs.writeFileSync('csvLog.csv', output)
+    })
     return logs
     // writeFiles(jsonLog);
 }
@@ -93,24 +103,64 @@ module.exports = {
 //AdidasOriginals
 //getAllTransactions("CakeOFT");
 
+function applyFilters(contractTransactions, filters) {
+    const gasUsedFilter = filters.gasUsed
+    const gasPriceFilter = filters.gasPrice
+    const timeStampFilter = filters.timestamp
+    const sendersFilter = filters.senders;
+    const functionsFilter = filters.functions;
+
+    let contractTransactionsFiltered = contractTransactions
+    if (sendersFilter.length > 0) {
+        contractTransactionsFiltered = contractTransactionsFiltered.filter(tx => sendersFilter.includes(tx.from.toLowerCase()))
+    }
+    if (functionsFilter.length > 0) {
+        contractTransactionsFiltered = contractTransactionsFiltered.filter(tx => functionsFilter.includes(tx.inputDecoded.method))
+    }
+    if (gasUsedFilter) {
+        contractTransactionsFiltered = contractTransactionsFiltered.filter(tx => tx.gasUsed >= gasUsedFilter[0] && tx.gasUsed <= gasUsedFilter[1])
+    }
+    if (gasPriceFilter) {
+        contractTransactionsFiltered = contractTransactionsFiltered.filter(tx => tx.gasPrice >= gasPriceFilter[0] && tx.gasPrice <= gasPriceFilter[1])
+    }
+    if (timeStampFilter) {
+        const start = Math.floor(new Date(timeStampFilter[0]).getTime() / 1000)
+        const end = Math.floor(new Date(timeStampFilter[1]).getTime() / 1000)
+        contractTransactionsFiltered = contractTransactionsFiltered.filter(tx => tx.timeStamp >= start && tx.timeStamp <= end)
+    }
+
+    return contractTransactionsFiltered
+}
+
+async function debugTrasactions(txHash, blockNumber) {
+    await helpers.reset(web3Endpoint, Number(blockNumber));
+    const start = new Date()
+    const response = await hre.network.provider.send("debug_traceTransaction", [
+        txHash
+    ]);
+    const end = new Date()
+    const requiredTime = parseFloat(((end - start) / 1000).toFixed(2))
+    traceTime += requiredTime
+
+    return {response, requiredTime}
+}
+
 async function getStorageData(contractTransactions, contracts, mainContract, contractTree, contractAddress, filters) {
     let blockchainLog = [];
     let partialInt = 0;
-    const senders = filters.senders;
-    const functions = filters.functions;
+
     contractTransactions.map(tx => {
         const decoder = new InputDataDecoder(contractAbi);
         tx.inputDecoded = decoder.decodeData(tx.input);
     })
-    let contractTransactionsFiltered = contractTransactions
-    if (senders.length > 0) {
-        contractTransactionsFiltered = contractTransactions.filter(tx => senders.includes(tx.from.toLowerCase()))
-    }
-    if (functions.length > 0) {
-        contractTransactionsFiltered = contractTransactions.filter(tx => functions.includes(tx.inputDecoded.method))
-    }
-    for (const tx of contractTransactionsFiltered) {
+
+    const transactionsFiltered = applyFilters(contractTransactions, filters)
+
+    for (const tx of transactionsFiltered) {
+
+        const {response, requiredTime} = await debugTrasactions(tx.hash, tx.blockNumber)
         //if(partialInt < 10){
+        const start = new Date()
         console.log("processing transaction " + partialInt)
         const pastEvents = await getEvents(tx.hash, Number(tx.blockNumber), contractAddress);
         let newLog = {
@@ -126,15 +176,12 @@ async function getStorageData(contractTransactions, contracts, mainContract, con
             events: pastEvents
         };
         console.log(tx.hash);
-        console.log("-----------------------------------------------------------------------");
 
         // const decoder = new InputDataDecoder(contractAbi);
         // const result = decoder.decodeData(tx.input);
 
-        const isoDate = new Date(tx.timeStamp * 1000).toISOString()
-
         // newLog.activity = tx.method;
-        newLog.timestamp = isoDate
+        newLog.timestamp = new Date(tx.timeStamp * 1000).toISOString()
 
         for (let i = 0; i < tx.inputDecoded.inputs.length; i++) {
             //check if the input value is an array or a struct
@@ -178,10 +225,20 @@ async function getStorageData(contractTransactions, contracts, mainContract, con
             inputId++
         }
 
-        const storageVal = await getTraceStorage(tx.blockNumber, tx.functionName.split("(")[0], tx.hash,
+        const storageVal = await getTraceStorage(response, tx.blockNumber, tx.functionName.split("(")[0], tx.hash,
             mainContract, contracts, contractTree, partialInt);
         newLog.storageState = storageVal.decodedValues;
         newLog.internalTxs = storageVal.internalCalls;
+        const end = new Date()
+        const requiredDecodeTime = parseFloat(((end - start) / 1000).toFixed(2))
+        decodeTime += requiredDecodeTime
+        csvRows.push({
+            txHash: tx.hash,
+            debugTime: requiredTime,
+            decodeTime: requiredDecodeTime,
+            totalTime: parseFloat((requiredTime + requiredDecodeTime).toFixed(2))
+        })
+        console.log("-----------------------------------------------------------------------");
         blockchainLog.push(newLog)
         partialInt++;
     }
@@ -208,7 +265,7 @@ async function decodeInput(type, value) {
     }
 }
 
-async function getTraceStorage(blockNumber, functionName, txHash, mainContract, contracts, contractTree) {
+async function getTraceStorage(traceDebugged, blockNumber, functionName, txHash, mainContract, contracts, contractTree) {
     /* const provider = ganache.provider({
          network_id: 1,
          fork: 'https://mainnet.infura.io/v3/f3851e4d467341f1b5927b6546d9f30c\@' + blockNumber
@@ -218,16 +275,26 @@ async function getTraceStorage(blockNumber, functionName, txHash, mainContract, 
          params: [txHash]
      });*/
 
-    await helpers.reset(web3Endpoint, Number(blockNumber));
+    // await helpers.reset(web3Endpoint, Number(blockNumber));
     //  hre.network.config.forking.blockNumber = Number(blockNumber);
     // console.log(hre.config);
     //check for historical fork
-    const t = new Date();
-    const response = await hre.network.provider.send("debug_traceTransaction", [
-        txHash
-    ]);
-    const t1 = new Date();
-    //console.log(t1 - t);
+
+    // await hre.network.provider.request({
+    //     method: "hardhat_reset",
+    //     params: [
+    //         {
+    //             forking: {
+    //                 jsonRpcUrl: web3Endpoint,
+    //                 blockNumber: Number(blockNumber)
+    //             }
+    //         }
+    //     ]
+    // })
+
+    // const response = await hre.network.provider.send("debug_traceTransaction", [
+    //     txHash
+    // ]);
     //used to store the storage changed by the function. Used to compare the generated keys
     let functionStorage = {};
     //used to store all the keys potentially related to a dynamic structure
@@ -238,9 +305,9 @@ async function getTraceStorage(blockNumber, functionName, txHash, mainContract, 
     let bufferPC = -10;
     let sstoreBuffer = [];
     let internalCalls = [];
-    if (response.structLogs) {
-        if (txHash === "0x336446b3502a06db0ec800d822f1da0d76ec40d9b668430622d3bede9be8be00") fs.writeFileSync("./temporaryTrials/trace.json", JSON.stringify(response.structLogs))
-        for (const trace of response.structLogs) {
+    if (traceDebugged.structLogs) {
+        if (txHash === "0x336446b3502a06db0ec800d822f1da0d76ec40d9b668430622d3bede9be8be00") fs.writeFileSync("./temporaryTrials/trace.json", JSON.stringify(traceDebugged.structLogs))
+        for (const trace of traceDebugged.structLogs) {
             //if SHA3 is found then read all keys before being hashed
             // computation of the memory location and the storage index of a complex variable (mapping or struct)
             // in the stack we have the offset and the lenght of the memory
@@ -500,7 +567,7 @@ function decodePrimitiveType(type, value) {
     } else if (type.includes("bool")) {
         return web3.eth.abi.decodeParameter("bool", "0x" + value);
     } else if (type.includes("bytes")) {
-        return JSON.stringify(web3.abi.decodeParameter("bytes", "0x" + value)).replace("\"", "");
+        return JSON.stringify(web3.utils.hexToBytes("0x" + value)).replace("\"", "");
     } else if (type.includes("address")) {
         return value;
     } else if (type.includes("enum")) {
