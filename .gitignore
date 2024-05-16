@@ -10,3 +10,4 @@ uploads/
 trialsScripts/
 temporaryTrials/*.json
 *.csv
+.idea/
