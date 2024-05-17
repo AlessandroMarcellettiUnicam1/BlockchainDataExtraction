@@ -14,6 +14,7 @@ const abiDecoder = require('abi-decoder');
 //const cotractAddressAdidas = 0x28472a58A490c5e09A238847F66A68a47cC76f0f
 const hre = require("hardhat");
 const helpers = require("@nomicfoundation/hardhat-toolbox/network-helpers");
+const {saveData} = require("./databaseStore");
 require('dotenv').config();
 
 let networkInUse = ""
@@ -91,6 +92,8 @@ async function getAllTransactions(mainContract, contractAddress, fromBlock, toBl
     stringify(csvRows, {header: true, columns: csvColumns}, (err, output) => {
       fs.writeFileSync('csvLog.csv', output)
     })
+
+    saveData(logs)
     return logs
     // writeFiles(jsonLog);
 }

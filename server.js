@@ -10,6 +10,9 @@ const multer = require('multer');
 const upload = multer({dest: 'uploads/'})
 const port = 8000;
 
+const connectDB = require('./config/db');
+connectDB();
+
 app.use(cors());
 
 // Middleware: Logging for every request
