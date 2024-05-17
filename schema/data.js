@@ -1,29 +1,38 @@
 const mongoose = require('mongoose');
+const {int} = require("hardhat/internal/core/params/argumentTypes");
 
 const transactionSchema = new mongoose.Schema({
     txHash: { type: String, required: true, unique: true },
+    contractAddress: { type: String, required: true },
     sender: { type: String, required: true },
     gasUsed: { type: String, required: true },
     activity: { type: String, required: true },
     timestamp: { type: Date, required: true },
     inputs: [{
-        name: { type: String },
-        type: { type: String },
-        value: { type: mongoose.Schema.Types.Mixed } // Può essere di diversi tipi
+        inputId: {type: String },
+        inputName: { type: String },
+        type: { type: mongoose.Schema.Types.Mixed },
+        inputValue: { type: mongoose.Schema.Types.Mixed }
     }],
     storageState: [{
-        name: { type: String },
+        variableId: {type: String },
+        variableName: { type: String },
         type: { type: String },
-        value: { type: mongoose.Schema.Types.Mixed } // Può essere di diversi tipi
+        variableValue: { type: String },
+        variableRawValue: { type: String }
     }],
     internalTxs: [{
-        type: { type: String },
-        to: { type: String }
-        // Altri campi se necessario
+        callId: { type: String },
+        callType: { type: String },
+        to: { type: String },
+        inputsCall: [
+            { type: String|null }
+        ]
     }],
     events: [{
-        name: { type: String },
-        values: mongoose.Schema.Types.Mixed // Può essere di diversi tipi
+        eventId: { type: String },
+        eventName: { type: String },
+        eventValues: { type: mongoose.Schema.Types.Mixed }
     }]
 });
 
