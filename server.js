@@ -3,10 +3,15 @@ const cors = require('cors');
 const path = require('path');
 const bodyParser = require('body-parser');
 const fs = require('fs');
-const getAllTransactions = require("./main");
+const {getAllTransactions} = require("./main");
 const {stringify} = require("csv-stringify");
 const app = express();
+const multer = require('multer');
+const upload = multer({dest: 'uploads/'})
 const port = 8000;
+
+const connectDB = require('./config/db');
+connectDB();
 
 app.use(cors());
 
@@ -22,11 +27,13 @@ app.use(bodyParser.urlencoded({extended: true}));
 app.use(bodyParser.json());
 
 // Route: Home Page
-app.post('/submit', async (req, res) => {
+app.post('/submit', upload.single('file'), async (req, res) => {
     const contractAddress = req.body.contractAddress; // Get data from input1
     const contractName = req.body.contractName; // Get data from input2
     const fromBlock = req.body.fromBlock; // Get 'Start Block' value from form
     const toBlock = req.body.toBlock; // Get 'End Block' value from form
+    const network = req.body.network;
+    const filters = JSON.parse(req.body.filters);
 
     // Perform actions based on the received data
     console.log(`Start Block: ${fromBlock}`);
@@ -34,9 +41,30 @@ app.post('/submit', async (req, res) => {
     // Perform actions with the received data (you can customize this part)
     console.log(`contract Address: ${contractAddress}`);
     console.log(`Contract name: ${contractName}`);
-    const logs = await getAllTransactions(contractName, contractAddress, fromBlock, toBlock)
+    let logs = []
+    if (req.file) {
+        fs.readFile(req.file.path, 'utf-8', async (err, data) => {
+            if (err) {
+                console.error(err)
+                return res.status(500).send("Error reading file")
+            }
 
-    res.send(logs)
+            logs = await getAllTransactions(contractName, contractAddress, fromBlock, toBlock, network, filters, data)
+            fs.unlink(req.file.path, (err) => {
+                if (err) {
+                    console.error(err)
+                }
+                res.send(logs)
+            })
+        })
+    } else {
+        logs = await getAllTransactions(contractName, contractAddress, fromBlock, toBlock, network, filters)
+        if (logs instanceof Error) {
+            res.status(404).send(logs.message)
+        } else {
+            res.send(logs)
+        }
+    }
 });
 
 app.post('/json-download', (req, res) => {
@@ -132,7 +160,6 @@ app.post('/ocel-download', (req, res) => {
             console.log('File sent successfully');
         }
     });
-
 })
 
 app.post('/jsonocel-download', (req, res) => {
