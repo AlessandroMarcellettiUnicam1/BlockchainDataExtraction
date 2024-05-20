@@ -33,8 +33,7 @@ let contractCompiled = null
 
 let traceTime = 0
 let decodeTime = 0
-const csvColumns = ["txHash", "debugTime (s)", "decodeTime (s)", "totalTime (s)"]
-const csvRows = []
+const csvColumns = ["txHash", "debugTime", "decodeTime", "totalTime"]
 
 async function getAllTransactions(mainContract, contractAddress, fromBlock, toBlock, network, filters, smartContract) {
 
@@ -83,17 +82,28 @@ async function getAllTransactions(mainContract, contractAddress, fromBlock, toBl
     // returns
     const contractTree = await getCompiledData(contracts, mainContract);
 
-    const logs = await getStorageData(contractTransactions, contracts, mainContract, contractTree, contractAddress, filters);
+    let logs
+    try {
+        logs = await getStorageData(contractTransactions, contracts, mainContract, contractTree, contractAddress, filters);
+    } catch (e) {
+        return e
+    }
+
     inputId = 0
     internalTxId = 0
     eventId = 0
 
-    csvRows.push({txHash: null, debugTime: null, decodeTime: null, totalTime: parseFloat((traceTime + decodeTime).toFixed(2))})
-    stringify(csvRows, {header: true, columns: csvColumns}, (err, output) => {
-      fs.writeFileSync('csvLog.csv', output)
+    let csvRow = []
+    csvRow.push({
+        txHash: null,
+        debugTime: null,
+        decodeTime: null,
+        totalTime: parseFloat((traceTime + decodeTime).toFixed(2))
+    })
+    stringify(csvRow, (err, output) => {
+        fs.appendFileSync('csvLog.csv', output)
     })
 
-    saveData(logs)
     return logs
     // writeFiles(jsonLog);
 }
@@ -158,9 +168,10 @@ async function getStorageData(contractTransactions, contracts, mainContract, con
     })
 
     const transactionsFiltered = applyFilters(contractTransactions, filters)
-
+    stringify([], {header: true, columns: csvColumns}, (err, output) => {
+        fs.writeFileSync('csvLog.csv', output)
+    })
     for (const tx of transactionsFiltered) {
-
         const {response, requiredTime} = await debugTrasactions(tx.hash, tx.blockNumber)
         //if(partialInt < 10){
         const start = new Date()
@@ -235,21 +246,22 @@ async function getStorageData(contractTransactions, contracts, mainContract, con
         const end = new Date()
         const requiredDecodeTime = parseFloat(((end - start) / 1000).toFixed(2))
         decodeTime += requiredDecodeTime
-        csvRows.push({
+        let csvRow = []
+        csvRow.push({
             txHash: tx.hash,
             debugTime: requiredTime,
             decodeTime: requiredDecodeTime,
             totalTime: parseFloat((requiredTime + requiredDecodeTime).toFixed(2))
         })
+        stringify(csvRow, (err, output) => {
+            fs.appendFileSync('csvLog.csv', output)
+        })
         console.log("-----------------------------------------------------------------------");
         blockchainLog.push(newLog)
+        saveData(newLog)
         partialInt++;
     }
-    try {
-        return blockchainLog;
-    } catch (error) {
-        console.error(`Error writing output file: ${error}`);
-    }
+    return blockchainLog;
 }
 
 async function decodeInput(type, value) {

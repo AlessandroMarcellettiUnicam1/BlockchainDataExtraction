@@ -1,5 +1,4 @@
 const mongoose = require('mongoose');
-const {int} = require("hardhat/internal/core/params/argumentTypes");
 
 const transactionSchema = new mongoose.Schema({
     txHash: { type: String, required: true, unique: true },
@@ -26,7 +25,7 @@ const transactionSchema = new mongoose.Schema({
         callType: { type: String },
         to: { type: String },
         inputsCall: [
-            { type: String|null }
+            { type: mongoose.Schema.Types.Mixed }
         ]
     }],
     events: [{

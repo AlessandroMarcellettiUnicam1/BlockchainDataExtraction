@@ -4,8 +4,8 @@ function saveData(data) {
     const newTransaction = new Transaction(data)
 
     newTransaction.save()
-        .then(transaction => {
-            console.log('Transazione salvata con successo:', transaction);
+        .then(() => {
+            console.log('Transazione salvata con successo');
         })
         .catch(error => {
             console.error('Errore durante il salvataggio della transazione:', error);
