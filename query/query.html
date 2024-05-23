@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Query MongoDB</title>
+    <!-- Bootstrap CSS -->
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
+</head>
+<body>
+<div class="container mt-5">
+    <h1>Query builder MongoDB</h1>
+    <br/>
+    <button type="button" id="allTransactions" class="btn btn-primary">Tutte le transazioni</button>
+
+    <form id="queryFormFindByID" class="my-4">
+        <div class="form-group">
+            <label for="fieldSelectFindByID" class="form-label">Cerca per ID documento:</label>
+            <div class="input-group mb-3">
+                <input type="text" id="fieldSelectFindByID" class="form-control" placeholder="Valore ID" required>
+            </div>
+        </div>
+        <button type="button" id="searchQueryFindByID" class="btn btn-primary">Cerca</button>
+    </form>
+    <form id="queryForm" class="my-4">
+        <div class="form-group">
+            <label for="fieldSelect" class="form-label">Cerca per campi documento:</label>
+            <div class="input-group mb-3">
+                <select id="fieldSelect" class="form-control" name="fieldSelect" required>
+                    <option value="" disabled selected>Seleziona un campo</option>
+                </select>
+                <input type="text" id="fieldValue" class="form-control" placeholder="Valore del campo" required>
+            </div>
+        </div>
+        <button type="button" id="searchQuery" class="btn btn-primary">Cerca</button>
+    </form>
+
+    <pre id="results" class="my-4"></pre>
+</div>
+
+<script>
+    window.onload = function () {
+        const fieldSelect = document.getElementById('fieldSelect');
+
+        function createNestedFieldSelect(fields) {
+            fieldSelect.setAttribute('id', 'fieldSelect');
+            fieldSelect.setAttribute('name', 'fieldSelect');
+
+            fields.forEach(field => {
+                if (field.includes('.')) {
+                    const [parentField, nestedField] = field.split('.');
+                    if (!fields.includes(parentField)) {
+                        fields.push(parentField);
+                    }
+                    let optgroup = fieldSelect.querySelector(`optgroup[label="${parentField}"]`);
+                    if (!optgroup) {
+                        optgroup = document.createElement('optgroup');
+                        optgroup.label = parentField;
+                        fieldSelect.appendChild(optgroup);
+                    }
+                    const option = document.createElement('option');
+                    option.textContent = nestedField;
+                    option.value = field;
+                    optgroup.appendChild(option);
+                } else {
+                    const option = document.createElement('option');
+                    option.textContent = field;
+                    option.value = field;
+                    fieldSelect.appendChild(option);
+                }
+            });
+        }
+
+        fetch('/query/api/fields')
+            .then(response => response.json())
+            .then(fields => {
+                createNestedFieldSelect(fields);
+            })
+            .catch(error => console.error('Errore nel recupero dei campi:', error));
+
+        document.getElementById('searchQueryFindByID').addEventListener('click', function (event) {
+            event.preventDefault();
+            const id = document.getElementById('fieldSelectFindByID').value;
+            console.log(id);
+
+            fetch('/query/api/find', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ id: id })
+            })
+                .then(response => response.json())
+                .then(data => {
+                    console.log(data);
+                    const results = document.getElementById('results');
+                    results.innerHTML = '';
+                    if (data.length === 0) {
+                        results.textContent = 'Nessun risultato trovato';
+                    } else {
+                        results.textContent = JSON.stringify(data, null, 2);
+                    }
+                })
+                .catch(error => console.error('Errore nell\'esecuzione della query:', error));
+        });
+
+        document.getElementById('searchQuery').addEventListener('click', function (event) {
+            event.preventDefault();
+            const field = document.getElementById('fieldSelect').value;
+            const value = document.getElementById('fieldValue').value;
+
+            if (field && value) {
+                const query = {};
+                query[field] = value;
+
+                fetch('/query/api/query', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(query)
+                })
+                    .then(response => response.json())
+                    .then(data => {
+                        //console.log(data);
+                        const results = document.getElementById('results');
+                        results.innerHTML = '';
+                        if (data.length === 0) {
+                            results.textContent = 'Nessun risultato trovato';
+                        } else {
+                            results.textContent = JSON.stringify(data[0], null, 2);
+                        }
+                    })
+                    .catch(error => console.error('Errore nell\'esecuzione della query:', error));
+            }
+        });
+
+        document.getElementById('allTransactions').addEventListener('click', function (event) {
+            event.preventDefault();
+
+            fetch('/query/api/all', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            })
+                .then(response => response.json())
+                .then(data => {
+                    console.log(data);
+                    const results = document.getElementById('results');
+                    results.innerHTML = '';
+                    if (data.length === 0) {
+                        results.textContent = 'Nessuna transazione trovata';
+                    } else {
+                        data.forEach(transaction => {
+                            const transactionDiv = document.createElement('div');
+                            transactionDiv.textContent = JSON.stringify(transaction, null, 2);
+                            results.appendChild(transactionDiv);
+                        });
+                    }
+                })
+                .catch(error => console.error('Errore nel recupero di tutte le transazioni:', error));
+        });
+    }
+</script>
+</body>
+</html>

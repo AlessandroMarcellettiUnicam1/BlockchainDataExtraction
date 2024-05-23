@@ -1,0 +1,487 @@
+[
+  {
+    "txHash": "0x1",
+    "contractAddress": "0xcontract1",
+    "sender": "0xsender1",
+    "gasUsed": "21000",
+    "activity": "transfer",
+    "timestamp": "2024-05-22T13:48:26.854Z",
+    "inputs": [
+      {
+        "inputId": "1",
+        "inputName": "amount",
+        "type": "uint256",
+        "inputValue": 100
+      }
+    ],
+    "storageState": [
+      {
+        "variableId": "1",
+        "variableName": "balance",
+        "type": "uint256",
+        "variableValue": "1000",
+        "variableRawValue": "1000"
+      }
+    ],
+    "internalTxs": [
+      {
+        "callId": "1",
+        "callType": "call",
+        "to": "0xto1",
+        "inputsCall": [
+          123
+        ]
+      }
+    ],
+    "events": [
+      {
+        "eventId": "1",
+        "eventName": "Transfer",
+        "eventValues": {
+          "from": "0xsender1",
+          "to": "0xreceiver1",
+          "amount": 100
+        }
+      }
+    ]
+  },
+  {
+    "txHash": "0x2",
+    "contractAddress": "0xcontract2",
+    "sender": "0xsender2",
+    "gasUsed": "30000",
+    "activity": "approve",
+    "timestamp": "2024-05-22T13:48:26.854Z",
+    "inputs": [
+      {
+        "inputId": "2",
+        "inputName": "spender",
+        "type": "address",
+        "inputValue": "0xspender1"
+      }
+    ],
+    "storageState": [
+      {
+        "variableId": "2",
+        "variableName": "allowance",
+        "type": "uint256",
+        "variableValue": "500",
+        "variableRawValue": "500"
+      }
+    ],
+    "internalTxs": [
+      {
+        "callId": "2",
+        "callType": "delegatecall",
+        "to": "0xto2",
+        "inputsCall": [
+          "data"
+        ]
+      }
+    ],
+    "events": [
+      {
+        "eventId": "2",
+        "eventName": "Approval",
+        "eventValues": {
+          "owner": "0xsender2",
+          "spender": "0xspender1",
+          "value": 500
+        }
+      }
+    ]
+  },
+  {
+    "txHash": "0x3",
+    "contractAddress": "0xcontract3",
+    "sender": "0xsender3",
+    "gasUsed": "25000",
+    "activity": "mint",
+    "timestamp": "2024-05-22T13:48:26.854Z",
+    "inputs": [
+      {
+        "inputId": "3",
+        "inputName": "to",
+        "type": "address",
+        "inputValue": "0xto3"
+      }
+    ],
+    "storageState": [
+      {
+        "variableId": "3",
+        "variableName": "totalSupply",
+        "type": "uint256",
+        "variableValue": "10000",
+        "variableRawValue": "10000"
+      }
+    ],
+    "internalTxs": [
+      {
+        "callId": "3",
+        "callType": "staticcall",
+        "to": "0xto3",
+        "inputsCall": [
+          true
+        ]
+      }
+    ],
+    "events": [
+      {
+        "eventId": "3",
+        "eventName": "Mint",
+        "eventValues": {
+          "to": "0xto3",
+          "amount": 200
+        }
+      }
+    ]
+  },
+  {
+    "txHash": "0x4",
+    "contractAddress": "0xcontract4",
+    "sender": "0xsender4",
+    "gasUsed": "27000",
+    "activity": "burn",
+    "timestamp": "2024-05-22T13:48:26.854Z",
+    "inputs": [
+      {
+        "inputId": "4",
+        "inputName": "value",
+        "type": "uint256",
+        "inputValue": 150
+      }
+    ],
+    "storageState": [
+      {
+        "variableId": "4",
+        "variableName": "totalSupply",
+        "type": "uint256",
+        "variableValue": "8500",
+        "variableRawValue": "8500"
+      }
+    ],
+    "internalTxs": [
+      {
+        "callId": "4",
+        "callType": "call",
+        "to": "0xto4",
+        "inputsCall": [
+          false
+        ]
+      }
+    ],
+    "events": [
+      {
+        "eventId": "4",
+        "eventName": "Burn",
+        "eventValues": {
+          "from": "0xsender4",
+          "amount": 150
+        }
+      }
+    ]
+  },
+  {
+    "txHash": "0x5",
+    "contractAddress": "0xcontract5",
+    "sender": "0xsender5",
+    "gasUsed": "32000",
+    "activity": "transferFrom",
+    "timestamp": "2024-05-22T13:48:26.854Z",
+    "inputs": [
+      {
+        "inputId": "5",
+        "inputName": "from",
+        "type": "address",
+        "inputValue": "0xfrom1"
+      },
+      {
+        "inputId": "5a",
+        "inputName": "to",
+        "type": "address",
+        "inputValue": "0xto5"
+      },
+      {
+        "inputId": "5b",
+        "inputName": "value",
+        "type": "uint256",
+        "inputValue": 200
+      }
+    ],
+    "storageState": [
+      {
+        "variableId": "5",
+        "variableName": "balance",
+        "type": "uint256",
+        "variableValue": "7800",
+        "variableRawValue": "7800"
+      }
+    ],
+    "internalTxs": [
+      {
+        "callId": "5",
+        "callType": "delegatecall",
+        "to": "0xto5",
+        "inputsCall": [
+          "data5"
+        ]
+      }
+    ],
+    "events": [
+      {
+        "eventId": "5",
+        "eventName": "TransferFrom",
+        "eventValues": {
+          "from": "0xfrom1",
+          "to": "0xto5",
+          "value": 200
+        }
+      }
+    ]
+  },
+  {
+    "txHash": "0x6",
+    "contractAddress": "0xcontract6",
+    "sender": "0xsender6",
+    "gasUsed": "20000",
+    "activity": "deposit",
+    "timestamp": "2024-05-22T13:48:26.854Z",
+    "inputs": [
+      {
+        "inputId": "6",
+        "inputName": "amount",
+        "type": "uint256",
+        "inputValue": 300
+      }
+    ],
+    "storageState": [
+      {
+        "variableId": "6",
+        "variableName": "balance",
+        "type": "uint256",
+        "variableValue": "8200",
+        "variableRawValue": "8200"
+      }
+    ],
+    "internalTxs": [
+      {
+        "callId": "6",
+        "callType": "staticcall",
+        "to": "0xto6",
+        "inputsCall": [
+          false
+        ]
+      }
+    ],
+    "events": [
+      {
+        "eventId": "6",
+        "eventName": "Deposit",
+        "eventValues": {
+          "account": "0xsender6",
+          "amount": 300
+        }
+      }
+    ]
+  },
+  {
+    "txHash": "0x7",
+    "contractAddress": "0xcontract7",
+    "sender": "0xsender7",
+    "gasUsed": "24000",
+    "activity": "withdraw",
+    "timestamp": "2024-05-22T13:48:26.854Z",
+    "inputs": [
+      {
+        "inputId": "7",
+        "inputName": "amount",
+        "type": "uint256",
+        "inputValue": 250
+      }
+    ],
+    "storageState": [
+      {
+        "variableId": "7",
+        "variableName": "balance",
+        "type": "uint256",
+        "variableValue": "7950",
+        "variableRawValue": "7950"
+      }
+    ],
+    "internalTxs": [
+      {
+        "callId": "7",
+        "callType": "call",
+        "to": "0xto7",
+        "inputsCall": [
+          true
+        ]
+      }
+    ],
+    "events": [
+      {
+        "eventId": "7",
+        "eventName": "Withdraw",
+        "eventValues": {
+          "account": "0xsender7",
+          "amount": 250
+        }
+      }
+    ]
+  },
+  {
+    "txHash": "0x8",
+    "contractAddress": "0xcontract8",
+    "sender": "0xsender8",
+    "gasUsed": "18000",
+    "activity": "swap",
+    "timestamp": "2024-05-22T13:48:26.854Z",
+    "inputs": [
+      {
+        "inputId": "8",
+        "inputName": "tokenIn",
+        "type": "address",
+        "inputValue": "0xtokenIn"
+      },
+      {
+        "inputId": "8a",
+        "inputName": "tokenOut",
+        "type": "address",
+        "inputValue": "0xtokenOut"
+      },
+      {
+        "inputId": "8b",
+        "inputName": "amountIn",
+        "type": "uint256",
+        "inputValue": 500
+      },
+      {
+        "inputId": "8c",
+        "inputName": "amountOut",
+        "type": "uint256",
+        "inputValue": 450
+      }
+    ],
+    "storageState": [
+      {
+        "variableId": "8",
+        "variableName": "reserve",
+        "type": "uint256",
+        "variableValue": "5000",
+        "variableRawValue": "5000"
+      }
+    ],
+    "internalTxs": [
+      {
+        "callId": "8",
+        "callType": "staticcall",
+        "to": "0xto8",
+        "inputsCall": [
+          true
+        ]
+      }
+    ],
+    "events": [
+      {
+        "eventId": "8",
+        "eventName": "Swap",
+        "eventValues": {
+          "tokenIn": "0xtokenIn",
+          "tokenOut": "0xtokenOut",
+          "amountIn": 500,
+          "amountOut": 450
+        }
+      }
+    ]
+  },
+  {
+    "txHash": "0x9",
+    "contractAddress": "0xcontract9",
+    "sender": "0xsender9",
+    "gasUsed": "22000",
+    "activity": "stake",
+    "timestamp": "2024-05-22T13:48:26.854Z",
+    "inputs": [
+      {
+        "inputId": "9",
+        "inputName": "amount",
+        "type": "uint256",
+        "inputValue": 400
+      }
+    ],
+    "storageState": [
+      {
+        "variableId": "9",
+        "variableName": "stake",
+        "type": "uint256",
+        "variableValue": "4000",
+        "variableRawValue": "4000"
+      }
+    ],
+    "internalTxs": [
+      {
+        "callId": "9",
+        "callType": "call",
+        "to": "0xto9",
+        "inputsCall": [
+          true
+        ]
+      }
+    ],
+    "events": [
+      {
+        "eventId": "9",
+        "eventName": "Stake",
+        "eventValues": {
+          "account": "0xsender9",
+          "amount": 400
+        }
+      }
+    ]
+  },
+  {
+    "txHash": "0x10",
+    "contractAddress": "0xcontract10",
+    "sender": "0xsender10",
+    "gasUsed": "26000",
+    "activity": "unstake",
+    "timestamp": "2024-05-22T13:48:26.854Z",
+    "inputs": [
+      {
+        "inputId": "10",
+        "inputName": "amount",
+        "type": "uint256",
+        "inputValue": 350
+      }
+    ],
+    "storageState": [
+      {
+        "variableId": "10",
+        "variableName": "stake",
+        "type": "uint256",
+        "variableValue": "3650",
+        "variableRawValue": "3650"
+      }
+    ],
+    "internalTxs": [
+      {
+        "callId": "10",
+        "callType": "delegatecall",
+        "to": "0xto10",
+        "inputsCall": [
+          "data10"
+        ]
+      }
+    ],
+    "events": [
+      {
+        "eventId": "10",
+        "eventName": "Unstake",
+        "eventValues": {
+          "account": "0xsender10",
+          "amount": 350
+        }
+      }
+    ]
+  }
+]
