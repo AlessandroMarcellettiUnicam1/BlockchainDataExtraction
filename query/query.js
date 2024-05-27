@@ -1,18 +1,6 @@
 const express = require('express');
-const mongoose = require('mongoose');
-const path = require('path');
 const app = express();
-const saveTransaction = require("./saveTransaction");
 const Transaction = require("../schema/data");
-
-app.set('view engine', 'ejs');
-app.use(express.static(path.join(__dirname, 'query')));
-
-app.get('/save', saveTransaction);
-
-app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'query.html'));
-});
 
 app.get('/api/fields', (req, res) => {
     function getAllFields(schema, prefix = '') {
@@ -47,18 +35,6 @@ app.post('/api/query', (req, res) => {
         .catch(err => res.status(500).json({error: err.message}));
 });
 
-app.post('/api/find', (req, res) => {
-    const id = req.body.id;
-    //console.log(id);
-
-    Transaction.findById(id)
-        .then(transaction => {
-            if (!transaction) {
-                return res.status(404).json({ message: 'Transazione non trovata' });
-            }
-            res.json(transaction);
-        })
-        .catch(err => res.status(400).json({ message: err.message }));
-});
+//TODO: interfaccia con React, filtri con range, bottone download per transazioni
 
 module.exports = app;

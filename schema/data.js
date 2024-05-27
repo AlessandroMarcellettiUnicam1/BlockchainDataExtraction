@@ -6,6 +6,7 @@ const transactionSchema = new mongoose.Schema({
     sender: { type: String, required: true },
     gasUsed: { type: String, required: true },
     activity: { type: String, required: true },
+    blockNumber: {type: Number, required: true },
     timestamp: { type: Date, required: true },
     inputs: [{
         inputId: {type: String },
