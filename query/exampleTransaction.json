@@ -5,6 +5,7 @@
     "sender": "0xsender1",
     "gasUsed": "21000",
     "activity": "transfer",
+    "blockNumber": "63206709",
     "timestamp": "2024-05-22T13:48:26.854Z",
     "inputs": [
       {
@@ -51,6 +52,7 @@
     "sender": "0xsender2",
     "gasUsed": "30000",
     "activity": "approve",
+    "blockNumber": "26855898",
     "timestamp": "2024-05-22T13:48:26.854Z",
     "inputs": [
       {
@@ -97,6 +99,7 @@
     "sender": "0xsender3",
     "gasUsed": "25000",
     "activity": "mint",
+    "blockNumber": "51013596",
     "timestamp": "2024-05-22T13:48:26.854Z",
     "inputs": [
       {
@@ -142,6 +145,7 @@
     "sender": "0xsender4",
     "gasUsed": "27000",
     "activity": "burn",
+    "blockNumber": "74969845",
     "timestamp": "2024-05-22T13:48:26.854Z",
     "inputs": [
       {
@@ -187,6 +191,7 @@
     "sender": "0xsender5",
     "gasUsed": "32000",
     "activity": "transferFrom",
+    "blockNumber": "58885106",
     "timestamp": "2024-05-22T13:48:26.854Z",
     "inputs": [
       {
@@ -245,6 +250,7 @@
     "sender": "0xsender6",
     "gasUsed": "20000",
     "activity": "deposit",
+    "blockNumber": "64257622",
     "timestamp": "2024-05-22T13:48:26.854Z",
     "inputs": [
       {
@@ -290,6 +296,7 @@
     "sender": "0xsender7",
     "gasUsed": "24000",
     "activity": "withdraw",
+    "blockNumber": "81296613",
     "timestamp": "2024-05-22T13:48:26.854Z",
     "inputs": [
       {
@@ -335,6 +342,7 @@
     "sender": "0xsender8",
     "gasUsed": "18000",
     "activity": "swap",
+    "blockNumber": "23843876",
     "timestamp": "2024-05-22T13:48:26.854Z",
     "inputs": [
       {
@@ -400,6 +408,7 @@
     "sender": "0xsender9",
     "gasUsed": "22000",
     "activity": "stake",
+    "blockNumber": "24277503",
     "timestamp": "2024-05-22T13:48:26.854Z",
     "inputs": [
       {
@@ -445,6 +454,7 @@
     "sender": "0xsender10",
     "gasUsed": "26000",
     "activity": "unstake",
+    "blockNumber": "69933930",
     "timestamp": "2024-05-22T13:48:26.854Z",
     "inputs": [
       {
