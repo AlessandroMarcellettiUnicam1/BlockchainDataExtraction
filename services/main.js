@@ -1,6 +1,5 @@
 const {Web3} = require('web3');
 const InputDataDecoder = require('ethereum-input-data-decoder');
-const solc = require('solc');
 const fs = require('fs');
 const axios = require("axios");
 const {stringify} = require("csv-stringify")
@@ -13,7 +12,8 @@ let contractTransactions = [];
 //const cotractAddressAdidas = 0x28472a58A490c5e09A238847F66A68a47cC76f0f
 const hre = require("hardhat");
 const helpers = require("@nomicfoundation/hardhat-toolbox/network-helpers");
-const {saveData} = require("./databaseStore");
+const {saveData} = require("../databaseStore");
+const {getRemoteVersion, detectVersion} = require("./solcVersionManager");
 require('dotenv').config();
 
 let networkInUse = ""
@@ -179,6 +179,7 @@ async function getStorageData(contractTransactions, contracts, mainContract, con
         const pastEvents = await getEvents(tx.hash, Number(tx.blockNumber), contractAddress);
         let newLog = {
             txHash: tx.hash,
+            blockNumber: tx.blockNumber,
             contractAddress: tx.to,
             sender: tx.from,
             gasUsed: tx.gasUsed,
@@ -321,7 +322,6 @@ async function getTraceStorage(traceDebugged, blockNumber, functionName, txHash,
     let sstoreBuffer = [];
     let internalCalls = [];
     if (traceDebugged.structLogs) {
-        if (txHash === "0x336446b3502a06db0ec800d822f1da0d76ec40d9b668430622d3bede9be8be00") fs.writeFileSync("./temporaryTrials/trace.json", JSON.stringify(traceDebugged.structLogs))
         for (const trace of traceDebugged.structLogs) {
             //if SHA3 is found then read all keys before being hashed
             // computation of the memory location and the storage index of a complex variable (mapping or struct)
@@ -726,17 +726,23 @@ async function getCompiledData(contracts, contractName) {
         }
     };
 
+    let solidityVersion = ""
     if (Array.isArray(contracts)) {
         for (const contract in contracts) {
             input.sources[contract] = {};
             input.sources[contract].content = contracts[contract].content;
+            solidityVersion = await detectVersion(contracts[contract].content)
         }
     } else if (contracts) {
         input.sources[contractName] = {};
         input.sources[contractName].content = contracts;
+        solidityVersion = await detectVersion(contracts)
     }
 
-    const output = solc.compile(JSON.stringify(input));
+    console.log(solidityVersion)
+    const solcSnapshot = await getRemoteVersion(solidityVersion.replace("soljson-", "").replace(".js", ""))
+
+    const output = solcSnapshot.compile(JSON.stringify(input));
     contractCompiled = output
     fs.writeFileSync('testContract.json', output);
     if (!JSON.parse(output).contracts) {
@@ -745,7 +751,7 @@ async function getCompiledData(contracts, contractName) {
 
     const source = JSON.parse(output).sources;
     contractAbi = JSON.stringify(await getAbi(JSON.parse(output), contractName));
-    //fs.writeFileSync('abitest.json', JSON.stringify(contractAbi));
+    // fs.writeFileSync('abitest.json', JSON.stringify(contractAbi));
     //get all storage variable for contract, including inherited ones
     const storageData = await getContractVariableTree(JSON.parse(output));
     //take the effective tree
@@ -759,6 +765,7 @@ async function getCompiledData(contracts, contractName) {
     //construct full contract tree including also variables
     const fullContractTree = await injectVariablesToTree(contractFunctionTree, contractStorageTree);
     fs.writeFileSync('./temporaryTrials/fullContractTree.json', JSON.stringify(fullContractTree));
+
     return fullContractTree;
 }
 
@@ -856,11 +863,13 @@ async function getContractCodeEtherscan(contractAddress) {
         //fs.writeFileSync('solcOutput', jsonCode);
         //const realResult = fs.readFileSync('solcOutput');
         jsonCode = JSON.parse(jsonCode.slice(1, -1)).sources
+
         for (const contract in jsonCode) {
 
             let contractReplaced = contract.replace("node_modules/", "").replace("lib/", "")
             let actualContract = 'contract' + i;
             let code = jsonCode[contract].content;
+
             contracts[contractReplaced] = {};
             contracts[contractReplaced].nameId = actualContract;
             contracts[contractReplaced].content = code;
@@ -877,7 +886,6 @@ async function getContractCodeEtherscan(contractAddress) {
         contracts[actualContract] = {};
         contracts[actualContract].nameId = actualContract;
         contracts[actualContract].content = code;
-        console.log(actualContract)
     }
     return contracts;
 }
