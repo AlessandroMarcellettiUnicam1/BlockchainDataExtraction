@@ -100,12 +100,11 @@ async function getAllTransactions(mainContract, contractAddress, fromBlock, toBl
         decodeTime: null,
         totalTime: parseFloat((traceTime + decodeTime).toFixed(2))
     })
-    // stringify(csvRow, (err, output) => {
-    //     fs.appendFileSync('csvLog_adidasOriginals.csv', output)
-    // })
+    stringify(csvRow, (err, output) => {
+        fs.appendFileSync('csvLogs.csv', output)
+    })
 
     return logs
-    // writeFiles(jsonLog);
 }
 
 module.exports = {
@@ -254,12 +253,12 @@ async function getStorageData(contractTransactions, contracts, mainContract, con
             decodeTime: requiredDecodeTime,
             totalTime: parseFloat((requiredTime + requiredDecodeTime).toFixed(2))
         })
-        // stringify(csvRow, (err, output) => {
-        //     fs.appendFileSync('csvLog_adidasOriginals.csv', output)
-        // })
+        stringify(csvRow, (err, output) => {
+            fs.appendFileSync('csvLogs.csv', output)
+        })
         console.log("-----------------------------------------------------------------------");
         blockchainLog.push(newLog)
-        // saveData(newLog)
+        saveData(newLog)
         partialInt++;
     }
     return blockchainLog;
