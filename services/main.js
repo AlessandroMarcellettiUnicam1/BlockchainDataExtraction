@@ -1,20 +1,19 @@
 const {Web3} = require('web3');
 const InputDataDecoder = require('ethereum-input-data-decoder');
-const solc = require('solc');
 const fs = require('fs');
 const axios = require("axios");
 const {stringify} = require("csv-stringify")
 //let contractAbi = fs.readFileSync('abiEtherscan.json', 'utf8');
 let contractAbi = {};
 let contractTransactions = [];
-const abiDecoder = require('abi-decoder');
 //const contractAddress = '0x152649eA73beAb28c5b49B26eb48f7EAD6d4c898'cake;
 //const contractAddress = '0x5C1A0CC6DAdf4d0fB31425461df35Ba80fCBc110';
 //const contractAddress = '0xc9EEf4c46ABcb11002c9bB8A47445C96CDBcAffb';
 //const cotractAddressAdidas = 0x28472a58A490c5e09A238847F66A68a47cC76f0f
 const hre = require("hardhat");
 const helpers = require("@nomicfoundation/hardhat-toolbox/network-helpers");
-const {saveData} = require("./databaseStore");
+const {saveData} = require("../databaseStore");
+const {getRemoteVersion, detectVersion} = require("./solcVersionManager");
 require('dotenv').config();
 
 let networkInUse = ""
@@ -76,16 +75,17 @@ async function getAllTransactions(mainContract, contractAddress, fromBlock, toBl
         try {
             contracts = await getContractCodeEtherscan(contractAddress);
         } catch (e) {
+            console.error(e)
             return e
         }
     }
-    // returns
-    const contractTree = await getCompiledData(contracts, mainContract);
 
     let logs
     try {
+        const contractTree = await getCompiledData(contracts, mainContract);
         logs = await getStorageData(contractTransactions, contracts, mainContract, contractTree, contractAddress, filters);
     } catch (e) {
+        console.error(e)
         return e
     }
 
@@ -101,11 +101,10 @@ async function getAllTransactions(mainContract, contractAddress, fromBlock, toBl
         totalTime: parseFloat((traceTime + decodeTime).toFixed(2))
     })
     stringify(csvRow, (err, output) => {
-        fs.appendFileSync('csvLog.csv', output)
+        fs.appendFileSync('csvLogs.csv', output)
     })
 
     return logs
-    // writeFiles(jsonLog);
 }
 
 module.exports = {
@@ -168,9 +167,9 @@ async function getStorageData(contractTransactions, contracts, mainContract, con
     })
 
     const transactionsFiltered = applyFilters(contractTransactions, filters)
-    stringify([], {header: true, columns: csvColumns}, (err, output) => {
-        fs.writeFileSync('csvLog.csv', output)
-    })
+    // stringify([], {header: true, columns: csvColumns}, (err, output) => {
+    //     fs.writeFileSync('csvLog_adidasOriginals.csv', output)
+    // })
     for (const tx of transactionsFiltered) {
         const {response, requiredTime} = await debugTrasactions(tx.hash, tx.blockNumber)
         //if(partialInt < 10){
@@ -179,6 +178,7 @@ async function getStorageData(contractTransactions, contracts, mainContract, con
         const pastEvents = await getEvents(tx.hash, Number(tx.blockNumber), contractAddress);
         let newLog = {
             txHash: tx.hash,
+            blockNumber: tx.blockNumber,
             contractAddress: tx.to,
             sender: tx.from,
             gasUsed: tx.gasUsed,
@@ -254,7 +254,7 @@ async function getStorageData(contractTransactions, contracts, mainContract, con
             totalTime: parseFloat((requiredTime + requiredDecodeTime).toFixed(2))
         })
         stringify(csvRow, (err, output) => {
-            fs.appendFileSync('csvLog.csv', output)
+            fs.appendFileSync('csvLogs.csv', output)
         })
         console.log("-----------------------------------------------------------------------");
         blockchainLog.push(newLog)
@@ -321,7 +321,6 @@ async function getTraceStorage(traceDebugged, blockNumber, functionName, txHash,
     let sstoreBuffer = [];
     let internalCalls = [];
     if (traceDebugged.structLogs) {
-        if (txHash === "0x336446b3502a06db0ec800d822f1da0d76ec40d9b668430622d3bede9be8be00") fs.writeFileSync("./temporaryTrials/trace.json", JSON.stringify(traceDebugged.structLogs))
         for (const trace of traceDebugged.structLogs) {
             //if SHA3 is found then read all keys before being hashed
             // computation of the memory location and the storage index of a complex variable (mapping or struct)
@@ -726,23 +725,32 @@ async function getCompiledData(contracts, contractName) {
         }
     };
 
+    let solidityVersion = ""
     if (Array.isArray(contracts)) {
         for (const contract in contracts) {
             input.sources[contract] = {};
             input.sources[contract].content = contracts[contract].content;
+            solidityVersion = await detectVersion(contracts[contract].content)
         }
     } else if (contracts) {
         input.sources[contractName] = {};
         input.sources[contractName].content = contracts;
+        solidityVersion = await detectVersion(contracts)
     }
 
-    const output = solc.compile(JSON.stringify(input));
+    console.log(solidityVersion)
+    const solcSnapshot = await getRemoteVersion(solidityVersion.replace("soljson-", "").replace(".js", ""))
+
+    const output = solcSnapshot.compile(JSON.stringify(input));
     contractCompiled = output
     fs.writeFileSync('testContract.json', output);
+    if (!JSON.parse(output).contracts) {
+        throw new Error(JSON.parse(output).errors[0].message);
+    }
 
     const source = JSON.parse(output).sources;
     contractAbi = JSON.stringify(await getAbi(JSON.parse(output), contractName));
-    //fs.writeFileSync('abitest.json', JSON.stringify(contractAbi));
+    // fs.writeFileSync('abitest.json', JSON.stringify(contractAbi));
     //get all storage variable for contract, including inherited ones
     const storageData = await getContractVariableTree(JSON.parse(output));
     //take the effective tree
@@ -756,6 +764,7 @@ async function getCompiledData(contracts, contractName) {
     //construct full contract tree including also variables
     const fullContractTree = await injectVariablesToTree(contractFunctionTree, contractStorageTree);
     fs.writeFileSync('./temporaryTrials/fullContractTree.json', JSON.stringify(fullContractTree));
+
     return fullContractTree;
 }
 
@@ -853,13 +862,17 @@ async function getContractCodeEtherscan(contractAddress) {
         //fs.writeFileSync('solcOutput', jsonCode);
         //const realResult = fs.readFileSync('solcOutput');
         jsonCode = JSON.parse(jsonCode.slice(1, -1)).sources
+
         for (const contract in jsonCode) {
 
+            let contractReplaced = contract.replace("node_modules/", "").replace("lib/", "")
             let actualContract = 'contract' + i;
             let code = jsonCode[contract].content;
-            contracts[contract] = {};
-            contracts[contract].nameId = actualContract;
-            contracts[contract].content = code;
+
+            contracts[contractReplaced] = {};
+            contracts[contractReplaced].nameId = actualContract;
+            contracts[contractReplaced].content = code;
+
             //input.sources[contract] = {}
             //input.sources[contract].content = code
             //fs.writeFileSync('smartContracts/' + actualContract, JSON.stringify(code));
