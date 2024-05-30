@@ -11,3 +11,4 @@ trialsScripts/
 temporaryTrials/*.json
 *.csv
 .idea/
+*.ts
