@@ -1,35 +1,12 @@
 const express = require('express');
 const app = express();
+const mongoose = require('mongoose');
 const Transaction = require("../schema/data");
 
-/*const saveTransaction = require("./saveTransactions")
+const saveTransaction = require("./saveTransactions");
 app.get('/save', saveTransaction);
-app.get('/api/fields', (req, res) => {
-    function getAllFields(schema, prefix = '') {
-        let fields = [];
-        for (const path in schema.paths) {
-            const fullPath = prefix ? `${prefix}.${path}` : path;
-            if (schema.paths[path].instance === 'ObjectID' || !schema.paths[path].schema) {
-                fields.push(fullPath);
-            } else {
-                const nestedFields = getAllFields(schema.paths[path].schema, fullPath);
-                fields = fields.concat(nestedFields);
-            }
-        }
-        return fields;
-    }
 
-    const fields = getAllFields(Transaction.schema);
-    res.json(fields);
-});
-
-app.post('/api/all', (req, res) => {
-    Transaction.find()
-        .then(transactions => res.json(transactions))
-        .catch(err => res.status(500).json({error: err.message}));
-});*/
-
-app.post('/api/query', (req, res) => {
+app.post('/api/query', async (req, res) => {
     const {gasUsedFrom, gasUsedTo, blockNumberFrom, blockNumberTo, timestampFrom, timestampTo, ...rest} = req.body;
 
     const query = {...rest};
@@ -52,11 +29,31 @@ app.post('/api/query', (req, res) => {
         if (timestampTo) query.timestamp.$lte = new Date(timestampTo);
     }
 
-    console.log(query)
+    try {
+        const collections = await mongoose.connection.db.listCollections().toArray();
 
-    Transaction.find(query)
-        .then(transactions => res.json(transactions))
-        .catch(err => res.status(500).json({error: err.message}));
+        let results = [];
+
+        for (let collectionsDB of collections) {
+            const collection = mongoose.connection.db.collection(collectionsDB.name);
+            const transactions = await collection.find(query).toArray();
+            results = results.concat(transactions);
+        }
+
+        console.log(collections)
+        console.log(results)
+
+        res.json(results);
+    } catch (err) {
+        console.error('Errore durante l\'esecuzione della query:', err);
+        res.status(500).json({error: err.message});
+    }
 });
+
+//TODO: cambiare nome alle collections
+//TODO: query su più collection
+//TODO: bug fix delle query dei campi annidati
+
+//TODO: gestire l'estrazione nel caso di txHash già presenti del database
 
 module.exports = app;
