@@ -138,54 +138,6 @@ app.post('/csv-download', async (req, res) => {
     })
 })
 
-app.post('/ocel-download', (req, res) => {
-
-    const jsonToDownload = req.body.ocel;
-    const filename = "ocelLogs.json"
-    // const jsonOcel = JsonOcelExporter.apply(jsonToDownload);
-
-    fs.writeFileSync(filename, JSON.stringify(jsonToDownload, null, 2));
-
-    const formattedFileName = encodeURIComponent(filename);
-    res.setHeader('Content-Disposition', `attachment; filename="${formattedFileName}"`);
-    res.setHeader('Content-Type', 'application/octet-stream');
-
-    res.sendFile(path.resolve(filename), (err) => {
-        if (err) {
-            // Handle error if file sending fails
-            console.error(err);
-            res.status(err.status).end();
-        } else {
-            fs.unlinkSync(path.resolve(filename))
-            console.log('File sent successfully');
-        }
-    });
-})
-
-app.post('/jsonocel-download', (req, res) => {
-
-    const jsonToDownload = req.body.ocel;
-    const filename = "ocelLogs.jsonocel"
-
-    fs.writeFileSync(filename, JSON.stringify(jsonToDownload, null, 2));
-
-    const formattedFileName = encodeURIComponent(filename);
-    res.setHeader('Content-Disposition', `attachment; filename="${formattedFileName}"`);
-    res.setHeader('Content-Type', 'application/octet-stream');
-
-    res.sendFile(path.resolve(filename), (err) => {
-        if (err) {
-            // Handle error if file sending fails
-            console.error(err);
-            res.status(err.status).end();
-        } else {
-            fs.unlinkSync(path.resolve(filename))
-            console.log('File sent successfully');
-        }
-    });
-
-})
-
 app.get('/', (req, res) => {
     res.send('Welcome to the Home Page!');
 });
