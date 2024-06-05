@@ -15,6 +15,7 @@ const helpers = require("@nomicfoundation/hardhat-toolbox/network-helpers");
 const {saveData} = require("../databaseStore");
 const {getRemoteVersion, detectVersion} = require("./solcVersionManager");
 const mongoose = require("mongoose");
+const {getModelByContractAddress} = require("../query/saveTransactions");
 require('dotenv').config();
 
 let networkInUse = ""
@@ -172,11 +173,12 @@ async function getStorageData(contractTransactions, contracts, mainContract, con
     //     fs.writeFileSync('csvLog_adidasOriginals.csv', output)
     // })
     for (const tx of transactionsFiltered) {
-        //TODO: controllare funzionamento
-        const collection = mongoose.connection.db.collection(tx.to);
-        const transactions = collection.find(tx.hash);
-        if (transactions.length > 0) {
-            blockchainLog.push(transactions[0])
+        //TODO: per trovare la transazione bisogna usare il "modello" ritornato da mongoose e non la collection
+        const transactionModel = getModelByContractAddress(tx.to)
+        const transaction = await transactionModel.findOne({ txHash: tx.hash })
+        if (transaction) {
+            console.log("transaction already processed: ", tx.hash)
+            blockchainLog.push(transaction)
         } else {
             const {response, requiredTime} = await debugTrasactions(tx.hash, tx.blockNumber)
             //if(partialInt < 10){
