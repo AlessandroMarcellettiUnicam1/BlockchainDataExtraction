@@ -26,6 +26,9 @@ app.use(express.static(path.join(__dirname, 'public')));
 app.use(bodyParser.urlencoded({extended: true}));
 app.use(bodyParser.json());
 
+const queryRouter = require('./query/query');
+app.use('/query', queryRouter)
+
 // Route: Home Page
 app.post('/submit', upload.single('file'), async (req, res) => {
     const contractAddress = req.body.contractAddress; // Get data from input1
