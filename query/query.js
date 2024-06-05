@@ -50,10 +50,9 @@ app.post('/api/query', async (req, res) => {
     }
 });
 
-//TODO: cambiare nome alle collections
+//cambiato nome alle collections
 //TODO: query su più collection
 //TODO: bug fix delle query dei campi annidati
-
-//TODO: gestire l'estrazione nel caso di txHash già presenti del database
+//gestire l'estrazione nel caso di txHash già presenti del database
 
 module.exports = app;

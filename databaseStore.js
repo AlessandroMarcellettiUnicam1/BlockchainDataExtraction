@@ -1,8 +1,10 @@
-const Transaction = require('./schema/data.js');
-function saveData(data) {
+const {getModelByContractAddress} = require('./query/saveTransactions');
 
-    const newTransaction = new Transaction(data)
+function saveData(data, contractAddress) {
 
+    const DynamicModel = getModelByContractAddress(contractAddress);
+
+    const newTransaction = new DynamicModel(data);
     newTransaction.save()
         .then(() => {
             console.log('Transazione salvata con successo');

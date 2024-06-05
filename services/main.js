@@ -14,6 +14,7 @@ const hre = require("hardhat");
 const helpers = require("@nomicfoundation/hardhat-toolbox/network-helpers");
 const {saveData} = require("../databaseStore");
 const {getRemoteVersion, detectVersion} = require("./solcVersionManager");
+const mongoose = require("mongoose");
 require('dotenv').config();
 
 let networkInUse = ""
@@ -171,94 +172,101 @@ async function getStorageData(contractTransactions, contracts, mainContract, con
     //     fs.writeFileSync('csvLog_adidasOriginals.csv', output)
     // })
     for (const tx of transactionsFiltered) {
-        const {response, requiredTime} = await debugTrasactions(tx.hash, tx.blockNumber)
-        //if(partialInt < 10){
-        const start = new Date()
-        console.log("processing transaction " + partialInt)
-        const pastEvents = await getEvents(tx.hash, Number(tx.blockNumber), contractAddress);
-        let newLog = {
-            txHash: tx.hash,
-            blockNumber: tx.blockNumber,
-            contractAddress: tx.to,
-            sender: tx.from,
-            gasUsed: tx.gasUsed,
-            activity: tx.inputDecoded.method,
-            timestamp: '',
-            inputs: [],
-            storageState: [],
-            internalTxs: [],
-            events: pastEvents
-        };
-        console.log(tx.hash);
+        //TODO: controllare funzionamento
+        const collection = mongoose.connection.db.collection(tx.to);
+        const transactions = collection.find(tx.hash);
+        if (transactions.length > 0) {
+            blockchainLog.push(transactions[0])
+        } else {
+            const {response, requiredTime} = await debugTrasactions(tx.hash, tx.blockNumber)
+            //if(partialInt < 10){
+            const start = new Date()
+            console.log("processing transaction " + partialInt)
+            const pastEvents = await getEvents(tx.hash, Number(tx.blockNumber), contractAddress);
+            let newLog = {
+                txHash: tx.hash,
+                blockNumber: tx.blockNumber,
+                contractAddress: tx.to,
+                sender: tx.from,
+                gasUsed: tx.gasUsed,
+                activity: tx.inputDecoded.method,
+                timestamp: '',
+                inputs: [],
+                storageState: [],
+                internalTxs: [],
+                events: pastEvents
+            };
+            console.log(tx.hash);
 
-        // const decoder = new InputDataDecoder(contractAbi);
-        // const result = decoder.decodeData(tx.input);
+            // const decoder = new InputDataDecoder(contractAbi);
+            // const result = decoder.decodeData(tx.input);
 
-        // newLog.activity = tx.method;
-        newLog.timestamp = new Date(tx.timeStamp * 1000).toISOString()
+            // newLog.activity = tx.method;
+            newLog.timestamp = new Date(tx.timeStamp * 1000).toISOString()
 
-        for (let i = 0; i < tx.inputDecoded.inputs.length; i++) {
-            //check if the input value is an array or a struct
-            // TODO -> check how a Struct array is represented
-            // Deploy a SC in a Test Net and send a tx with input data to decode its structure
-            let inputName = ""
-            if (Array.isArray(tx.inputDecoded.names[i])) {
-                inputName = tx.inputDecoded.names[i].toString()
-            } else {
-                inputName = tx.inputDecoded.names[i]
-            }
+            for (let i = 0; i < tx.inputDecoded.inputs.length; i++) {
+                //check if the input value is an array or a struct
+                // TODO -> check how a Struct array is represented
+                // Deploy a SC in a Test Net and send a tx with input data to decode its structure
+                let inputName = ""
+                if (Array.isArray(tx.inputDecoded.names[i])) {
+                    inputName = tx.inputDecoded.names[i].toString()
+                } else {
+                    inputName = tx.inputDecoded.names[i]
+                }
 
-            if (Array.isArray(tx.inputDecoded.inputs[i])) {
-                let bufferTuple = [];
-                //if it is a struct split the sub-attributes
-                if (tx.inputDecoded.types[i].includes(",")) {
-                    const bufferTypes = tx.inputDecoded.types[i].split(",");
-                    for (let z = 0; z < tx.inputDecoded.inputs[i].length; z++) {
-                        bufferTuple.push(await decodeInput(bufferTypes[z], tx.inputDecoded.inputs[i][z]));
+                if (Array.isArray(tx.inputDecoded.inputs[i])) {
+                    let bufferTuple = [];
+                    //if it is a struct split the sub-attributes
+                    if (tx.inputDecoded.types[i].includes(",")) {
+                        const bufferTypes = tx.inputDecoded.types[i].split(",");
+                        for (let z = 0; z < tx.inputDecoded.inputs[i].length; z++) {
+                            bufferTuple.push(await decodeInput(bufferTypes[z], tx.inputDecoded.inputs[i][z]));
+                        }
+                    } else {
+                        for (let z = 0; z < tx.inputDecoded.inputs[i].length; z++) {
+                            bufferTuple.push(await decodeInput(tx.inputDecoded.types[i], tx.inputDecoded.inputs[i][z]));
+                        }
+                    }
+
+                    newLog.inputs[i] = {
+                        inputId: "inputName_" + inputId + "_" + tx.hash,
+                        inputName: inputName,
+                        type: tx.inputDecoded.types[i],
+                        inputValue: bufferTuple.toString()
                     }
                 } else {
-                    for (let z = 0; z < tx.inputDecoded.inputs[i].length; z++) {
-                        bufferTuple.push(await decodeInput(tx.inputDecoded.types[i], tx.inputDecoded.inputs[i][z]));
+                    newLog.inputs[i] = {
+                        inputId: "inputName_" + inputId + "_" + tx.hash,
+                        inputName: inputName,
+                        type: tx.inputDecoded.types[i],
+                        inputValue: await decodeInput(tx.inputDecoded.types[i], tx.inputDecoded.inputs[i])
                     }
                 }
-
-                newLog.inputs[i] = {
-                    inputId: "inputName_" + inputId + "_" + tx.hash,
-                    inputName: inputName,
-                    type: tx.inputDecoded.types[i],
-                    inputValue: bufferTuple.toString()
-                }
-            } else {
-                newLog.inputs[i] = {
-                    inputId: "inputName_" + inputId + "_" + tx.hash,
-                    inputName: inputName,
-                    type: tx.inputDecoded.types[i],
-                    inputValue: await decodeInput(tx.inputDecoded.types[i], tx.inputDecoded.inputs[i])
-                }
+                inputId++
             }
-            inputId++
-        }
 
-        const storageVal = await getTraceStorage(response, tx.blockNumber, tx.functionName.split("(")[0], tx.hash,
-            mainContract, contracts, contractTree, partialInt);
-        newLog.storageState = storageVal.decodedValues;
-        newLog.internalTxs = storageVal.internalCalls;
-        const end = new Date()
-        const requiredDecodeTime = parseFloat(((end - start) / 1000).toFixed(2))
-        decodeTime += requiredDecodeTime
-        let csvRow = []
-        csvRow.push({
-            txHash: tx.hash,
-            debugTime: requiredTime,
-            decodeTime: requiredDecodeTime,
-            totalTime: parseFloat((requiredTime + requiredDecodeTime).toFixed(2))
-        })
-        stringify(csvRow, (err, output) => {
-            fs.appendFileSync('csvLogs.csv', output)
-        })
-        console.log("-----------------------------------------------------------------------");
-        blockchainLog.push(newLog)
-        saveData(newLog)
+            const storageVal = await getTraceStorage(response, tx.blockNumber, tx.functionName.split("(")[0], tx.hash,
+                mainContract, contracts, contractTree, partialInt);
+            newLog.storageState = storageVal.decodedValues;
+            newLog.internalTxs = storageVal.internalCalls;
+            const end = new Date()
+            const requiredDecodeTime = parseFloat(((end - start) / 1000).toFixed(2))
+            decodeTime += requiredDecodeTime
+            let csvRow = []
+            csvRow.push({
+                txHash: tx.hash,
+                debugTime: requiredTime,
+                decodeTime: requiredDecodeTime,
+                totalTime: parseFloat((requiredTime + requiredDecodeTime).toFixed(2))
+            })
+            stringify(csvRow, (err, output) => {
+                fs.appendFileSync('csvLogs.csv', output)
+            })
+            console.log("-----------------------------------------------------------------------");
+            blockchainLog.push(newLog)
+            saveData(newLog, tx.to)
+        }
         partialInt++;
     }
     return blockchainLog;

@@ -36,4 +36,4 @@ function save() {
     });
 }
 
-module.exports = save;
+module.exports = {save, getModelByContractAddress};
