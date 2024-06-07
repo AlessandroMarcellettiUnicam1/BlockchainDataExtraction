@@ -169,9 +169,9 @@ async function getStorageData(contractTransactions, contracts, mainContract, con
     })
 
     const transactionsFiltered = applyFilters(contractTransactions, filters)
-    // stringify([], {header: true, columns: csvColumns}, (err, output) => {
-    //     fs.writeFileSync('csvLog_adidasOriginals.csv', output)
-    // })
+    stringify([], {header: true, columns: csvColumns}, (err, output) => {
+        fs.writeFileSync('csvLogs.csv', output)
+    })
     for (const tx of transactionsFiltered) {
         //TODO: per trovare la transazione bisogna usare il "modello" ritornato da mongoose e non la collection
         const transactionModel = getModelByContractAddress(tx.to)
