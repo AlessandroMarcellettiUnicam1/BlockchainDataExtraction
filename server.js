@@ -96,30 +96,32 @@ app.post('/csv-download', async (req, res) => {
     const jsonToDownload = req.body.jsonLog;
     const fileName = 'jsonLog.csv';
 
-    const columns = ["TxHash", "Activity", "Timestamp", "Sender", "GasFee", "StorageState", "Inputs", "Events", "InternalTxs"]
+    const columns = ["BlockNumber", "TxHash", "Activity", "Timestamp", "Sender", "GasFee", "StorageState", "Inputs", "Events", "InternalTxs"]
     const logs = jsonToDownload.map(log => {
 
         const customDate = log.timestamp.split(".")[0] + ".000+0100"
 
+        const blockNumber = log.blockNumber;
         const txHash = log.txHash;
         const activity = log.activity;
         const timestamp = customDate;
         const sender = log.sender;
         const gasFee = log.gasUsed;
-        const storageState = log.storageState.map(variable => variable.name).toString();
-        const inputs = log.inputs.map(input => input.name).toString();
-        const events = log.events.map(event => event.name).toString();
-        const internalTxs = log.internalTxs.map(tx => tx.type).toString();
+        const storageState = log.storageState.map(variable => variable.variableName).toString();
+        const inputs = log.inputs.map(input => input.inputName).toString();
+        const events = log.events.map(event => event.eventName).toString();
+        const internalTxs = log.internalTxs.map(tx => tx.callType).toString();
         return {
+            BlockNumber: blockNumber,
             TxHash: txHash,
             Activity: activity,
             Timestamp: timestamp,
             Sender: sender,
             GasFee: gasFee,
-            StorageState: '"' + storageState + '"',
-            Inputs: '"' + inputs + '"',
-            Events: '"' + events + '"',
-            InternalTxs: '"' + internalTxs + '"'
+            StorageState: storageState,
+            Inputs: inputs,
+            Events: events,
+            InternalTxs: internalTxs
         }
     })
     stringify(logs, {header: true, columns: columns}, (err, output) => {
