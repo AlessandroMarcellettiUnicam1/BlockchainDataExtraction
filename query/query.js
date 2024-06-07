@@ -1,10 +1,16 @@
 const express = require('express');
 const app = express();
 const mongoose = require('mongoose');
-const Transaction = require("../schema/data");
 
-const saveTransaction = require("./saveTransactions");
-app.get('/save', saveTransaction);
+const { save } = require("./saveTransactions");
+app.get('/save', (req, res) => {
+    try {
+        save();
+        res.send('Salvataggio completato');
+    } catch (err) {
+        console.error('Errore durante il salvataggio delle transazioni:', err);
+    }
+});
 
 app.post('/api/query', async (req, res) => {
     const {gasUsedFrom, gasUsedTo, blockNumberFrom, blockNumberTo, timestampFrom, timestampTo, ...rest} = req.body;
@@ -19,8 +25,8 @@ app.post('/api/query', async (req, res) => {
 
     if (blockNumberFrom || blockNumberTo) {
         query.blockNumber = {};
-        if (blockNumberFrom) query.blockNumber.$gte = blockNumberFrom;
-        if (blockNumberTo) query.blockNumber.$lte = blockNumberTo;
+        if (blockNumberFrom) query.blockNumber.$gte = Number(blockNumberFrom);
+        if (blockNumberTo) query.blockNumber.$lte = Number(blockNumberTo);
     }
 
     if (timestampFrom || timestampTo) {
@@ -28,6 +34,8 @@ app.post('/api/query', async (req, res) => {
         if (timestampFrom) query.timestamp.$gte = new Date(timestampFrom);
         if (timestampTo) query.timestamp.$lte = new Date(timestampTo);
     }
+
+    console.log(query);
 
     try {
         const collections = await mongoose.connection.db.listCollections().toArray();
@@ -40,9 +48,6 @@ app.post('/api/query', async (req, res) => {
             results = results.concat(transactions);
         }
 
-        console.log(collections)
-        console.log(results)
-
         res.json(results);
     } catch (err) {
         console.error('Errore durante l\'esecuzione della query:', err);
@@ -51,8 +56,10 @@ app.post('/api/query', async (req, res) => {
 });
 
 //cambiato nome alle collections
-//TODO: query su più collection
-//TODO: bug fix delle query dei campi annidati
-//gestire l'estrazione nel caso di txHash già presenti del database
+//query su più collection
+//bug fix delle query dei campi annidati
+//gestione dell'estrazione nel caso di txHash già presenti del database
+
+//TODO: creare un db per ogni network, backlog per ogni query creata
 
 module.exports = app;
