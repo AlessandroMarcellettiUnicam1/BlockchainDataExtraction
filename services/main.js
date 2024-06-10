@@ -16,6 +16,7 @@ const {saveData} = require("../databaseStore");
 const {getRemoteVersion, detectVersion} = require("./solcVersionManager");
 const mongoose = require("mongoose");
 const {getModelByContractAddress} = require("../query/saveTransactions");
+const path = require("path");
 require('dotenv').config();
 
 let networkInUse = ""
@@ -85,7 +86,7 @@ async function getAllTransactions(mainContract, contractAddress, fromBlock, toBl
     let logs
     try {
         const contractTree = await getCompiledData(contracts, mainContract);
-        logs = await getStorageData(contractTransactions, contracts, mainContract, contractTree, contractAddress, filters);
+        logs = await getStorageData(contractTransactions, contracts, mainContract, contractTree, contractAddress, filters, fromBlock, toBlock);
     } catch (e) {
         console.error(e)
         return e
@@ -146,6 +147,24 @@ function applyFilters(contractTransactions, filters) {
     return contractTransactionsFiltered
 }
 
+function deleteCacheFolder(directoryPath) {
+    if (fs.existsSync(directoryPath)) {
+        console.log("Exists")
+        fs.readdirSync(directoryPath).forEach((file) => {
+            const curPath = path.join(directoryPath, file);
+            if (fs.lstatSync(curPath).isDirectory()) { // recurse
+                deleteCacheFolder(curPath);
+            } else {
+                fs.unlinkSync(curPath);
+            }
+        });
+        console.log("Cache removed")
+        fs.rmdirSync(directoryPath);
+    } else {
+        console.log("Does not exist")
+    }
+}
+
 async function debugTrasactions(txHash, blockNumber) {
     await helpers.reset(web3Endpoint, Number(blockNumber));
     const start = new Date()
@@ -153,15 +172,32 @@ async function debugTrasactions(txHash, blockNumber) {
         txHash
     ]);
     const end = new Date()
+    deleteCacheFolder(path.resolve("cache"))
     const requiredTime = parseFloat(((end - start) / 1000).toFixed(2))
     traceTime += requiredTime
 
     return {response, requiredTime}
 }
 
-async function getStorageData(contractTransactions, contracts, mainContract, contractTree, contractAddress, filters) {
+async function getStorageData(contractTransactions, contracts, mainContract, contractTree, contractAddress, filters, fromBlock, toBlock) {
     let blockchainLog = [];
     let partialInt = 0;
+
+    const userLog = {
+        contractAddress: contractAddress,
+        contractName: mainContract,
+        fromBlock: fromBlock,
+        toBlock: toBlock,
+        filters: {
+            ...Object.keys(filters).reduce((obj, key) => {
+                obj[key] = filters[key]
+                return obj
+            }, {})
+        },
+        timestampLog: new Date().toISOString()
+    }
+
+    console.log(userLog)
 
     contractTransactions.map(tx => {
         const decoder = new InputDataDecoder(contractAbi);
@@ -174,7 +210,7 @@ async function getStorageData(contractTransactions, contracts, mainContract, con
     })
     for (const tx of transactionsFiltered) {
         const transactionModel = getModelByContractAddress(tx.to)
-        const transaction = await transactionModel.findOne({ txHash: tx.hash })
+        const transaction = await transactionModel.findOne({txHash: tx.hash})
         if (transaction) {
             console.log("transaction already processed: ", tx.hash)
             blockchainLog.push(transaction)
