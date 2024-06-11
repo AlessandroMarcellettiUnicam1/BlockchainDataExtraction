@@ -11,7 +11,9 @@ const upload = multer({dest: 'uploads/'})
 const port = 8000;
 
 const connectDB = require('./config/db');
-connectDB();
+/*connectDB()
+    .then(r => console.log('Connected to MongoDB'))
+    .catch(err => console.error(err));*/
 
 app.use(cors());
 
@@ -37,6 +39,10 @@ app.post('/submit', upload.single('file'), async (req, res) => {
     const toBlock = req.body.toBlock; // Get 'End Block' value from form
     const network = req.body.network;
     const filters = JSON.parse(req.body.filters);
+
+    connectDB(network)
+        .then(res => console.log('Connected to MongoDB - ' + network))
+        .catch(err => console.error(err));
 
     // Perform actions based on the received data
     console.log(`Start Block: ${fromBlock}`);

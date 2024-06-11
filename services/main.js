@@ -14,7 +14,6 @@ const hre = require("hardhat");
 const helpers = require("@nomicfoundation/hardhat-toolbox/network-helpers");
 const {saveData} = require("../databaseStore");
 const {getRemoteVersion, detectVersion} = require("./solcVersionManager");
-const mongoose = require("mongoose");
 const {getModelByContractAddress} = require("../query/saveTransactions");
 require('dotenv').config();
 
@@ -172,9 +171,22 @@ async function getStorageData(contractTransactions, contracts, mainContract, con
     stringify([], {header: true, columns: csvColumns}, (err, output) => {
         fs.writeFileSync('csvLogs.csv', output)
     })
+
     for (const tx of transactionsFiltered) {
-        const transactionModel = getModelByContractAddress(tx.to)
-        const transaction = await transactionModel.findOne({ txHash: tx.hash })
+        //TODO: per trovare la transazione bisogna usare il "modello" ritornato da mongoose e non la collection
+        /*const transactionModel = getModelByContractAddress(tx.to)
+        const transaction = await transactionModel.findOne({txHash: tx.hash})*/
+
+        let transaction;
+
+        try {
+            const response = await axios.post('http://localhost:8000/query/api/query', {txHash: tx.hash});
+
+            console.log(response.data);
+            transaction = response.data;
+        } catch (error) {
+            console.error(error);
+        }
         if (transaction) {
             console.log("transaction already processed: ", tx.hash)
             blockchainLog.push(transaction)
