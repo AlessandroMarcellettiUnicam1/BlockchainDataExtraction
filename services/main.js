@@ -121,7 +121,7 @@ module.exports = {
 function applyFilters(contractTransactions, filters) {
     const gasUsedFilter = filters.gasUsed
     const gasPriceFilter = filters.gasPrice
-    const timeStampFilter = filters.timestamp
+    const timestampFilter = filters.timestamp
     const sendersFilter = filters.senders;
     const functionsFilter = filters.functions;
 
@@ -138,9 +138,9 @@ function applyFilters(contractTransactions, filters) {
     if (gasPriceFilter) {
         contractTransactionsFiltered = contractTransactionsFiltered.filter(tx => tx.gasPrice >= gasPriceFilter[0] && tx.gasPrice <= gasPriceFilter[1])
     }
-    if (timeStampFilter) {
-        const start = Math.floor(new Date(timeStampFilter[0]).getTime() / 1000)
-        const end = Math.floor(new Date(timeStampFilter[1]).getTime() / 1000)
+    if (timestampFilter) {
+        const start = Math.floor(new Date(timestampFilter[0]).getTime() / 1000)
+        const end = Math.floor(new Date(timestampFilter[1]).getTime() / 1000)
         contractTransactionsFiltered = contractTransactionsFiltered.filter(tx => tx.timeStamp >= start && tx.timeStamp <= end)
     }
 
@@ -184,6 +184,7 @@ async function getStorageData(contractTransactions, contracts, mainContract, con
     let partialInt = 0;
 
     const userLog = {
+        networkUsed: networkInUse,
         contractAddress: contractAddress,
         contractName: mainContract,
         fromBlock: fromBlock,
