@@ -187,7 +187,6 @@ async function getStorageData(contractTransactions, contracts, mainContract, con
         } catch (error) {
             console.error(error);
         }
-
         if (transaction) {
             console.log("transaction already processed: ", tx.hash)
             blockchainLog.push(transaction)
