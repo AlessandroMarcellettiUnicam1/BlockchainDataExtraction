@@ -1,20 +1,21 @@
 const {Web3} = require('web3');
 const InputDataDecoder = require('ethereum-input-data-decoder');
-const solc = require('solc');
 const fs = require('fs');
 const axios = require("axios");
 const {stringify} = require("csv-stringify")
 //let contractAbi = fs.readFileSync('abiEtherscan.json', 'utf8');
 let contractAbi = {};
 let contractTransactions = [];
-const abiDecoder = require('abi-decoder');
 //const contractAddress = '0x152649eA73beAb28c5b49B26eb48f7EAD6d4c898'cake;
 //const contractAddress = '0x5C1A0CC6DAdf4d0fB31425461df35Ba80fCBc110';
 //const contractAddress = '0xc9EEf4c46ABcb11002c9bB8A47445C96CDBcAffb';
 //const cotractAddressAdidas = 0x28472a58A490c5e09A238847F66A68a47cC76f0f
 const hre = require("hardhat");
 const helpers = require("@nomicfoundation/hardhat-toolbox/network-helpers");
-const {saveData} = require("./databaseStore");
+const {saveData} = require("../databaseStore");
+const {getRemoteVersion, detectVersion} = require("./solcVersionManager");
+const mongoose = require("mongoose");
+const {getModelByContractAddress} = require("../query/saveTransactions");
 require('dotenv').config();
 
 let networkInUse = ""
@@ -33,8 +34,7 @@ let contractCompiled = null
 
 let traceTime = 0
 let decodeTime = 0
-const csvColumns = ["txHash", "debugTime (s)", "decodeTime (s)", "totalTime (s)"]
-const csvRows = []
+const csvColumns = ["txHash", "debugTime", "decodeTime", "totalTime"]
 
 async function getAllTransactions(mainContract, contractAddress, fromBlock, toBlock, network, filters, smartContract) {
 
@@ -77,25 +77,36 @@ async function getAllTransactions(mainContract, contractAddress, fromBlock, toBl
         try {
             contracts = await getContractCodeEtherscan(contractAddress);
         } catch (e) {
+            console.error(e)
             return e
         }
     }
-    // returns
-    const contractTree = await getCompiledData(contracts, mainContract);
 
-    const logs = await getStorageData(contractTransactions, contracts, mainContract, contractTree, contractAddress, filters);
+    let logs
+    try {
+        const contractTree = await getCompiledData(contracts, mainContract);
+        logs = await getStorageData(contractTransactions, contracts, mainContract, contractTree, contractAddress, filters);
+    } catch (e) {
+        console.error(e)
+        return e
+    }
+
     inputId = 0
     internalTxId = 0
     eventId = 0
 
-    csvRows.push({txHash: null, debugTime: null, decodeTime: null, totalTime: parseFloat((traceTime + decodeTime).toFixed(2))})
-    stringify(csvRows, {header: true, columns: csvColumns}, (err, output) => {
-      fs.writeFileSync('csvLog.csv', output)
+    let csvRow = []
+    csvRow.push({
+        txHash: null,
+        debugTime: null,
+        decodeTime: null,
+        totalTime: parseFloat((traceTime + decodeTime).toFixed(2))
+    })
+    stringify(csvRow, (err, output) => {
+        fs.appendFileSync('csvLogs.csv', output)
     })
 
-    saveData(logs)
     return logs
-    // writeFiles(jsonLog);
 }
 
 module.exports = {
@@ -158,98 +169,108 @@ async function getStorageData(contractTransactions, contracts, mainContract, con
     })
 
     const transactionsFiltered = applyFilters(contractTransactions, filters)
-
+    stringify([], {header: true, columns: csvColumns}, (err, output) => {
+        fs.writeFileSync('csvLogs.csv', output)
+    })
     for (const tx of transactionsFiltered) {
+        const transactionModel = getModelByContractAddress(tx.to)
+        const transaction = await transactionModel.findOne({ txHash: tx.hash })
+        if (transaction) {
+            console.log("transaction already processed: ", tx.hash)
+            blockchainLog.push(transaction)
+        } else {
+            const {response, requiredTime} = await debugTrasactions(tx.hash, tx.blockNumber)
+            //if(partialInt < 10){
+            const start = new Date()
+            console.log("processing transaction " + partialInt)
+            const pastEvents = await getEvents(tx.hash, Number(tx.blockNumber), contractAddress);
+            let newLog = {
+                txHash: tx.hash,
+                blockNumber: tx.blockNumber,
+                contractAddress: tx.to,
+                sender: tx.from,
+                gasUsed: tx.gasUsed,
+                activity: tx.inputDecoded.method,
+                timestamp: '',
+                inputs: [],
+                storageState: [],
+                internalTxs: [],
+                events: pastEvents
+            };
+            console.log(tx.hash);
 
-        const {response, requiredTime} = await debugTrasactions(tx.hash, tx.blockNumber)
-        //if(partialInt < 10){
-        const start = new Date()
-        console.log("processing transaction " + partialInt)
-        const pastEvents = await getEvents(tx.hash, Number(tx.blockNumber), contractAddress);
-        let newLog = {
-            txHash: tx.hash,
-            contractAddress: tx.to,
-            sender: tx.from,
-            gasUsed: tx.gasUsed,
-            activity: tx.inputDecoded.method,
-            timestamp: '',
-            inputs: [],
-            storageState: [],
-            internalTxs: [],
-            events: pastEvents
-        };
-        console.log(tx.hash);
+            // const decoder = new InputDataDecoder(contractAbi);
+            // const result = decoder.decodeData(tx.input);
 
-        // const decoder = new InputDataDecoder(contractAbi);
-        // const result = decoder.decodeData(tx.input);
+            // newLog.activity = tx.method;
+            newLog.timestamp = new Date(tx.timeStamp * 1000).toISOString()
 
-        // newLog.activity = tx.method;
-        newLog.timestamp = new Date(tx.timeStamp * 1000).toISOString()
+            for (let i = 0; i < tx.inputDecoded.inputs.length; i++) {
+                //check if the input value is an array or a struct
+                // TODO -> check how a Struct array is represented
+                // Deploy a SC in a Test Net and send a tx with input data to decode its structure
+                let inputName = ""
+                if (Array.isArray(tx.inputDecoded.names[i])) {
+                    inputName = tx.inputDecoded.names[i].toString()
+                } else {
+                    inputName = tx.inputDecoded.names[i]
+                }
 
-        for (let i = 0; i < tx.inputDecoded.inputs.length; i++) {
-            //check if the input value is an array or a struct
-            // TODO -> check how a Struct array is represented
-            // Deploy a SC in a Test Net and send a tx with input data to decode its structure
-            let inputName = ""
-            if (Array.isArray(tx.inputDecoded.names[i])) {
-                inputName = tx.inputDecoded.names[i].toString()
-            } else {
-                inputName = tx.inputDecoded.names[i]
-            }
+                if (Array.isArray(tx.inputDecoded.inputs[i])) {
+                    let bufferTuple = [];
+                    //if it is a struct split the sub-attributes
+                    if (tx.inputDecoded.types[i].includes(",")) {
+                        const bufferTypes = tx.inputDecoded.types[i].split(",");
+                        for (let z = 0; z < tx.inputDecoded.inputs[i].length; z++) {
+                            bufferTuple.push(await decodeInput(bufferTypes[z], tx.inputDecoded.inputs[i][z]));
+                        }
+                    } else {
+                        for (let z = 0; z < tx.inputDecoded.inputs[i].length; z++) {
+                            bufferTuple.push(await decodeInput(tx.inputDecoded.types[i], tx.inputDecoded.inputs[i][z]));
+                        }
+                    }
 
-            if (Array.isArray(tx.inputDecoded.inputs[i])) {
-                let bufferTuple = [];
-                //if it is a struct split the sub-attributes
-                if (tx.inputDecoded.types[i].includes(",")) {
-                    const bufferTypes = tx.inputDecoded.types[i].split(",");
-                    for (let z = 0; z < tx.inputDecoded.inputs[i].length; z++) {
-                        bufferTuple.push(await decodeInput(bufferTypes[z], tx.inputDecoded.inputs[i][z]));
+                    newLog.inputs[i] = {
+                        inputId: "inputName_" + inputId + "_" + tx.hash,
+                        inputName: inputName,
+                        type: tx.inputDecoded.types[i],
+                        inputValue: bufferTuple.toString()
                     }
                 } else {
-                    for (let z = 0; z < tx.inputDecoded.inputs[i].length; z++) {
-                        bufferTuple.push(await decodeInput(tx.inputDecoded.types[i], tx.inputDecoded.inputs[i][z]));
+                    newLog.inputs[i] = {
+                        inputId: "inputName_" + inputId + "_" + tx.hash,
+                        inputName: inputName,
+                        type: tx.inputDecoded.types[i],
+                        inputValue: await decodeInput(tx.inputDecoded.types[i], tx.inputDecoded.inputs[i])
                     }
                 }
-
-                newLog.inputs[i] = {
-                    inputId: "inputName_" + inputId + "_" + tx.hash,
-                    inputName: inputName,
-                    type: tx.inputDecoded.types[i],
-                    inputValue: bufferTuple.toString()
-                }
-            } else {
-                newLog.inputs[i] = {
-                    inputId: "inputName_" + inputId + "_" + tx.hash,
-                    inputName: inputName,
-                    type: tx.inputDecoded.types[i],
-                    inputValue: await decodeInput(tx.inputDecoded.types[i], tx.inputDecoded.inputs[i])
-                }
+                inputId++
             }
-            inputId++
-        }
 
-        const storageVal = await getTraceStorage(response, tx.blockNumber, tx.functionName.split("(")[0], tx.hash,
-            mainContract, contracts, contractTree, partialInt);
-        newLog.storageState = storageVal.decodedValues;
-        newLog.internalTxs = storageVal.internalCalls;
-        const end = new Date()
-        const requiredDecodeTime = parseFloat(((end - start) / 1000).toFixed(2))
-        decodeTime += requiredDecodeTime
-        csvRows.push({
-            txHash: tx.hash,
-            debugTime: requiredTime,
-            decodeTime: requiredDecodeTime,
-            totalTime: parseFloat((requiredTime + requiredDecodeTime).toFixed(2))
-        })
-        console.log("-----------------------------------------------------------------------");
-        blockchainLog.push(newLog)
+            const storageVal = await getTraceStorage(response, tx.blockNumber, tx.functionName.split("(")[0], tx.hash,
+                mainContract, contracts, contractTree, partialInt);
+            newLog.storageState = storageVal.decodedValues;
+            newLog.internalTxs = storageVal.internalCalls;
+            const end = new Date()
+            const requiredDecodeTime = parseFloat(((end - start) / 1000).toFixed(2))
+            decodeTime += requiredDecodeTime
+            let csvRow = []
+            csvRow.push({
+                txHash: tx.hash,
+                debugTime: requiredTime,
+                decodeTime: requiredDecodeTime,
+                totalTime: parseFloat((requiredTime + requiredDecodeTime).toFixed(2))
+            })
+            stringify(csvRow, (err, output) => {
+                fs.appendFileSync('csvLogs.csv', output)
+            })
+            console.log("-----------------------------------------------------------------------");
+            blockchainLog.push(newLog)
+            saveData(newLog, tx.to)
+        }
         partialInt++;
     }
-    try {
-        return blockchainLog;
-    } catch (error) {
-        console.error(`Error writing output file: ${error}`);
-    }
+    return blockchainLog;
 }
 
 async function decodeInput(type, value) {
@@ -309,7 +330,6 @@ async function getTraceStorage(traceDebugged, blockNumber, functionName, txHash,
     let sstoreBuffer = [];
     let internalCalls = [];
     if (traceDebugged.structLogs) {
-        if (txHash === "0x336446b3502a06db0ec800d822f1da0d76ec40d9b668430622d3bede9be8be00") fs.writeFileSync("./temporaryTrials/trace.json", JSON.stringify(traceDebugged.structLogs))
         for (const trace of traceDebugged.structLogs) {
             //if SHA3 is found then read all keys before being hashed
             // computation of the memory location and the storage index of a complex variable (mapping or struct)
@@ -714,23 +734,32 @@ async function getCompiledData(contracts, contractName) {
         }
     };
 
+    let solidityVersion = ""
     if (Array.isArray(contracts)) {
         for (const contract in contracts) {
             input.sources[contract] = {};
             input.sources[contract].content = contracts[contract].content;
+            solidityVersion = await detectVersion(contracts[contract].content)
         }
     } else if (contracts) {
         input.sources[contractName] = {};
         input.sources[contractName].content = contracts;
+        solidityVersion = await detectVersion(contracts)
     }
 
-    const output = solc.compile(JSON.stringify(input));
+    console.log(solidityVersion)
+    const solcSnapshot = await getRemoteVersion(solidityVersion.replace("soljson-", "").replace(".js", ""))
+
+    const output = solcSnapshot.compile(JSON.stringify(input));
     contractCompiled = output
     fs.writeFileSync('testContract.json', output);
+    if (!JSON.parse(output).contracts) {
+        throw new Error(JSON.parse(output).errors[0].message);
+    }
 
     const source = JSON.parse(output).sources;
     contractAbi = JSON.stringify(await getAbi(JSON.parse(output), contractName));
-    //fs.writeFileSync('abitest.json', JSON.stringify(contractAbi));
+    // fs.writeFileSync('abitest.json', JSON.stringify(contractAbi));
     //get all storage variable for contract, including inherited ones
     const storageData = await getContractVariableTree(JSON.parse(output));
     //take the effective tree
@@ -744,6 +773,7 @@ async function getCompiledData(contracts, contractName) {
     //construct full contract tree including also variables
     const fullContractTree = await injectVariablesToTree(contractFunctionTree, contractStorageTree);
     fs.writeFileSync('./temporaryTrials/fullContractTree.json', JSON.stringify(fullContractTree));
+
     return fullContractTree;
 }
 
@@ -841,13 +871,17 @@ async function getContractCodeEtherscan(contractAddress) {
         //fs.writeFileSync('solcOutput', jsonCode);
         //const realResult = fs.readFileSync('solcOutput');
         jsonCode = JSON.parse(jsonCode.slice(1, -1)).sources
+
         for (const contract in jsonCode) {
 
+            let contractReplaced = contract.replace("node_modules/", "").replace("lib/", "")
             let actualContract = 'contract' + i;
             let code = jsonCode[contract].content;
-            contracts[contract] = {};
-            contracts[contract].nameId = actualContract;
-            contracts[contract].content = code;
+
+            contracts[contractReplaced] = {};
+            contracts[contractReplaced].nameId = actualContract;
+            contracts[contractReplaced].content = code;
+
             //input.sources[contract] = {}
             //input.sources[contract].content = code
             //fs.writeFileSync('smartContracts/' + actualContract, JSON.stringify(code));

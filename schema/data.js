@@ -1,5 +1,4 @@
 const mongoose = require('mongoose');
-const {int} = require("hardhat/internal/core/params/argumentTypes");
 
 const transactionSchema = new mongoose.Schema({
     txHash: { type: String, required: true, unique: true },
@@ -7,6 +6,7 @@ const transactionSchema = new mongoose.Schema({
     sender: { type: String, required: true },
     gasUsed: { type: String, required: true },
     activity: { type: String, required: true },
+    blockNumber: {type: Number, required: true },
     timestamp: { type: Date, required: true },
     inputs: [{
         inputId: {type: String },
@@ -26,7 +26,7 @@ const transactionSchema = new mongoose.Schema({
         callType: { type: String },
         to: { type: String },
         inputsCall: [
-            { type: String|null }
+            { type: mongoose.Schema.Types.Mixed }
         ]
     }],
     events: [{
@@ -36,6 +36,4 @@ const transactionSchema = new mongoose.Schema({
     }]
 });
 
-const Transaction = mongoose.model('Transaction', transactionSchema);
-
-module.exports = Transaction;
+module.exports = transactionSchema;
