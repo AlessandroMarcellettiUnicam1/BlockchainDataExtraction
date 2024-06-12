@@ -1,7 +1,7 @@
 const express = require('express');
 const app = express();
 const mongoose = require('mongoose');
-const connectDB = require('../config/db');
+const {connectDB} = require('../config/db');
 
 const {save} = require("./saveTransactions");
 app.get('/save', (req, res) => {
@@ -42,25 +42,22 @@ app.post('/api/query', async (req, res) => {
         const newtorks = ['Mainnet'];
 
         try {
-            for (let network of newtorks) {
-                await connectDB(network)
-                    .then(res => console.log('Connected to MongoDB - ' + network))
-                    .catch(err => console.error(err));
+            // for (let network of newtorks) {
+            //     await connectDB(network)
+            //         .then(res => console.log('Connected to MongoDB - ' + network))
+            //         .catch(err => console.error(err));
 
-                const collections = await mongoose.connection.db.listCollections().toArray();
+            const collections = await mongoose.connection.db.listCollections().toArray();
+            let results = [];
 
-                let results = [];
-
-                for (let collectionsDB of collections) {
-                    const collection = mongoose.connection.db.collection(collectionsDB.name);
-                    console.log(collection)
-                    const transactions = await collection.find(query).toArray();
-                    console.log(query)
-                    results = results.concat(transactions);
-                }
-
-                res.json(results);
+            for (let collectionsDB of collections) {
+                const collection = mongoose.connection.db.collection(collectionsDB.name);
+                const transactions = await collection.find(query).toArray();
+                results = results.concat(transactions);
             }
+
+            res.json(results);
+            // }
         } catch
             (err) {
             console.error('Errore durante l\'esecuzione della query:', err);

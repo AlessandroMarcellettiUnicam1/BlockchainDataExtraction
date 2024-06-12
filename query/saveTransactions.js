@@ -1,7 +1,6 @@
 const fs = require('fs');
 const mongoose = require('mongoose');
-const transactionSchema = require("../schema/data");
-
+const {transactionSchema, extractionLogSchema} = require("../schema/data");
 
 function getModelByContractAddress(contractAddress) {
     return mongoose.model(contractAddress, transactionSchema, contractAddress);

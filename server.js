@@ -40,10 +40,6 @@ app.post('/submit', upload.single('file'), async (req, res) => {
     const network = req.body.network;
     const filters = JSON.parse(req.body.filters);
 
-    connectDB(network)
-        .then(res => console.log('Connected to MongoDB - ' + network))
-        .catch(err => console.error(err));
-
     // Perform actions based on the received data
     console.log(`Start Block: ${fromBlock}`);
     console.log(`End Block: ${toBlock}`);
