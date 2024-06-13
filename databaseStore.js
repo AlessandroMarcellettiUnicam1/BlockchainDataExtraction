@@ -1,4 +1,4 @@
-const {getModelByContractAddress} = require('./query/saveTransactions');
+const {getModelByContractAddress} = require('./query/query');
 
 function saveData(data, contractAddress) {
 
@@ -7,10 +7,10 @@ function saveData(data, contractAddress) {
     const newTransaction = new DynamicModel(data);
     newTransaction.save()
         .then(() => {
-            console.log('Transazione salvata con successo');
+            console.log('Transaction saved successfully');
         })
         .catch(error => {
-            console.error('Errore durante il salvataggio della transazione:', error);
+            console.error('Error during saving transaction:', error);
         })
 }
 

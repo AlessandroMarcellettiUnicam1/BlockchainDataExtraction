@@ -10,11 +10,6 @@ const multer = require('multer');
 const upload = multer({dest: 'uploads/'})
 const port = 8000;
 
-const connectDB = require('./config/db');
-/*connectDB()
-    .then(r => console.log('Connected to MongoDB'))
-    .catch(err => console.error(err));*/
-
 app.use(cors());
 
 // Middleware: Logging for every request
@@ -28,8 +23,24 @@ app.use(express.static(path.join(__dirname, 'public')));
 app.use(bodyParser.urlencoded({extended: true}));
 app.use(bodyParser.json());
 
-const queryRouter = require('./query/query');
-app.use('/query', queryRouter)
+const {searchTransaction} = require('./query/query');
+
+app.post('/api/query', async (req, res) => {
+    const query = req.body;
+
+    try {
+        const results = await searchTransaction(query);
+
+        if (results) {
+            res.json(results);
+        } else {
+            res.status(404).json({ message: 'No result found' });
+        }
+    } catch (error) {
+        console.error('Error during query execution:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
 
 // Route: Home Page
 app.post('/submit', upload.single('file'), async (req, res) => {
@@ -39,10 +50,6 @@ app.post('/submit', upload.single('file'), async (req, res) => {
     const toBlock = req.body.toBlock; // Get 'End Block' value from form
     const network = req.body.network;
     const filters = JSON.parse(req.body.filters);
-
-    connectDB(network)
-        .then(res => console.log('Connected to MongoDB - ' + network))
-        .catch(err => console.error(err));
 
     // Perform actions based on the received data
     console.log(`Start Block: ${fromBlock}`);

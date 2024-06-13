@@ -14,7 +14,7 @@ const hre = require("hardhat");
 const helpers = require("@nomicfoundation/hardhat-toolbox/network-helpers");
 const {saveData} = require("../databaseStore");
 const {getRemoteVersion, detectVersion} = require("./solcVersionManager");
-const {getModelByContractAddress} = require("../query/saveTransactions");
+const {searchTransaction} = require("../query/query")
 require('dotenv').config();
 
 let networkInUse = ""
@@ -84,7 +84,7 @@ async function getAllTransactions(mainContract, contractAddress, fromBlock, toBl
     let logs
     try {
         const contractTree = await getCompiledData(contracts, mainContract);
-        logs = await getStorageData(contractTransactions, contracts, mainContract, contractTree, contractAddress, filters);
+        logs = await getStorageData(contractTransactions, contracts, mainContract, contractTree, contractAddress, filters, network);
     } catch (e) {
         console.error(e)
         return e
@@ -158,7 +158,7 @@ async function debugTrasactions(txHash, blockNumber) {
     return {response, requiredTime}
 }
 
-async function getStorageData(contractTransactions, contracts, mainContract, contractTree, contractAddress, filters) {
+async function getStorageData(contractTransactions, contracts, mainContract, contractTree, contractAddress, filters, network) {
     let blockchainLog = [];
     let partialInt = 0;
 
@@ -173,20 +173,24 @@ async function getStorageData(contractTransactions, contracts, mainContract, con
     })
 
     for (const tx of transactionsFiltered) {
-        //TODO: per trovare la transazione bisogna usare il "modello" ritornato da mongoose e non la collection
-        /*const transactionModel = getModelByContractAddress(tx.to)
-        const transaction = await transactionModel.findOne({txHash: tx.hash})*/
+        let query = {
+            txHash: tx.hash,
+            network: network
+        }
 
         let transaction;
 
         try {
-            const response = await axios.post('http://localhost:8000/query/api/query', {txHash: tx.hash});
+            const response = await searchTransaction(query)
 
-            console.log(response.data);
-            transaction = response.data;
+            console.log("Results found -> ", response);
+
+            if(response)
+                transaction = response;
         } catch (error) {
             console.error(error);
         }
+
         if (transaction) {
             console.log("transaction already processed: ", tx.hash)
             blockchainLog.push(transaction)
