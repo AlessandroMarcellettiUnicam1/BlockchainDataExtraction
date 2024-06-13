@@ -3,10 +3,12 @@ const cors = require('cors');
 const path = require('path');
 const bodyParser = require('body-parser');
 const fs = require('fs');
-const {getAllTransactions} = require("./services/main");
 const {stringify} = require("csv-stringify");
-const app = express();
 const multer = require('multer');
+const jsonToCsv = require("json-2-csv")
+
+const {getAllTransactions} = require("./services/main");
+const app = express();
 const upload = multer({dest: 'uploads/'})
 const port = 8000;
 
@@ -202,6 +204,32 @@ app.post('/jsonocel-download', (req, res) => {
         }
     });
 
+})
+
+app.post('/csvocel-download', (req, res) => {
+    const ocel = req.body.ocel;
+    const filename = "ocelLogs.csv"
+
+    const array = Array(1).fill(ocel)
+    const csvRow = jsonToCsv.json2csv(array, {arrayIndexesAsKeys: true})
+
+    fs.writeFileSync(filename, csvRow)
+
+    const formattedFileName = encodeURIComponent(filename);
+    res.setHeader('Content-Disposition', `attachment; filename="${formattedFileName}"`);
+    res.setHeader('Content-Type', 'application/octet-stream');
+
+    res.sendFile(path.resolve(filename), (err) => {
+        if (err) {
+            // Handle error if file sending fails
+            console.error(err);
+            res.status(err.status).end();
+        } else {
+            fs.unlinkSync(path.resolve(filename))
+            console.log('File sent successfully');
+        }
+    });
+    // fs.writeFileSync(filename, csvRow)
 })
 
 app.get('/', (req, res) => {

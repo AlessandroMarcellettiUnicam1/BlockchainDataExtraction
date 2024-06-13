@@ -12,9 +12,10 @@ let contractTransactions = [];
 //const cotractAddressAdidas = 0x28472a58A490c5e09A238847F66A68a47cC76f0f
 const hre = require("hardhat");
 const helpers = require("@nomicfoundation/hardhat-toolbox/network-helpers");
-const {saveData} = require("../databaseStore");
+const {saveTransaction, saveExtractionLog} = require("../databaseStore");
 const {getRemoteVersion, detectVersion} = require("./solcVersionManager");
 const {searchTransaction} = require("../query/query")
+const {connectDB} = require("../databaseStore");
 require('dotenv').config();
 
 let networkInUse = ""
@@ -84,7 +85,7 @@ async function getAllTransactions(mainContract, contractAddress, fromBlock, toBl
     let logs
     try {
         const contractTree = await getCompiledData(contracts, mainContract);
-        logs = await getStorageData(contractTransactions, contracts, mainContract, contractTree, contractAddress, filters, network);
+        logs = await getStorageData(contractTransactions, contracts, mainContract, contractTree, contractAddress, filters, fromBlock, toBlock, network);
     } catch (e) {
         console.error(e)
         return e
@@ -94,16 +95,16 @@ async function getAllTransactions(mainContract, contractAddress, fromBlock, toBl
     internalTxId = 0
     eventId = 0
 
-    let csvRow = []
-    csvRow.push({
-        txHash: null,
-        debugTime: null,
-        decodeTime: null,
-        totalTime: parseFloat((traceTime + decodeTime).toFixed(2))
-    })
-    stringify(csvRow, (err, output) => {
-        fs.appendFileSync('csvLogs.csv', output)
-    })
+    // let csvRow = []
+    // csvRow.push({
+    //     txHash: null,
+    //     debugTime: null,
+    //     decodeTime: null,
+    //     totalTime: parseFloat((traceTime + decodeTime).toFixed(2))
+    // })
+    // stringify(csvRow, (err, output) => {
+    //     fs.appendFileSync('csvLogs.csv', output)
+    // })
 
     return logs
 }
@@ -158,9 +159,26 @@ async function debugTrasactions(txHash, blockNumber) {
     return {response, requiredTime}
 }
 
-async function getStorageData(contractTransactions, contracts, mainContract, contractTree, contractAddress, filters, network) {
+async function getStorageData(contractTransactions, contracts, mainContract, contractTree, contractAddress, filters, fromBlock, toBlock, network) {
     let blockchainLog = [];
     let partialInt = 0;
+
+    const userLog = {
+        networkUsed: networkInUse,
+        contractAddress,
+        contractName: mainContract,
+        fromBlock,
+        toBlock,
+        filters: {
+            ...Object.keys(filters).reduce((obj, key) => {
+                obj[key] = filters[key]
+                return obj
+            }, {})
+        },
+        timestampLog: new Date().toISOString()
+    }
+
+    await saveExtractionLog(userLog)
 
     contractTransactions.map(tx => {
         const decoder = new InputDataDecoder(contractAbi);
@@ -168,10 +186,11 @@ async function getStorageData(contractTransactions, contracts, mainContract, con
     })
 
     const transactionsFiltered = applyFilters(contractTransactions, filters)
-    stringify([], {header: true, columns: csvColumns}, (err, output) => {
-        fs.writeFileSync('csvLogs.csv', output)
-    })
+    // stringify([], {header: true, columns: csvColumns}, (err, output) => {
+    //     fs.writeFileSync('csvLogs.csv', output)
+    // })
 
+    await connectDB(networkInUse)
     for (const tx of transactionsFiltered) {
         let query = {
             txHash: tx.hash,
@@ -193,7 +212,7 @@ async function getStorageData(contractTransactions, contracts, mainContract, con
 
         if (transaction) {
             console.log("transaction already processed: ", tx.hash)
-            blockchainLog.push(transaction)
+            blockchainLog = transaction
         } else {
             const {response, requiredTime} = await debugTrasactions(tx.hash, tx.blockNumber)
             //if(partialInt < 10){
@@ -270,22 +289,24 @@ async function getStorageData(contractTransactions, contracts, mainContract, con
             const end = new Date()
             const requiredDecodeTime = parseFloat(((end - start) / 1000).toFixed(2))
             decodeTime += requiredDecodeTime
-            let csvRow = []
-            csvRow.push({
-                txHash: tx.hash,
-                debugTime: requiredTime,
-                decodeTime: requiredDecodeTime,
-                totalTime: parseFloat((requiredTime + requiredDecodeTime).toFixed(2))
-            })
-            stringify(csvRow, (err, output) => {
-                fs.appendFileSync('csvLogs.csv', output)
-            })
+            // let csvRow = []
+            // csvRow.push({
+            //     txHash: tx.hash,
+            //     debugTime: requiredTime,
+            //     decodeTime: requiredDecodeTime,
+            //     totalTime: parseFloat((requiredTime + requiredDecodeTime).toFixed(2))
+            // })
+            // stringify(csvRow, (err, output) => {
+            //     fs.appendFileSync('csvLogs.csv', output)
+            // })
             console.log("-----------------------------------------------------------------------");
             blockchainLog.push(newLog)
-            saveData(newLog, tx.to)
+            await saveTransaction(newLog, tx.to)
         }
         partialInt++;
     }
+    console.log("Extraction finished")
+    await mongoose.disconnect()
     return blockchainLog;
 }
 
