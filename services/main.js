@@ -212,7 +212,7 @@ async function getStorageData(contractTransactions, contracts, mainContract, con
 
         if (transaction) {
             console.log("transaction already processed: ", tx.hash)
-            blockchainLog = transaction
+            blockchainLog.push(...transaction);
         } else {
             const {response, requiredTime} = await debugTrasactions(tx.hash, tx.blockNumber)
             //if(partialInt < 10){
