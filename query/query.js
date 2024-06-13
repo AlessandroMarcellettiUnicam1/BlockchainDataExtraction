@@ -1,6 +1,9 @@
 const mongoose = require('mongoose');
-const connectDB = require('../config/db');
-const transactionSchema = require("../schema/data");
+//const {connectDB} = require('../config/db');
+const {
+    transactionSchema,
+    extractionLogSchema
+} = require("../schema/data");
 
 async function searchTransaction(query) {
     const {gasUsedFrom, gasUsedTo, blockNumberFrom, blockNumberTo, timestampFrom, timestampTo} = query;
@@ -23,15 +26,15 @@ async function searchTransaction(query) {
         if (timestampTo) query.timestamp.$lte = new Date(timestampTo);
     }
 
-    let network = query.network;
-    delete query.network;
+    //let network = query.network;
+    //delete query.network;
 
     console.log("Query received -> ", query);
 
     try {
-        await connectDB(network)
-            .then(res => console.log('Connected to MongoDB - ' + network))
-            .catch(err => console.error(err));
+        /* await connectDB(network)
+             .then(res => console.log('Connected to MongoDB - ' + network))
+             .catch(err => console.error(err));*/
 
         const collections = await mongoose.connection.db.listCollections().toArray();
 
@@ -42,8 +45,6 @@ async function searchTransaction(query) {
             const transactions = await collection.find(query).toArray();
             results = results.concat(transactions);
         }
-
-        console.log("Results found length-> ", results.length);
 
         if (results.length > 0)
             return results;
