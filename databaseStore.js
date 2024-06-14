@@ -1,7 +1,7 @@
-const {getModelByContractAddress} = require('./query/saveTransactions');
 const {connectDB} = require("./config/db");
 const mongoose = require("mongoose");
 const {extractionLogSchema} = require("./schema/data");
+const {getModelByContractAddress} = require('./query/query');
 
 async function saveTransaction(data, contractAddress) {
     try {

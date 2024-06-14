@@ -14,8 +14,9 @@ const hre = require("hardhat");
 const helpers = require("@nomicfoundation/hardhat-toolbox/network-helpers");
 const {saveTransaction, saveExtractionLog} = require("../databaseStore");
 const {getRemoteVersion, detectVersion} = require("./solcVersionManager");
-const mongoose = require("mongoose");
+const {searchTransaction} = require("../query/query")
 const {connectDB} = require("../config/db");
+const mongoose = require("mongoose");
 require('dotenv').config();
 
 let networkInUse = ""
@@ -85,7 +86,7 @@ async function getAllTransactions(mainContract, contractAddress, fromBlock, toBl
     let logs
     try {
         const contractTree = await getCompiledData(contracts, mainContract);
-        logs = await getStorageData(contractTransactions, contracts, mainContract, contractTree, contractAddress, filters, fromBlock, toBlock);
+        logs = await getStorageData(contractTransactions, contracts, mainContract, contractTree, contractAddress, filters, fromBlock, toBlock, network);
     } catch (e) {
         console.error(e)
         return e
@@ -159,7 +160,7 @@ async function debugTransaction(txHash, blockNumber) {
     return {response, requiredTime}
 }
 
-async function getStorageData(contractTransactions, contracts, mainContract, contractTree, contractAddress, filters, fromBlock, toBlock) {
+async function getStorageData(contractTransactions, contracts, mainContract, contractTree, contractAddress, filters, fromBlock, toBlock, network) {
     let blockchainLog = [];
     let partialInt = 0;
 
@@ -192,21 +193,26 @@ async function getStorageData(contractTransactions, contracts, mainContract, con
 
     await connectDB(networkInUse)
     for (const tx of transactionsFiltered) {
-        /*const transactionModel = getModelByContractAddress(tx.to)
-        const transaction = await transactionModel.findOne({txHash: tx.hash})*/
+        let query = {
+            txHash: tx.hash
+        }
 
         let transaction;
 
         try {
-            const response = await axios.post('http://localhost:8000/query/api/query', {txHash: tx.hash});
+            const response = await searchTransaction(query)
 
-            transaction = response.data;
+            console.log("Transaction found -> ", response);
+
+            if(response)
+                transaction = response;
         } catch (error) {
             console.error(error);
         }
-        if (transaction.length > 0) {
+
+        if (transaction) {
             console.log("transaction already processed: ", tx.hash)
-            blockchainLog = transaction
+            blockchainLog.push(...transaction);
         } else {
             const {response, requiredTime} = await debugTransaction(tx.hash, tx.blockNumber)
             //if(partialInt < 10){
