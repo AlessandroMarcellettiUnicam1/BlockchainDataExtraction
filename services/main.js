@@ -146,7 +146,7 @@ function applyFilters(contractTransactions, filters) {
     return contractTransactionsFiltered
 }
 
-async function debugTrasactions(txHash, blockNumber) {
+async function debugTransaction(txHash, blockNumber) {
     await helpers.reset(web3Endpoint, Number(blockNumber));
     const start = new Date()
     const response = await hre.network.provider.send("debug_traceTransaction", [
@@ -208,7 +208,7 @@ async function getStorageData(contractTransactions, contracts, mainContract, con
             console.log("transaction already processed: ", tx.hash)
             blockchainLog = transaction
         } else {
-            const {response, requiredTime} = await debugTrasactions(tx.hash, tx.blockNumber)
+            const {response, requiredTime} = await debugTransaction(tx.hash, tx.blockNumber)
             //if(partialInt < 10){
             const start = new Date()
             console.log("processing transaction " + partialInt)
