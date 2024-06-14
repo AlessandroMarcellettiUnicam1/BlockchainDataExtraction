@@ -26,10 +26,12 @@ app.use(bodyParser.urlencoded({extended: true}));
 app.use(bodyParser.json());
 
 const {searchTransaction} = require('./query/query');
+const {connectDB} = require("./config/db");
 
 app.post('/api/query', async (req, res) => {
     const query = req.body;
 
+    await connectDB(query.network)
     try {
         const results = await searchTransaction(query);
 
