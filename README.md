@@ -11,7 +11,7 @@ ___
 - [React](https://react.dev/) and [Material UI](https://mui.com/material-ui/) for the frontend
 - A [MongoDB](https://www.mongodb.com/) istance
 - API key of [Etherscan](https://etherscan.io/apis)
-- API key of a Web3 Provider like [Infura[(https://www.infura.io/) or [Alchemy](https://www.alchemy.com/)
+- API key of a Web3 Provider like [Infura](https://www.infura.io/) or [Alchemy](https://www.alchemy.com/)
 
 ___
 
