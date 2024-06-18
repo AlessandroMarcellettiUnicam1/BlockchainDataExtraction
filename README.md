@@ -1,6 +1,6 @@
 # Getting Started with the Data Extraction on Blockchain
 
-This tool consists of a web application to extract data from contract's transactions using the API of Etherscan for storing them into a MongoDB database.
+This tool consists of a web application to extract data from contract transactions using the Etherscan API to store them in a MongoDB database.
 The purpose of this application is simplify the data analysis on Blockchain since that is possibile to retrieve information like (in addition to the _transaction hash_ or _gas used_): _internal transactions_, _storage state_, _events_ and so on for each transaction.
 
 ___ 
