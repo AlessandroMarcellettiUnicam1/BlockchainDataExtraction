@@ -12,11 +12,11 @@ let contractTransactions = [];
 //const cotractAddressAdidas = 0x28472a58A490c5e09A238847F66A68a47cC76f0f
 const hre = require("hardhat");
 const helpers = require("@nomicfoundation/hardhat-toolbox/network-helpers");
-const {saveData} = require("../databaseStore");
+const {saveTransaction, saveExtractionLog} = require("../databaseStore");
 const {getRemoteVersion, detectVersion} = require("./solcVersionManager");
+const {searchTransaction} = require("../query/query")
+const {connectDB} = require("../config/db");
 const mongoose = require("mongoose");
-const {getModelByContractAddress} = require("../query/saveTransactions");
-const path = require("path");
 require('dotenv').config();
 
 let networkInUse = ""
@@ -96,16 +96,16 @@ async function getAllTransactions(mainContract, contractAddress, fromBlock, toBl
     internalTxId = 0
     eventId = 0
 
-    let csvRow = []
-    csvRow.push({
-        txHash: null,
-        debugTime: null,
-        decodeTime: null,
-        totalTime: parseFloat((traceTime + decodeTime).toFixed(2))
-    })
-    stringify(csvRow, (err, output) => {
-        fs.appendFileSync('csvLogs.csv', output)
-    })
+    // let csvRow = []
+    // csvRow.push({
+    //     txHash: null,
+    //     debugTime: null,
+    //     decodeTime: null,
+    //     totalTime: parseFloat((traceTime + decodeTime).toFixed(2))
+    // })
+    // stringify(csvRow, (err, output) => {
+    //     fs.appendFileSync('csvLogs.csv', output)
+    // })
 
     return logs
 }
@@ -147,32 +147,13 @@ function applyFilters(contractTransactions, filters) {
     return contractTransactionsFiltered
 }
 
-function deleteCacheFolder(directoryPath) {
-    if (fs.existsSync(directoryPath)) {
-        console.log("Exists")
-        fs.readdirSync(directoryPath).forEach((file) => {
-            const curPath = path.join(directoryPath, file);
-            if (fs.lstatSync(curPath).isDirectory()) { // recurse
-                deleteCacheFolder(curPath);
-            } else {
-                fs.unlinkSync(curPath);
-            }
-        });
-        console.log("Cache removed")
-        fs.rmdirSync(directoryPath);
-    } else {
-        console.log("Does not exist")
-    }
-}
-
-async function debugTrasactions(txHash, blockNumber) {
+async function debugTransaction(txHash, blockNumber) {
     await helpers.reset(web3Endpoint, Number(blockNumber));
     const start = new Date()
     const response = await hre.network.provider.send("debug_traceTransaction", [
         txHash
     ]);
     const end = new Date()
-    deleteCacheFolder(path.resolve("cache"))
     const requiredTime = parseFloat(((end - start) / 1000).toFixed(2))
     traceTime += requiredTime
 
@@ -185,10 +166,10 @@ async function getStorageData(contractTransactions, contracts, mainContract, con
 
     const userLog = {
         networkUsed: networkInUse,
-        contractAddress: contractAddress,
+        contractAddress,
         contractName: mainContract,
-        fromBlock: fromBlock,
-        toBlock: toBlock,
+        fromBlock,
+        toBlock,
         filters: {
             ...Object.keys(filters).reduce((obj, key) => {
                 obj[key] = filters[key]
@@ -198,7 +179,7 @@ async function getStorageData(contractTransactions, contracts, mainContract, con
         timestampLog: new Date().toISOString()
     }
 
-    console.log(userLog)
+    await saveExtractionLog(userLog)
 
     contractTransactions.map(tx => {
         const decoder = new InputDataDecoder(contractAbi);
@@ -206,17 +187,35 @@ async function getStorageData(contractTransactions, contracts, mainContract, con
     })
 
     const transactionsFiltered = applyFilters(contractTransactions, filters)
-    stringify([], {header: true, columns: csvColumns}, (err, output) => {
-        fs.writeFileSync('csvLogs.csv', output)
-    })
+    // stringify([], {header: true, columns: csvColumns}, (err, output) => {
+    //     fs.writeFileSync('csvLogs.csv', output)
+    // })
+
+    await connectDB(networkInUse)
     for (const tx of transactionsFiltered) {
-        const transactionModel = getModelByContractAddress(tx.to)
-        const transaction = await transactionModel.findOne({txHash: tx.hash})
+        let query = {
+            txHash: tx.hash.toLowerCase(),
+            contractAddress: contractAddress.toLowerCase()
+        }
+
+        let transaction;
+
+        try {
+            const response = await searchTransaction(query)
+
+            console.log("Transactions found -> ", response);
+
+            if(response)
+                transaction = response;
+        } catch (error) {
+            console.error(error);
+        }
+
         if (transaction) {
             console.log("transaction already processed: ", tx.hash)
-            blockchainLog.push(transaction)
+            blockchainLog.push(...transaction);
         } else {
-            const {response, requiredTime} = await debugTrasactions(tx.hash, tx.blockNumber)
+            const {response, requiredTime} = await debugTransaction(tx.hash, tx.blockNumber)
             //if(partialInt < 10){
             const start = new Date()
             console.log("processing transaction " + partialInt)
@@ -291,22 +290,24 @@ async function getStorageData(contractTransactions, contracts, mainContract, con
             const end = new Date()
             const requiredDecodeTime = parseFloat(((end - start) / 1000).toFixed(2))
             decodeTime += requiredDecodeTime
-            let csvRow = []
-            csvRow.push({
-                txHash: tx.hash,
-                debugTime: requiredTime,
-                decodeTime: requiredDecodeTime,
-                totalTime: parseFloat((requiredTime + requiredDecodeTime).toFixed(2))
-            })
-            stringify(csvRow, (err, output) => {
-                fs.appendFileSync('csvLogs.csv', output)
-            })
+            // let csvRow = []
+            // csvRow.push({
+            //     txHash: tx.hash,
+            //     debugTime: requiredTime,
+            //     decodeTime: requiredDecodeTime,
+            //     totalTime: parseFloat((requiredTime + requiredDecodeTime).toFixed(2))
+            // })
+            // stringify(csvRow, (err, output) => {
+            //     fs.appendFileSync('csvLogs.csv', output)
+            // })
             console.log("-----------------------------------------------------------------------");
             blockchainLog.push(newLog)
-            saveData(newLog, tx.to)
+            await saveTransaction(newLog, tx.to)
         }
         partialInt++;
     }
+    console.log("Extraction finished")
+    await mongoose.disconnect()
     return blockchainLog;
 }
 

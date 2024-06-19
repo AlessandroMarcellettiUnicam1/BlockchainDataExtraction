@@ -1,21 +1,10 @@
-const express = require('express');
-const app = express();
 const mongoose = require('mongoose');
+const {
+    transactionSchema,
+} = require("../schema/data");
 
-const { save } = require("./saveTransactions");
-app.get('/save', (req, res) => {
-    try {
-        save();
-        res.send('Salvataggio completato');
-    } catch (err) {
-        console.error('Errore durante il salvataggio delle transazioni:', err);
-    }
-});
-
-app.post('/api/query', async (req, res) => {
-    const {gasUsedFrom, gasUsedTo, blockNumberFrom, blockNumberTo, timestampFrom, timestampTo, ...rest} = req.body;
-
-    const query = {...rest};
+async function searchTransaction(query) {
+    const {gasUsedFrom, gasUsedTo, blockNumberFrom, blockNumberTo, timestampFrom, timestampTo} = query;
 
     if (gasUsedFrom || gasUsedTo) {
         query.gasUsed = {};
@@ -35,31 +24,44 @@ app.post('/api/query', async (req, res) => {
         if (timestampTo) query.timestamp.$lte = new Date(timestampTo);
     }
 
-    console.log(query);
+    delete query.network;
+    console.log("Query received -> ", query);
 
     try {
-        const collections = await mongoose.connection.db.listCollections().toArray();
-
         let results = [];
 
-        for (let collectionsDB of collections) {
-            const collection = mongoose.connection.db.collection(collectionsDB.name);
+        if (query.contractAddress) {
+            const collection = mongoose.connection.db.collection(query.contractAddress);
             const transactions = await collection.find(query).toArray();
             results = results.concat(transactions);
+        } else {
+            const collections = await mongoose.connection.db.listCollections().toArray();
+            for (let collectionsDB of collections) {
+                const collection = mongoose.connection.db.collection(collectionsDB.name);
+                const transactions = await collection.find(query).toArray();
+                results = results.concat(transactions);
+            }
         }
 
-        res.json(results);
+        if (results.length > 0)
+            return results;
+        return null;
     } catch (err) {
-        console.error('Errore durante l\'esecuzione della query:', err);
-        res.status(500).json({error: err.message});
+        console.error('Error during query execution:', err);
+        throw err;
     }
-});
+}
+
+function getModelByContractAddress(contractAddress) {
+    return mongoose.model(contractAddress, transactionSchema, contractAddress);
+}
 
 //cambiato nome alle collections
 //query su più collection
 //bug fix delle query dei campi annidati
 //gestione dell'estrazione nel caso di txHash già presenti del database
+//creare un db per ogni network
+//generalizzare metodo estrazione query
+//tradurre tutto in inglese
 
-//TODO: creare un db per ogni network, backlog per ogni query creata
-
-module.exports = app;
+module.exports = {getModelByContractAddress, searchTransaction};
