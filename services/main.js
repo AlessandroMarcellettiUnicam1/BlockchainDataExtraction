@@ -86,7 +86,7 @@ async function getAllTransactions(mainContract, contractAddress, fromBlock, toBl
     let logs
     try {
         const contractTree = await getCompiledData(contracts, mainContract);
-        logs = await getStorageData(contractTransactions, contracts, mainContract, contractTree, contractAddress, filters, fromBlock, toBlock, network);
+        logs = await getStorageData(contractTransactions, contracts, mainContract, contractTree, contractAddress, filters, fromBlock, toBlock);
     } catch (e) {
         console.error(e)
         return e
@@ -160,7 +160,7 @@ async function debugTransaction(txHash, blockNumber) {
     return {response, requiredTime}
 }
 
-async function getStorageData(contractTransactions, contracts, mainContract, contractTree, contractAddress, filters, fromBlock, toBlock, network) {
+async function getStorageData(contractTransactions, contracts, mainContract, contractTree, contractAddress, filters, fromBlock, toBlock) {
     let blockchainLog = [];
     let partialInt = 0;
 
@@ -194,7 +194,8 @@ async function getStorageData(contractTransactions, contracts, mainContract, con
     await connectDB(networkInUse)
     for (const tx of transactionsFiltered) {
         let query = {
-            txHash: tx.hash
+            txHash: tx.hash.toLowerCase(),
+            contractAddress: contractAddress.toLowerCase()
         }
 
         let transaction;
@@ -202,7 +203,7 @@ async function getStorageData(contractTransactions, contracts, mainContract, con
         try {
             const response = await searchTransaction(query)
 
-            console.log("Transaction found -> ", response);
+            console.log("Transactions found -> ", response);
 
             if(response)
                 transaction = response;
