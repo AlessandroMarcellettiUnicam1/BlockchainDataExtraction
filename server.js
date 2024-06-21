@@ -32,6 +32,7 @@ app.post('/api/query', async (req, res) => {
     const query = req.body;
 
     await connectDB(query.network)
+    delete query.network;
     try {
         const results = await searchTransaction(query);
 
