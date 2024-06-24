@@ -10,21 +10,25 @@ async function searchTransaction(query) {
         query.gasUsed = {};
         if (gasUsedFrom) query.gasUsed.$gte = gasUsedFrom;
         if (gasUsedTo) query.gasUsed.$lte = gasUsedTo;
+        delete query.gasUsedFrom;
+        delete query.gasUsedTo;
     }
 
     if (blockNumberFrom || blockNumberTo) {
         query.blockNumber = {};
         if (blockNumberFrom) query.blockNumber.$gte = Number(blockNumberFrom);
         if (blockNumberTo) query.blockNumber.$lte = Number(blockNumberTo);
+        delete query.blockNumberFrom
+        delete query.blockNumberTo
     }
 
     if (timestampFrom || timestampTo) {
         query.timestamp = {};
         if (timestampFrom) query.timestamp.$gte = new Date(timestampFrom);
         if (timestampTo) query.timestamp.$lte = new Date(timestampTo);
+        delete query.timestampFrom
+        delete query.timestampTo;
     }
-
-    delete query.network;
     console.log("Query received -> ", query);
 
     try {
