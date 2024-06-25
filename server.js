@@ -31,6 +31,7 @@ const {connectDB} = require("./config/db");
 app.post('/api/query', async (req, res) => {
     const query = req.body;
 
+    console.log("Query received -> ", query);
     await connectDB(query.network)
     delete query.network;
     try {

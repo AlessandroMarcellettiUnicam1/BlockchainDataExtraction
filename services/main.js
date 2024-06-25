@@ -222,10 +222,10 @@ async function getStorageData(contractTransactions, contracts, mainContract, con
             const pastEvents = await getEvents(tx.hash, Number(tx.blockNumber), contractAddress);
             let newLog = {
                 txHash: tx.hash,
-                blockNumber: tx.blockNumber,
+                blockNumber: parseInt(tx.blockNumber),
                 contractAddress: tx.to,
                 sender: tx.from,
-                gasUsed: tx.gasUsed,
+                gasUsed: parseInt(tx.gasUsed),
                 activity: tx.inputDecoded.method,
                 timestamp: '',
                 inputs: [],

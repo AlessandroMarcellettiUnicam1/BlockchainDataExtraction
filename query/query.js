@@ -8,8 +8,8 @@ async function searchTransaction(query) {
 
     if (gasUsedFrom || gasUsedTo) {
         query.gasUsed = {};
-        if (gasUsedFrom) query.gasUsed.$gte = gasUsedFrom;
-        if (gasUsedTo) query.gasUsed.$lte = gasUsedTo;
+        if (gasUsedFrom) query.gasUsed.$gte = Number(gasUsedFrom);
+        if (gasUsedTo) query.gasUsed.$lte = Number(gasUsedTo);
         delete query.gasUsedFrom;
         delete query.gasUsedTo;
     }
