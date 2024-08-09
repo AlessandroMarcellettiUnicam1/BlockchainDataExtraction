@@ -76,7 +76,11 @@ app.post('/submit', upload.single('file'), async (req, res) => {
                 if (err) {
                     console.error(err)
                 }
-                res.send(logs)
+                if (logs instanceof Error) {
+                    res.status(404).send(logs.message)
+                } else {
+                    res.send(logs)
+                }
             })
         })
     } else {

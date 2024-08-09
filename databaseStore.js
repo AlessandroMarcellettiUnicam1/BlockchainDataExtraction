@@ -23,6 +23,7 @@ async function saveExtractionLog(userLog) {
         console.log('Extraction log successfully saved');
     } catch (err) {
         console.error('Extraction log storing error: ', err);
+        throw new Error(err.message)
     }
 }
 
