@@ -1,13 +1,13 @@
 const mongoose = require('mongoose');
 
 const transactionSchema = new mongoose.Schema({
-    txHash: {type: String, required: true, unique: true},
-    contractAddress: {type: String, required: true},
-    sender: {type: String, required: true},
-    gasUsed: {type: Number, required: true},
-    activity: {type: String, required: true},
-    blockNumber: {type: Number, required: true},
-    timestamp: {type: Date, required: true},
+    txHash: {type: String, unique: true},
+    contractAddress: {type: String},
+    sender: {type: String},
+    gasUsed: {type: Number},
+    activity: {type: String},
+    blockNumber: {type: Number},
+    timestamp: {type: Date},
     inputs: [{
         inputId: {type: String},
         inputName: {type: String},
@@ -45,13 +45,13 @@ const filterExtractionSchema = new mongoose.Schema({
 })
 
 const extractionLogSchema = new mongoose.Schema({
-    networkUsed: {type: String, required: true},
-    contractAddress: {type: String, required: true},
-    contractName: {type: String, required: true},
-    fromBlock: {type: String, required: true},
-    toBlock: {type: String, required: true},
-    filters: {type: filterExtractionSchema, required: true},
-    timestampLog: {type: String, required: true}
+    networkUsed: {type: String},
+    contractAddress: {type: String},
+    contractName: {type: String},
+    fromBlock: {type: String},
+    toBlock: {type: String},
+    filters: {type: filterExtractionSchema},
+    timestampLog: {type: String}
 })
 
 module.exports = {transactionSchema, extractionLogSchema};

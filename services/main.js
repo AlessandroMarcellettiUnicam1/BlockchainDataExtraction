@@ -67,24 +67,18 @@ async function getAllTransactions(mainContract, contractAddress, fromBlock, toBl
 
     web3 = new Web3(web3Endpoint)
 
-    const data = await axios.get(endpoint + `?module=account&action=txlist&address=${contractAddress}&startblock=${fromBlock}&endblock=${toBlock}&sort=asc&apikey=${apiKey}`);
-    contractTransactions = data.data.result;
-    // returns all contracts linked to te contract sent in input from etherscan
-    let contracts = null
-    if (smartContract) {
-        contracts = smartContract
-    } else {
-        try {
-            contracts = await getContractCodeEtherscan(contractAddress);
-        } catch (err) {
-            console.error(err)
-            return err
-        }
-    }
-
     try {
+        const data = await axios.get(endpoint + `?module=account&action=txlist&address=${contractAddress}&startblock=${fromBlock}&endblock=${toBlock}&sort=asc&apikey=${apiKey}`);
+        contractTransactions = data.data.result;
+        // returns all contracts linked to te contract sent in input from etherscan
+        let contracts = null
+        if (smartContract) {
+            contracts = smartContract
+        } else {
+            contracts = await getContractCodeEtherscan(contractAddress);
+        }
         const contractTree = await getCompiledData(contracts, mainContract);
-        const logs = await getStorageData(contractTransactions, contracts, mainContract, contractTree, contractAddress, filters, fromBlock, toBlock);
+        return await getStorageData(contractTransactions, contracts, mainContract, contractTree, contractAddress, filters, fromBlock, toBlock);
         // let csvRow = []
         // csvRow.push({
         //     txHash: null,
@@ -95,7 +89,6 @@ async function getAllTransactions(mainContract, contractAddress, fromBlock, toBl
         // stringify(csvRow, (err, output) => {
         //     fs.appendFileSync('csvLogs.csv', output)
         // })
-        return logs
     } catch (err) {
         console.error(err)
         return err
