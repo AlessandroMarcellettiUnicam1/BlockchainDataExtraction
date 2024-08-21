@@ -5,7 +5,6 @@ const axios = require("axios");
 const {stringify} = require("csv-stringify")
 //let contractAbi = fs.readFileSync('abiEtherscan.json', 'utf8');
 let contractAbi = {};
-let contractTransactions = [];
 //const contractAddress = '0x152649eA73beAb28c5b49B26eb48f7EAD6d4c898'cake;
 //const contractAddress = '0x5C1A0CC6DAdf4d0fB31425461df35Ba80fCBc110';
 //const contractAddress = '0xc9EEf4c46ABcb11002c9bB8A47445C96CDBcAffb';
@@ -68,8 +67,8 @@ async function getAllTransactions(mainContract, contractAddress, fromBlock, toBl
     web3 = new Web3(web3Endpoint)
 
     try {
-        const data = await axios.get(endpoint + `?module=account&action=txlist&address=${contractAddress}&startblock=${fromBlock}&endblock=${toBlock}&sort=asc&apikey=${apiKey}`);
-        contractTransactions = data.data.result;
+        const data = await axios.get(endpoint + `?module=account&action=txlist&address=${contractAddress}&startblock=${fromBlock}&endblock=${toBlock}&sort=asc&apikey=${apiKey}`)
+        const contractTransactions = await data.data.result
         // returns all contracts linked to te contract sent in input from etherscan
         let contracts = null
         if (smartContract) {
@@ -201,6 +200,7 @@ async function getStorageData(contractTransactions, contracts, mainContract, con
         if (transaction) {
             console.log("transaction already processed: ", tx.hash)
             blockchainLog.push(...transaction);
+            console.log("-----------------------------------------------------------------------");
         } else {
             console.log("Processing transaction " + partialInt)
             console.log(tx.hash);
@@ -288,9 +288,9 @@ async function getStorageData(contractTransactions, contracts, mainContract, con
             // stringify(csvRow, (err, output) => {
             //     fs.appendFileSync('csvLogs.csv', output)
             // })
-            console.log("-----------------------------------------------------------------------");
             blockchainLog.push(newLog)
             await saveTransaction(newLog, tx.to)
+            console.log("-----------------------------------------------------------------------");
         }
         partialInt++;
     }
