@@ -600,7 +600,7 @@ async function newDecodeValues(sstore, contractTree, shaTraces, functionStorage,
     }
 
     // merge the struct's member in a static array
-    const isStructArray = decodedValues.some(item => item.variableValue.includes("arrayIndex"));
+    const isStructArray = decodedValues.some(item => typeof item === "string" && item.variableValue.includes("arrayIndex"));
     if (isStructArray) {
         decodedValues = mergeVariableValues(decodedValues);
     }
@@ -807,6 +807,7 @@ function decodeStorageValue(variable, value, mainContract, storageVar, functionS
         const valueType = typeBuffer[typeBuffer.length - 1];
         if (valueType.includes("struct")) {
             //TODO decode mapping of struct
+            return "miss mapping of struct"
         } else {
             return decodePrimitiveType(valueType, value);
         }
@@ -824,8 +825,6 @@ function decodeStorageValue(variable, value, mainContract, storageVar, functionS
     } else {
         return decodePrimitiveType(variable.type, value);
     }
-
-    return value;
 }
 
 async function getCompiledData(contracts, contractName) {
