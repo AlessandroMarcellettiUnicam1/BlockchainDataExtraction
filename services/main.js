@@ -289,7 +289,7 @@ async function getStorageData(contractTransactions, contracts, mainContract, con
             //     fs.appendFileSync('csvLogs.csv', output)
             // })
             blockchainLog.push(newLog)
-            await saveTransaction(newLog, tx.to)
+            // await saveTransaction(newLog, tx.to)
             console.log("-----------------------------------------------------------------------");
         }
         partialInt++;
@@ -513,6 +513,35 @@ function getContractVariable(slotIndex, contractTree, functionName, contracts, m
     return contractVariables;
 }
 
+// used to merge storage variables of structs member in static array
+function mergeVariableValues(arr) {
+    return Object.values(arr.reduce((acc, item) => {
+        const variableValue = JSON.parse(item.variableValue);
+        const arrayIndex = variableValue.arrayIndex;
+
+        if (arrayIndex !== undefined) {
+            if (!acc[arrayIndex]) {
+                acc[arrayIndex] = {
+                    ...item,
+                    variableValue: variableValue
+                };
+            } else {
+                acc[arrayIndex].variableValue = {
+                    ...acc[arrayIndex].variableValue,
+                    ...variableValue
+                };
+            }
+        } else {
+            acc[item.variableId] = item;
+        }
+
+        return acc;
+    }, {})).map(item => ({
+        ...item,
+        variableValue: JSON.stringify(item.variableValue)
+    }));
+}
+
 async function newDecodeValues(sstore, contractTree, shaTraces, functionStorage, functionName, contracts, mainContract, txHash) {
     // console.log(contractTree["4514"].storage);
     let decodedValues = [];
@@ -569,6 +598,13 @@ async function newDecodeValues(sstore, contractTree, shaTraces, functionStorage,
             }
         }
     }
+
+    // merge the struct's member in a static array
+    const isStructArray = decodedValues.some(item => item.variableValue.includes("arrayIndex"));
+    if (isStructArray) {
+        decodedValues = mergeVariableValues(decodedValues);
+    }
+
     return decodedValues;
 }
 
@@ -748,6 +784,7 @@ function decodeDynamicArray(variable, value, mainContract, storageVar, functionS
         output.struct = structType
         for (let i = 0; i < structMembers.length; i++) {
             const functionStorageIndex = arrayStorageSlot + BigInt(i)
+            // TODO: decode non-primitive types members
             output[structMembers[i].label] = decodePrimitiveType(structMembers[i].type, functionStorage[functionStorageIndex.toString(16)])
         }
         return JSON.stringify(output)
