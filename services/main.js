@@ -289,7 +289,7 @@ async function getStorageData(contractTransactions, contracts, mainContract, con
             //     fs.appendFileSync('csvLogs.csv', output)
             // })
             blockchainLog.push(newLog)
-            // await saveTransaction(newLog, tx.to)
+            await saveTransaction(newLog, tx.to)
             console.log("-----------------------------------------------------------------------");
         }
         partialInt++;
