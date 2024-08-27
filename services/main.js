@@ -520,19 +520,30 @@ function mergeVariableValues(arr) {
         const arrayIndex = variableValue.arrayIndex;
 
         if (arrayIndex !== undefined) {
-            if (!acc[arrayIndex]) {
-                acc[arrayIndex] = {
+            const key = `${arrayIndex}_${item.type}`
+            if (!acc[key]) {
+                acc[key] = {
                     ...item,
                     variableValue: variableValue
                 };
             } else {
-                acc[arrayIndex].variableValue = {
-                    ...acc[arrayIndex].variableValue,
+                acc[key].variableValue = {
+                    ...acc[key].variableValue,
                     ...variableValue
                 };
             }
         } else {
-            acc[item.variableId] = item;
+            if (!acc[item.type]) {
+                acc[item.type] = {
+                    ...item,
+                    variableValue: variableValue
+                }
+            } else {
+                acc[item.type].variableValue = {
+                    ...acc[item.type].variableValue,
+                    ...variableValue
+                }
+            }
         }
 
         return acc;
@@ -697,15 +708,13 @@ function decodeStructType(variable, value, mainContract, storageVar) {
     const getContractCompiled = getMainContractCompiled(mainContract);
     const members = getStructMembersByVariableName(variable.name, getContractCompiled);
     const memberItem = {
-        member: "",
-        value: ""
+        struct: variable.type.split("(")[1].split(")")[0],
     }
     // TODO array member
     members.forEach((member) => {
         const memberSlot = Number(member.slot) + Number(variable.slot)
         if (memberSlot === web3.utils.toDecimal("0x" + storageVar)) {
-            memberItem.member = member.label
-            memberItem.value = decodePrimitiveType(member.type, value)
+            memberItem[member.label] = decodePrimitiveType(member.type, value)
         }
     })
     return JSON.stringify(memberItem)
@@ -719,8 +728,8 @@ function optimezedArray(arraySize, typeSize, functionStorage, slot) {
         return functionStorage[slot].slice(0, storageStringLength - (arraySize * charsForElement))
     } else {
         const arrayStorageSlot = Math.floor(arraySize / elementNumberPerString)
-        const newSlot = BigInt(slot) + BigInt(arrayStorageSlot)
-        const newStorageSlot = functionStorage[newSlot.toString(16)]
+        const newSlot = BigInt("0x" + slot) + BigInt(arrayStorageSlot)
+        const newStorageSlot = functionStorage[newSlot.toString(16).padStart(64, '0')]
         return newStorageSlot.slice(0, storageStringLength - (arraySize * charsForElement))
     }
 }
@@ -753,7 +762,8 @@ function decodeStaticArray(variable, value, mainContract, storageVar, arraySize,
         }
     } else if ((variable.type.includes("uint") || variable.type.includes("int")) && !variable.type.includes("256")) {
         const hexStorageSlot = arrayStorageSlot.toString(16)
-        const storageSlotPadded = hexStorageSlot.padStart(65 - hexStorageSlot.length, '0')
+        const storageSlotPadded = hexStorageSlot.padStart(64, '0')
+        // TODO: fix static array with optimization
         const value = optimezedArray(arraySize - 1, variable.type.split("uint")[1].split(")")[0], functionStorage, storageSlotPadded)
         output.value = web3.utils.hexToNumber("0x" + value)
         return JSON.stringify(output)
@@ -788,6 +798,7 @@ function decodeDynamicArray(variable, value, mainContract, storageVar, functionS
             output[structMembers[i].label] = decodePrimitiveType(structMembers[i].type, functionStorage[functionStorageIndex.toString(16)])
         }
         return JSON.stringify(output)
+        // TODO: handle direct update of indexes - similar case to the static array
     } else if ((variable.type.includes("uint") || variable.type.includes("int")) && !variable.type.includes("256")) {
         const value = optimezedArray(lastIndex, variable.type.split("uint")[1].split(")")[0], functionStorage, arrayStorageSlot.slice(2))
         output.value = web3.utils.hexToNumber("0x" + value)
