@@ -538,7 +538,7 @@ function mergeVariableValues(arr) {
         return acc;
     }, {})).map(item => ({
         ...item,
-        variableValue: JSON.stringify(item.variableValue)
+        variableValue: typeof item.variableValue === "object" ? JSON.stringify(item.variableValue) : item.variableValue
     }));
 }
 
@@ -600,7 +600,7 @@ async function newDecodeValues(sstore, contractTree, shaTraces, functionStorage,
     }
 
     // merge the struct's member in a static array
-    const isStructArray = decodedValues.some(item => typeof item === "string" && item.variableValue.includes("arrayIndex"));
+    const isStructArray = decodedValues.some(item => typeof item.variableValue === "string" && item.variableValue.includes("arrayIndex"));
     if (isStructArray) {
         decodedValues = mergeVariableValues(decodedValues);
     }
