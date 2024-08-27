@@ -520,14 +520,15 @@ function mergeVariableValues(arr) {
         const arrayIndex = variableValue.arrayIndex;
 
         if (arrayIndex !== undefined) {
-            if (!acc[arrayIndex]) {
-                acc[arrayIndex] = {
+            const key = `${arrayIndex}_${item.type}`
+            if (!acc[key]) {
+                acc[key] = {
                     ...item,
                     variableValue: variableValue
                 };
             } else {
-                acc[arrayIndex].variableValue = {
-                    ...acc[arrayIndex].variableValue,
+                acc[key].variableValue = {
+                    ...acc[key].variableValue,
                     ...variableValue
                 };
             }
