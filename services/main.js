@@ -474,7 +474,7 @@ async function getTraceStorage(traceDebugged, blockNumber, functionName, txHash,
     // const uniqueStorage = Array.from(new Set(functionStorage.map(JSON.stringify))).map(JSON.parse);
     fs.writeFileSync('./temporaryTrials/uniqueSStore.json', JSON.stringify(uniqueSStore));
     if (Object.keys(functionStorage).length !== 0) {
-        fs.writeFileSync(`./temporaryTrials/functionStorage_${txHash}.json`, JSON.stringify(functionStorage));
+        // fs.writeFileSync(`./temporaryTrials/functionStorage_${txHash}.json`, JSON.stringify(functionStorage));
         fs.writeFileSync('./temporaryTrials/finalShaTraces.json', JSON.stringify(finalShaTraces));
     }
     const decodedValues = await newDecodeValues(uniqueSStore, contractTree, finalShaTraces, functionStorage, functionName, contracts, mainContract, txHash);
