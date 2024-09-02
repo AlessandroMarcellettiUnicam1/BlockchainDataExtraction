@@ -23,10 +23,6 @@ let web3Endpoint = ""
 let apiKey = ""
 let endpoint = ""
 
-let inputId = 0
-let internalTxId = 0
-let eventId = 0
-
 let _contractAddress = ""
 
 let contractCompiled = null
@@ -229,6 +225,7 @@ async function getStorageData(contractTransactions, contracts, mainContract, con
             // newLog.activity = tx.method;
             newLog.timestamp = new Date(tx.timeStamp * 1000).toISOString()
 
+            let inputId = 0
             for (let i = 0; i < tx.inputDecoded.inputs.length; i++) {
                 //check if the input value is an array or a struct
                 // TODO -> check how a Struct array is represented
@@ -357,6 +354,7 @@ async function getTraceStorage(traceDebugged, blockNumber, functionName, txHash,
     let internalCalls = [];
 
     if (traceDebugged.structLogs) {
+        let internalTxId = 0
         for (const trace of traceDebugged.structLogs) {
             //if SHA3 is found then read all keys before being hashed
             // computation of the memory location and the storage index of a complex variable (mapping or struct)
@@ -406,7 +404,7 @@ async function getTraceStorage(traceDebugged, blockNumber, functionName, txHash,
                 let lengthNumber = web3.utils.hexToNumber("0x" + lengthBytes) / 32;
                 //create the call object
                 let call = {
-                    callId: "call_" + internalTxId + txHash,
+                    callId: "call_" + internalTxId + "_" + txHash,
                     callType: trace.op,
                     to: trace.stack[trace.stack.length - 2],
                     inputsCall: []
@@ -423,7 +421,7 @@ async function getTraceStorage(traceDebugged, blockNumber, functionName, txHash,
                 const lengthBytes = trace.stack[trace.stack.length - 4];
                 let lengthNumber = await web3.utils.hexToNumber("0x" + lengthBytes) / 32;
                 let call = {
-                    callId: "call_" + internalTxId + txHash,
+                    callId: "call_" + internalTxId + "_" + txHash,
                     callType: trace.op,
                     to: trace.stack[trace.stack.length - 2],
                     inputsCall: []
@@ -820,6 +818,7 @@ function decodeStorageValue(variable, value, mainContract, storageVar, functionS
             //TODO decode mapping of struct
             return "miss mapping of struct"
         } else {
+            //TODO decode mapping of arrays
             return decodePrimitiveType(valueType, value);
         }
     } else if (variable.type.includes("array")) {
@@ -1054,6 +1053,7 @@ async function getEvents(txHash, block, contractAddress) {
     const myContract = new web3.eth.Contract(JSON.parse(contractAbi), contractAddress);
     let filteredEvents = [];
     const pastEvents = await myContract.getPastEvents("allEvents", {fromBlock: block, toBlock: block});
+    let eventId = 0
     for (let i = 0; i < pastEvents.length; i++) {
         for (const value in pastEvents[i].returnValues) {
             if (typeof pastEvents[i].returnValues[value] === "bigint") {
