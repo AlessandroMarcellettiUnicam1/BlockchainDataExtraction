@@ -184,18 +184,14 @@ async function getStorageData(contractTransactions, contracts, mainContract, con
             contractAddress: contractAddress.toLowerCase()
         }
 
-        let transaction;
-
         const response = await searchTransaction(query)
 
         console.log("Transactions found -> ", response);
 
-        if (response)
-            transaction = response;
-
-        if (transaction) {
+        if (response) {
             console.log("transaction already processed: ", tx.hash)
-            blockchainLog.push(...transaction);
+            const {_id, __v, ...transactionData} = response[0]
+            blockchainLog.push(transactionData);
             console.log("-----------------------------------------------------------------------");
         } else {
             console.log("Processing transaction " + partialInt)
