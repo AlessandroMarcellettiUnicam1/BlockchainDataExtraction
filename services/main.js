@@ -440,7 +440,6 @@ async function getTraceStorage(traceDebugged, blockNumber, functionName, txHash,
     }
 
     fs.writeFileSync("./temporaryTrials/sstoreToPrint.json", JSON.stringify(sstoreToPrint))
-    fs.writeFileSync("./temporaryTrials/sstoreOPs.json", JSON.stringify(sstoreOptimization))
     fs.writeFileSync("./temporaryTrials/storeBuffer.json", JSON.stringify(sstoreBuffer));
     let finalShaTraces = [];
     for (let i = 0; i < trackBuffer.length; i++) {
@@ -479,7 +478,7 @@ async function getTraceStorage(traceDebugged, blockNumber, functionName, txHash,
         fs.writeFileSync('./temporaryTrials/finalShaTraces.json', JSON.stringify(finalShaTraces));
     }
 
-    const sstoreObject = {sstoreOptimization, uniqueSStore}
+    const sstoreObject = {sstoreOptimization, sstoreBuffer}
     const decodedValues = await newDecodeValues(sstoreObject, contractTree, finalShaTraces, functionStorage, functionName, contracts, mainContract, txHash);
     return {decodedValues, internalCalls};
 }
@@ -581,11 +580,11 @@ async function newDecodeValues(sstore, contractTree, shaTraces, functionStorage,
     //todo deal with variables storage optimizations
     //todo deal with sstore complex keys not present in any SHA
     let optimizedArray = []
-    const {sstoreOptimization, uniqueSStore} = sstore
+    const {sstoreOptimization, sstoreBuffer} = sstore
     for (const storageVar in functionStorage) {
-        for (let sstoreIndex = 0; sstoreIndex < uniqueSStore.length; sstoreIndex++) {
-            const numberIndex = web3.utils.hexToNumber("0x" + uniqueSStore[sstoreIndex]);
-            if (storageVar === uniqueSStore[sstoreIndex]) {
+        for (let sstoreIndex = 0; sstoreIndex < sstoreBuffer.length; sstoreIndex++) {
+            const numberIndex = web3.utils.hexToNumber("0x" + sstoreBuffer[sstoreIndex]);
+            if (storageVar === sstoreBuffer[sstoreIndex]) {
                 const contractVar = getContractVariable(numberIndex, contractTree, functionName, contracts, mainContract);
                 if (contractVar.length > 1) {
                     const updatedVariables = readVarFromOffset(contractVar, functionStorage[storageVar]);
@@ -605,9 +604,9 @@ async function newDecodeValues(sstore, contractTree, shaTraces, functionStorage,
                     // handle array with data optimization
                     const regexUintArray = /(array.*(?:uint|int))|((?:uint|int).*array)/
                     if (regexUintArray.test(contractVar[0].type) && !contractVar[0].type.includes("int256")) {
-                        optimizedArray.push(contractVar[0])
+                        optimizedArray.push({contractVar: contractVar[0], storageVar})
                         const optimezedVariables = optimizedArray.reduce((acc, item) => {
-                            if (item.name === contractVar[0].name && item.type === contractVar[0].type) {
+                            if (item.name === contractVar.name && item.type === contractVar.type && item.storageVar === storageVar) {
                                 acc.push(item)
                             }
                             return acc
@@ -671,6 +670,7 @@ function decodePrimitiveType(type, value) {
     if (type.includes("uint")) {
         return Number(web3.utils.hexToNumber("0x" + value))
     } else if (type.includes("string")) {
+        console.log("Value: ", value)
         let chars = value.split("0")[0]
         if (chars.length % 2 !== 0) chars = chars + "0"
         return web3.utils.hexToAscii("0x" + chars)
@@ -783,15 +783,18 @@ function decodeStaticArray(variable, value, mainContract, storageVar, arraySize,
         }
     } else {
         if (typeof variable.index !== "undefined") {
-            arrayStorageSlot += variable.index
-            const hexStorageSlot = arrayStorageSlot.toString(16)
-            const storageSlotPadded = hexStorageSlot.padStart(64, '0')
-            sstoreOptimization.forEach((stack) => {
-                if (stack[stack.length - 1] === storageSlotPadded) {
-                    output.value = Number(web3.utils.hexToNumber("0x" + stack[stack.length - 3]))
-                    return output
+            let counter = 0
+            for (let i = 0; i < sstoreOptimization.length; i++) {
+                const stack = sstoreOptimization[i]
+                if (stack[stack.length - 1] === storageVar) {
+                    if (counter === variable.index) {
+                        output.value = Number(web3.utils.hexToNumber("0x" + stack[stack.length - 3]))
+                        return output
+                    } else {
+                        counter++
+                    }
                 }
-            })
+            }
 
             // TODO: fix static array with optimization
             // const value = optimezedArray(arraySize - 1, variable.type.split("int")[1].split(")")[0], functionStorage, storageSlotPadded)
@@ -836,13 +839,14 @@ function decodeDynamicArray(variable, value, mainContract, storageVar, functionS
         return JSON.stringify(output)
     } else {
         arrayStorageSlot = BigInt(arrayStorageSlot) + BigInt(lastIndex)
-        output.value = decodePrimitiveType(variable.type, functionStorage[arrayStorageSlot.toString(16)])
+        output.value = decodePrimitiveType(variable.type, functionStorage[arrayStorageSlot.toString(16).padStart(64, '0')])
         return JSON.stringify(output)
     }
 }
 
 //function for decoding the storage value
 function decodeStorageValue(variable, value, mainContract, storageVar, functionStorage, sstoreOptimization) {
+    console.log("Variable: ", variable)
     //if it is a mapping check for last type of value by splitting it so to cover also nested case
     if (variable.type.includes("mapping")) {
         const typeBuffer = variable.type.split(",");
