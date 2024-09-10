@@ -518,10 +518,10 @@ function getContractVariable(slotIndex, contractTree, functionName, contracts, m
 // used to merge storage variables of structs member in static array
 function mergeVariableValues(arr) {
     return Object.values(arr.reduce((acc, item) => {
-        const variableValue = JSON.parse(item.variableValue);
-        const arrayIndex = variableValue.arrayIndex;
 
-        if (arrayIndex !== undefined) {
+        if (typeof item.variableValue === "string" && item.variableValue.includes("arrayIndex")) {
+            const variableValue = JSON.parse(item.variableValue);
+            const arrayIndex = variableValue.arrayIndex;
             const key = `${arrayIndex}_${item.type}`
             if (!acc[key]) {
                 acc[key] = {
@@ -535,17 +535,7 @@ function mergeVariableValues(arr) {
                 };
             }
         } else {
-            if (!acc[item.type]) {
-                acc[item.type] = {
-                    ...item,
-                    variableValue: variableValue
-                }
-            } else {
-                acc[item.type].variableValue = {
-                    ...acc[item.type].variableValue,
-                    ...variableValue
-                }
-            }
+                acc[item.variableName] = item
         }
 
         return acc;
@@ -603,7 +593,7 @@ async function newDecodeValues(sstore, contractTree, shaTraces, functionStorage,
                     let decodedValue;
                     // handle array with data optimization
                     const regexUintArray = /(array.*(?:uint|int))|((?:uint|int).*array)/
-                    if (regexUintArray.test(contractVar[0].type) && !contractVar[0].type.includes("int256")) {
+                    if (regexUintArray.test(contractVar[0].type)/* && !contractVar[0].type.includes("int256")*/) {
                         optimizedArray.push({contractVar: contractVar[0], storageVar})
                         const optimezedVariables = optimizedArray.reduce((acc, item) => {
                             if (item.name === contractVar.name && item.type === contractVar.type && item.storageVar === storageVar) {
@@ -630,11 +620,7 @@ async function newDecodeValues(sstore, contractTree, shaTraces, functionStorage,
         }
     }
 
-    // merge the struct's member in a static array
-    const isStructArray = decodedValues.some(item => typeof item.variableValue === "string" && item.variableValue.includes("arrayIndex") && item.type.includes("struct"));
-    if (isStructArray) {
-        decodedValues = mergeVariableValues(decodedValues);
-    }
+    decodedValues = mergeVariableValues(decodedValues);
 
     return decodedValues;
 }
@@ -741,19 +727,19 @@ function decodeStructType(variable, value, mainContract, storageVar) {
     return JSON.stringify(memberItem)
 }
 
-// function optimezedArray(arraySize, typeSize, functionStorage, slot) {
-//     const storageStringLength = 64
-//     const charsForElement = typeSize / 4
-//     const elementNumberPerString = storageStringLength / charsForElement
-//     if (arraySize <= elementNumberPerString - 1) {
-//         return functionStorage[slot].slice(0, storageStringLength - (arraySize * charsForElement))
-//     } else {
-//         const arrayStorageSlot = Math.floor(arraySize / elementNumberPerString)
-//         const newSlot = BigInt("0x" + slot) + BigInt(arrayStorageSlot)
-//         const newStorageSlot = functionStorage[newSlot.toString(16).padStart(64, '0')]
-//         return newStorageSlot.slice(0, storageStringLength - (arraySize * charsForElement))
-//     }
-// }
+function optimezedArray(arraySize, typeSize, functionStorage, slot) {
+    const storageStringLength = 64
+    const charsForElement = typeSize / 4
+    const elementNumberPerString = storageStringLength / charsForElement
+    if (arraySize <= elementNumberPerString - 1) {
+        return functionStorage[slot].slice(0, storageStringLength - (arraySize * charsForElement))
+    } else {
+        const arrayStorageSlot = Math.floor(arraySize / elementNumberPerString)
+        const newSlot = BigInt("0x" + slot) + BigInt(arrayStorageSlot)
+        const newStorageSlot = functionStorage[newSlot.toString(16).padStart(64, '0')]
+        return newStorageSlot.slice(0, storageStringLength - (arraySize * charsForElement))
+    }
+}
 
 function decodeStaticArray(variable, value, mainContract, storageVar, arraySize, functionStorage, sstoreOptimization) {
     let arrayStorageSlot = Number(variable.slot);
@@ -834,8 +820,8 @@ function decodeDynamicArray(variable, value, mainContract, storageVar, functionS
         return JSON.stringify(output)
         // TODO: handle direct update of indexes - similar case to the static array
     } else if ((variable.type.includes("uint") || variable.type.includes("int")) && !variable.type.includes("256")) {
-        // const value = optimezedArray(lastIndex, variable.type.split("uint")[1].split(")")[0], functionStorage, arrayStorageSlot.slice(2))
-        // output.value = web3.utils.hexToNumber("0x" + value)
+        const value = optimezedArray(lastIndex, variable.type.split("uint")[1].split(")")[0], functionStorage, arrayStorageSlot.slice(2))
+        output.value = web3.utils.hexToNumber("0x" + value)
         return JSON.stringify(output)
     } else {
         arrayStorageSlot = BigInt(arrayStorageSlot) + BigInt(lastIndex)
