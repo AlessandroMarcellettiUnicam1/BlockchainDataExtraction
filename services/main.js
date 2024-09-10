@@ -282,6 +282,7 @@ async function getStorageData(contractTransactions, contracts, mainContract, con
             //     fs.appendFileSync('csvLogs.csv', output)
             // })
             blockchainLog.push(newLog)
+            //TODO: remember to remove the comment
             // await saveTransaction(newLog, tx.to)
             console.log("-----------------------------------------------------------------------");
         }
@@ -474,7 +475,7 @@ async function getTraceStorage(traceDebugged, blockNumber, functionName, txHash,
     // const uniqueStorage = Array.from(new Set(functionStorage.map(JSON.stringify))).map(JSON.parse);
     fs.writeFileSync('./temporaryTrials/uniqueSStore.json', JSON.stringify(uniqueSStore));
     if (Object.keys(functionStorage).length !== 0) {
-        fs.writeFileSync(`./temporaryTrials/functionStorage_${txHash}.json`, JSON.stringify(functionStorage));
+        // fs.writeFileSync(`./temporaryTrials/functionStorage_${txHash}.json`, JSON.stringify(functionStorage));
         fs.writeFileSync('./temporaryTrials/finalShaTraces.json', JSON.stringify(finalShaTraces));
     }
 
