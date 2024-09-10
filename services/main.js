@@ -31,6 +31,18 @@ let traceTime = 0
 let decodeTime = 0
 const csvColumns = ["txHash", "debugTime", "decodeTime", "totalTime"]
 
+/**
+ * Method called by the server to extract the transactions
+ *
+ * @param mainContract - contract name
+ * @param contractAddress - the contract address to be analyzed
+ * @param fromBlock - the starting block number
+ * @param toBlock - the ending block number
+ * @param network - the network where the contract is deployed
+ * @param filters - the filters to be applied to the transactions
+ * @param smartContract - the smart contract uploaded file
+ * @returns {Promise<*|*[]>} - the blockchain log with the extracted data
+ */
 async function getAllTransactions(mainContract, contractAddress, fromBlock, toBlock, network, filters, smartContract) {
 
     _contractAddress = contractAddress
@@ -67,13 +79,32 @@ async function getAllTransactions(mainContract, contractAddress, fromBlock, toBl
         const contractTransactions = await data.data.result
         // returns all contracts linked to te contract sent in input from etherscan
         let contracts = null
+        // if the contract is uploaded by the user then the contract is compiled
         if (smartContract) {
             contracts = smartContract
         } else {
             contracts = await getContractCodeEtherscan(contractAddress);
         }
         const contractTree = await getCompiledData(contracts, mainContract);
-        return await getStorageData(contractTransactions, contracts, mainContract, contractTree, contractAddress, filters, fromBlock, toBlock);
+
+        const userLog = {
+            networkUsed: networkName,
+            contractAddress,
+            contractName: mainContract,
+            fromBlock,
+            toBlock,
+            filters: {
+                ...Object.keys(filters).reduce((obj, key) => {
+                    obj[key] = filters[key]
+                    return obj
+                }, {})
+            },
+            timestampLog: new Date().toISOString()
+        }
+
+        await saveExtractionLog(userLog)
+
+        return await getStorageData(contractTransactions, mainContract, contractTree, contractAddress, filters);
         // let csvRow = []
         // csvRow.push({
         //     txHash: null,
@@ -127,6 +158,14 @@ function applyFilters(contractTransactions, filters) {
     return contractTransactionsFiltered
 }
 
+/**
+ * This method involves the debugging of the transaction to extract the storage state.
+ * The debugging is handled by the Hardhat environment configured in the file "hardhat.config.js"
+ *
+ * @param txHash - the transaction hash to be debugged
+ * @param blockNumber - the block number where the transaction is stored
+ * @returns {Promise<{requiredTime: number, response: any}>} - the response of the debugged transaction and the required time to debug it
+ */
 async function debugTransaction(txHash, blockNumber) {
     try {
         await hre.changeNetwork(networkName, blockNumber)
@@ -146,37 +185,36 @@ async function debugTransaction(txHash, blockNumber) {
     }
 }
 
-async function getStorageData(contractTransactions, contracts, mainContract, contractTree, contractAddress, filters, fromBlock, toBlock) {
+/**
+ * Method used to compute the extraction phase, starting from the transactions extracted from Etherscan API.
+ * The transactions are filtered using the filters provided by the user, than is carried out a search of that transactions
+ * in the database to avoid to process them again. If the transaction is not found in the database, then the transaction is debugged
+ * to proceed with the storage decoding.
+ *
+ * @param contractTransactions - the transactions extracted using Etherscan API
+ * @param mainContract - the main contract to decode
+ * @param contractTree - the contract tree derived before to decode the storage
+ * @param contractAddress - the contract address used to search the transactions in the database and to save the new ones
+ * @param filters - the filters to be applied to the transactions
+ * @returns {Promise<*[]>} - the blockchain log with the extracted data
+ */
+async function getStorageData(contractTransactions, mainContract, contractTree, contractAddress, filters) {
     let blockchainLog = [];
     let partialInt = 0;
 
-    const userLog = {
-        networkUsed: networkName,
-        contractAddress,
-        contractName: mainContract,
-        fromBlock,
-        toBlock,
-        filters: {
-            ...Object.keys(filters).reduce((obj, key) => {
-                obj[key] = filters[key]
-                return obj
-            }, {})
-        },
-        timestampLog: new Date().toISOString()
-    }
-
-    await saveExtractionLog(userLog)
-
+    // the "contractABI" are used to decode the input data of the transactions
     contractTransactions.map(tx => {
         const decoder = new InputDataDecoder(contractAbi);
         tx.inputDecoded = decoder.decodeData(tx.input);
     })
 
+    // apply filters to the transactions
     const transactionsFiltered = applyFilters(contractTransactions, filters)
     // stringify([], {header: true, columns: csvColumns}, (err, output) => {
     //     fs.writeFileSync('csvLogs.csv', output)
     // })
 
+    // before to start the extraction, the connection to the database is established to check if the transaction has already been processed
     await connectDB(networkName)
     for (const tx of transactionsFiltered) {
         let query = {
@@ -265,7 +303,7 @@ async function getStorageData(contractTransactions, contracts, mainContract, con
             }
 
             const storageVal = await getTraceStorage(response, tx.blockNumber, tx.inputDecoded.method, tx.hash,
-                mainContract, contracts, contractTree, partialInt);
+                mainContract, contractTree);
             newLog.storageState = storageVal.decodedValues;
             newLog.internalTxs = storageVal.internalCalls;
             const end = new Date()
@@ -309,7 +347,17 @@ function decodeInput(type, value) {
     }
 }
 
-async function getTraceStorage(traceDebugged, blockNumber, functionName, txHash, mainContract, contracts, contractTree) {
+/**
+ *
+ * @param traceDebugged - the debugged transaction with its opcodes
+ * @param blockNumber - the block number where the transaction is stored
+ * @param functionName - the function name of the invoked method, useful to decode the storage state
+ * @param txHash - the transaction hash used only to identify the internal transactions
+ * @param mainContract - the main contract to decode, used to identify the contract variables
+ * @param contractTree - the contract tree used to identify the contract variables with the 'mainContract'
+ * @returns {Promise<{decodedValues: (*&{variableValue: string|string|*})[], internalCalls: *[]}>} - the decoded values of the storage state and the internal calls
+ */
+async function getTraceStorage(traceDebugged, blockNumber, functionName, txHash, mainContract, contractTree) {
     /* const provider = ganache.provider({
          network_id: 1,
          fork: 'https://mainnet.infura.io/v3/f3851e4d467341f1b5927b6546d9f30c\@' + blockNumber
@@ -393,7 +441,9 @@ async function getTraceStorage(traceDebugged, blockNumber, functionName, txHash,
             // in the code we save the stack updated with the new value (the last element of the stack is the value to store in the storage slot)
             else if (trace.op === "SSTORE") {
                 sstoreToPrint.push(trace)
+                // used to store the entire stack of the SSTORE for the optimization
                 sstoreOptimization.push(trace.stack)
+                // the last element of the stack is the value to store in the storage slot
                 sstoreBuffer.push(trace.stack[trace.stack.length - 1]);
             } else if (trace.op === "CALL") {
                 //read the offset from the stack
@@ -440,7 +490,7 @@ async function getTraceStorage(traceDebugged, blockNumber, functionName, txHash,
         }
     }
 
-    fs.writeFileSync("./temporaryTrials/sstoreToPrint.json", JSON.stringify(sstoreToPrint))
+    // fs.writeFileSync("./temporaryTrials/sstoreToPrint.json", JSON.stringify(sstoreToPrint))
     fs.writeFileSync("./temporaryTrials/storeBuffer.json", JSON.stringify(sstoreBuffer));
     let finalShaTraces = [];
     for (let i = 0; i < trackBuffer.length; i++) {
@@ -480,7 +530,7 @@ async function getTraceStorage(traceDebugged, blockNumber, functionName, txHash,
     }
 
     const sstoreObject = {sstoreOptimization, sstoreBuffer}
-    const decodedValues = await newDecodeValues(sstoreObject, contractTree, finalShaTraces, functionStorage, functionName, contracts, mainContract, txHash);
+    const decodedValues = await newDecodeValues(sstoreObject, contractTree, finalShaTraces, functionStorage, functionName, mainContract);
     return {decodedValues, internalCalls};
 }
 
@@ -489,7 +539,16 @@ async function getTraceStorage(traceDebugged, blockNumber, functionName, txHash,
 //function for re-generating the key and understand the variable thanks to the tests on the storage locationapprove(address spender,uint256 amount)0x095ea7b3
 
 
-function getContractVariable(slotIndex, contractTree, functionName, contracts, mainContract) {
+/**
+ * Method used to return the variable to decode from the contract tree according to the storage slot identified
+ *
+ * @param slotIndex - the storage slot index of the variable to decode
+ * @param contractTree - the contract tree used to identify the contract variables with the 'mainContract'
+ * @param functionName - the function name of the invoked method
+ * @param mainContract - the main contract to decode, used to identify the contract variables
+ * @returns {*[]} - the contract variables to decode
+ */
+function getContractVariable(slotIndex, contractTree, functionName, mainContract) {
     let contractVariables = [];
     //iterates all contracts in contract tree
     for (const contractId in contractTree) {
@@ -546,15 +605,25 @@ function mergeVariableValues(arr) {
     }));
 }
 
-async function newDecodeValues(sstore, contractTree, shaTraces, functionStorage, functionName, contracts, mainContract, txHash) {
-    // console.log(contractTree["4514"].storage);
+/**
+ * Method used to decode the value of a variable and it is called for each detected variable in the storage state
+ *
+ * @param sstore - contains the sstore optimization, including an array of stacks, and the sstore buffer with the variable storage slot
+ * @param contractTree - the contract tree used to identify the contract variables with the 'mainContract'
+ * @param shaTraces - the final traces of the storage keys
+ * @param functionStorage - the storage state of the smart contract
+ * @param functionName - the function name of the invoked method, useful to decode the storage state
+ * @param mainContract - the main contract to decode, used to identify the contract variables
+ * @returns {Promise<(*&{variableValue: string|string|*})[]>} - the decoded value of the detected variable
+ */
+async function newDecodeValues(sstore, contractTree, shaTraces, functionStorage, functionName, mainContract) {
     let decodedValues = [];
     //iterate storage keys looking for complex keys coming from SHA3
     for (const storageVar in functionStorage) {
         for (const shaTrace of shaTraces) {
             if (storageVar === shaTrace.finalKey) {
                 const slotIndex = web3.utils.hexToNumber("0x" + shaTrace.hexStorageIndex);
-                const contractVar = getContractVariable(slotIndex, contractTree, functionName, contracts, mainContract);
+                const contractVar = getContractVariable(slotIndex, contractTree, functionName, mainContract);
                 const decodedValue = decodeStorageValue(contractVar[0], functionStorage[storageVar], mainContract, storageVar, functionStorage);
                 const bufferVariable = {
                     variableId: "variable_" + contractVar[0].name + "_" + _contractAddress,
@@ -576,7 +645,7 @@ async function newDecodeValues(sstore, contractTree, shaTraces, functionStorage,
         for (let sstoreIndex = 0; sstoreIndex < sstoreBuffer.length; sstoreIndex++) {
             const numberIndex = web3.utils.hexToNumber("0x" + sstoreBuffer[sstoreIndex]);
             if (storageVar === sstoreBuffer[sstoreIndex]) {
-                const contractVar = getContractVariable(numberIndex, contractTree, functionName, contracts, mainContract);
+                const contractVar = getContractVariable(numberIndex, contractTree, functionName, mainContract);
                 if (contractVar.length > 1) {
                     const updatedVariables = readVarFromOffset(contractVar, functionStorage[storageVar]);
                     for (let varI = 0; varI < updatedVariables.length; varI++) {
@@ -653,6 +722,13 @@ function readVarFromOffset(variables, value) {
     return variables;
 }
 
+/**
+ * Method used to decode the primitive types in Solidity
+ *
+ * @param type - the type of the variable to decode
+ * @param value - the raw value of the variable to decode
+ * @returns {*|number|string} - the decoded value of the variable
+ */
 function decodePrimitiveType(type, value) {
     if (type.includes("uint")) {
         return Number(web3.utils.hexToNumber("0x" + value))
@@ -674,6 +750,12 @@ function decodePrimitiveType(type, value) {
     return value
 }
 
+/**
+ * Method used to get the main contract compiled to identify the members of a struct
+ *
+ * @param mainContract - the main contract with the struct
+ * @returns {*} - the main contract compiled
+ */
 function getMainContractCompiled(mainContract) {
     const testContract = JSON.parse(contractCompiled);
     for (const contract in testContract.contracts) {
@@ -684,6 +766,14 @@ function getMainContractCompiled(mainContract) {
     }
 }
 
+/**
+ * Method used to find the members of a struct starting from the struct type
+ * and the main contract compiled
+ *
+ * @param type - the struct type to find
+ * @param mainContractCompiled - the main contract compiled
+ * @returns {*[]} - the members of the struct
+ */
 function getStructMembersByStructType(type, mainContractCompiled) {
     let members = []
     const storageTypes = mainContractCompiled.storageLayout.types;
@@ -712,6 +802,19 @@ function getStructMembersByVariableName(variableName, mainContractCompiled) {
     return members
 }
 
+/**
+ * Method used to decode a struct type starting from the compiled contract to
+ * find the struct member. The member of a struct are stored like the array,
+ * each slot contains a member of the struct (except for members with otpimization),
+ * so the first slot of the struct corresponds to the first member, from there it is
+ * enough to iterate the consecutive slots up to the number of members.
+ *
+ * @param variable - the variable to decode
+ * @param value - the value of the variable to decode, depends on the variable type
+ * @param mainContract - used to identify the members of a struct
+ * @param storageVar - the storage slot of the variable to decode
+ * @returns {string} - the value of the struct
+ */
 function decodeStructType(variable, value, mainContract, storageVar) {
     const getContractCompiled = getMainContractCompiled(mainContract);
     const members = getStructMembersByVariableName(variable.name, getContractCompiled);
@@ -728,6 +831,17 @@ function decodeStructType(variable, value, mainContract, storageVar) {
     return JSON.stringify(memberItem)
 }
 
+/**
+ * Used by the "decodeDynamicArray" method to decode the value of a dynamic array when
+ * there is an optimization (with uint8, uint16, ...)
+ *
+ * @param arraySize - the size of the array to decode
+ * @param typeSize - the size of the type of the array to figure out how many items
+ *                   are included in the same string
+ * @param functionStorage - the storage state of the smart contract
+ * @param slot - the storage slot of the variable to decode
+ * @returns {*} - the value of the updated index
+ */
 function optimezedArray(arraySize, typeSize, functionStorage, slot) {
     const storageStringLength = 64
     const charsForElement = typeSize / 4
@@ -742,7 +856,24 @@ function optimezedArray(arraySize, typeSize, functionStorage, slot) {
     }
 }
 
-function decodeStaticArray(variable, value, mainContract, storageVar, arraySize, functionStorage, sstoreOptimization) {
+/**
+ * Method used to decode a static array. Since that the length of the array is already known the method
+ * decodes the value of the array at the specified index, starting from the first slot of the array and
+ * iterating up to find the correct slot passed to the method. With the struct type the reasoning is similar:
+ * for each member of a struct a storage slot is occupied (except for the optimization), so more consecutive
+ * storage slots represent the entire struct in the array. For the structs the iteration is computed calculating
+ * the number of members, in this way every time the number of members is reached the array index is incremented.
+ *
+ * @param variable - the variable to decode
+ * @param value - the value of the variable to decode, depends on the variable type
+ * @param mainContract - used to identify the members of a struct
+ * @param storageVar - the storage slot of the variable to decode
+ * @param arraySize - the size of the array to decode, catched from the variable type
+ * @param functionStorage - the storage state of the smart contract
+ * @param completeSstore - array of stacks taken from the SSTORE opcodes to identify more updates of the same variable
+ * @returns {{}|string} - an object containing the array index and the value of the variable
+ */
+function decodeStaticArray(variable, value, mainContract, storageVar, arraySize, functionStorage, completeSstore) {
     let arrayStorageSlot = Number(variable.slot);
     const output = {}
     if (variable.type.includes("struct")) {
@@ -771,8 +902,8 @@ function decodeStaticArray(variable, value, mainContract, storageVar, arraySize,
     } else {
         if (typeof variable.index !== "undefined") {
             let counter = 0
-            for (let i = 0; i < sstoreOptimization.length; i++) {
-                const stack = sstoreOptimization[i]
+            for (let i = 0; i < completeSstore.length; i++) {
+                const stack = completeSstore[i]
                 if (stack[stack.length - 1] === storageVar) {
                     if (counter === variable.index) {
                         output.value = Number(web3.utils.hexToNumber("0x" + stack[stack.length - 3]))
@@ -801,6 +932,26 @@ function decodeStaticArray(variable, value, mainContract, storageVar, arraySize,
     //TODO optimize the code
 }
 
+/**
+ * Method used to decode the dynamic array. In this case the first storage slot of the array
+ * return the final length of that one and with a "push()" method the updated index
+ * corresponds to the last index of the array. The computation of the update involves the keccak256
+ * of the array storage slot, then the length of the array is summed with the outcome of the hash.
+ * This operation returns the storage slot of the updated index in the storage state.
+ * With the struct type the reasoning is similar: for each member of a struct a storage slot is occupied
+ * (except for the optimization), so more consecutive storage slots represent the entire struct in the array.
+ * For "push()" method the updated struct is computed multiplying the number of the struct members with the array size.
+ * The outcome is summed to the keccak256 hash of the array storage slot.
+ *
+ * The situation is different when there are direct updates of indexes, the application does not yet support this case.
+ *
+ * @param variable - the variable to decode
+ * @param value - the raw value of the variable to decode, depends on the variable type
+ * @param mainContract - used to identify the members of a struct
+ * @param storageVar - the storage slot of the variable to decode
+ * @param functionStorage - the storage state of the smart contract
+ * @returns {string} - the decoded variable
+ */
 function decodeDynamicArray(variable, value, mainContract, storageVar, functionStorage) {
     const lastIndex = web3.utils.hexToNumber("0x" + value) - 1
     let arrayStorageSlot = web3.utils.keccak256("0x" + storageVar)
@@ -831,8 +982,17 @@ function decodeDynamicArray(variable, value, mainContract, storageVar, functionS
     }
 }
 
-//function for decoding the storage value
-function decodeStorageValue(variable, value, mainContract, storageVar, functionStorage, sstoreOptimization) {
+/**
+ *
+ * @param variable - the variable to decode
+ * @param value - the value of the variable to decode, depends on the variable type
+ * @param mainContract - used to identify the members of a struct
+ * @param storageVar - the storage slot of the variable to decode
+ * @param functionStorage - the storage state of the smart contract
+ * @param completeSstore - array of stacks taken from the SSTORE opcodes to identify more updates of the same variable
+ * @returns {number|*|string|string|{}} - the decoded variable
+ */
+function decodeStorageValue(variable, value, mainContract, storageVar, functionStorage, completeSstore) {
     console.log("Variable: ", variable)
     //if it is a mapping check for last type of value by splitting it so to cover also nested case
     if (variable.type.includes("mapping")) {
@@ -850,7 +1010,7 @@ function decodeStorageValue(variable, value, mainContract, storageVar, functionS
         const arrayTypeSplitted = variable.type.split(")")
         const arraySize = arrayTypeSplitted[arrayTypeSplitted.length - 1].split("_")[0]
         if (arraySize !== "dyn") {
-            return decodeStaticArray(variable, value, mainContract, storageVar, Number(arraySize), functionStorage, sstoreOptimization)
+            return decodeStaticArray(variable, value, mainContract, storageVar, Number(arraySize), functionStorage, completeSstore)
         } else {
             return decodeDynamicArray(variable, value, mainContract, storageVar, functionStorage)
         }
@@ -861,6 +1021,13 @@ function decodeStorageValue(variable, value, mainContract, storageVar, functionS
     }
 }
 
+/**
+ * Method used to compile the smart contract according to the solidity version, retrieved using "solc" package.
+ *
+ * @param contracts - the contract to compile
+ * @param contractName - the name of the contract to compile
+ * @returns {Promise<*>} - the AST of the smart contract, allowing the reading of the variables and the functions of the contract.
+ */
 async function getCompiledData(contracts, contractName) {
     let input = {
         language: 'Solidity',
@@ -921,6 +1088,13 @@ async function getCompiledData(contracts, contractName) {
     return fullContractTree;
 }
 
+/**
+ * Method used to get the contract ABI from the  main compiled contract
+ *
+ * @param compiled - compiled contracts returned by the solc compiler
+ * @param contractName - the name of the contract to get the ABI
+ * @returns {Promise<*>} - the ABI of the contract
+ */
 async function getAbi(compiled, contractName) {
     for (const contract in compiled.contracts) {
         const firstKey = Object.keys(compiled.contracts[contract])[0];
@@ -930,6 +1104,15 @@ async function getAbi(compiled, contractName) {
     }
 }
 
+/**
+ * Method used to get the full contract tree with the variables and the functions
+ *
+ * @param contractFunctionTree - the partial contract tree with the functions derived by
+ *                               "constructFullFunctionContractTree" method
+ * @param contractStorageTree - the contract tree with the variables derived by "getContractVariableTree" method
+ * @returns {Promise<*>} - the full contract tree with the functions and the variables used to compile the storage
+ *                         state of the smart contract
+ */
 async function injectVariablesToTree(contractFunctionTree, contractStorageTree) {
     //iterate the partial contract tree where only functions are stored
     for (const contractId in contractFunctionTree) {
@@ -945,6 +1128,12 @@ async function injectVariablesToTree(contractFunctionTree, contractStorageTree) 
     return contractFunctionTree;
 }
 
+/**
+ * Method used to construct the full function contract tree including the inherited functions
+ *
+ * @param partialContractTree - the partial contract tree with the functions obtained by "getFunctionContractTree" method
+ * @returns {Promise<*>} - the full contract tree with the functions
+ */
 async function constructFullFunctionContractTree(partialContractTree) {
     //iterate all contracts from the partial tree (key is AST id)
     for (const contractId in partialContractTree) {
@@ -965,11 +1154,16 @@ async function constructFullFunctionContractTree(partialContractTree) {
     return partialContractTree;
 }
 
+/**
+ * Method used to get all the functions of the contract
+ *
+ * @param source - the source code of the contracts returned by the solc compiler
+ * @returns {Promise<{}>} - the AST of the contract with the functions
+ */
 async function getFunctionContractTree(source) {
 
     // let contractToIterate = [];
     let contractTree = {};
-    let counter = 0
     for (const contract in source) {
         for (const directive of source[contract].ast.nodes) {
             //reads the nodes of the ast searching for the contract and not for the imports
@@ -995,6 +1189,12 @@ async function getFunctionContractTree(source) {
     return contractTree;
 }
 
+/**
+ * Returns the source code of the smart contract using the Etherscan APIs
+ *
+ * @param contractAddress - the address of the contract to get the source code
+ * @returns {Promise<*[]>} - the source code of the contract with the imported contracts
+ */
 async function getContractCodeEtherscan(contractAddress) {
     let contracts = [];
     let buffer;
@@ -1042,6 +1242,12 @@ async function getContractCodeEtherscan(contractAddress) {
     return contracts;
 }
 
+/**
+ * Method used to return the contract variables
+ *
+ * @param compiled - the compiled contracts returned by the solc compiler
+ * @returns {Promise<*[]>} - the contract variables
+ */
 async function getContractVariableTree(compiled) {
     let contractStorageTree = [];
     //iterate all contracts
@@ -1073,6 +1279,14 @@ async function getContractVariableTree(compiled) {
     return contractStorageTree;
 }
 
+/**
+ * Method used to retrieve the emitted events in the transaction block, using web3.js.
+ *
+ * @param txHash - the hash of the transaction to get the events
+ * @param block - the block number of the transaction
+ * @param contractAddress - the address of the contract to get the events
+ * @returns {Promise<*[]>} - the events emitted by the transaction
+ */
 async function getEvents(txHash, block, contractAddress) {
     const myContract = new web3.eth.Contract(JSON.parse(contractAbi), contractAddress);
     let filteredEvents = [];
