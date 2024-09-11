@@ -733,7 +733,6 @@ function decodePrimitiveType(type, value) {
     if (type.includes("uint")) {
         return Number(web3.utils.hexToNumber("0x" + value))
     } else if (type.includes("string")) {
-        console.log("Value: ", value)
         let chars = value.split("0")[0]
         if (chars.length % 2 !== 0) chars = chars + "0"
         return web3.utils.hexToAscii("0x" + chars)
