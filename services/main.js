@@ -821,6 +821,8 @@ function decodeStructType(variable, value, mainContract, storageVar) {
         struct: variable.type.split("(")[1].split(")")[0],
     }
     // TODO array member
+    // TODO mapping member
+    // TODO optimization (uint8, uint16, uint32)
     members.forEach((member) => {
         const memberSlot = Number(member.slot) + Number(variable.slot)
         if (memberSlot === web3.utils.toDecimal("0x" + storageVar)) {
@@ -999,7 +1001,8 @@ function decodeStorageValue(variable, value, mainContract, storageVar, functionS
         const valueType = typeBuffer[typeBuffer.length - 1];
         if (valueType.includes("struct")) {
             //TODO decode mapping of struct
-            return "miss mapping of struct"
+            // try with "decodeStructType" method
+            return decodeStructType(variable, value, mainContract, storageVar)
         } else {
             //TODO decode mapping of arrays
             return decodePrimitiveType(valueType, value);
