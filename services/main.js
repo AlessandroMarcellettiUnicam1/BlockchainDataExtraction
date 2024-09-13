@@ -407,7 +407,7 @@ async function getTraceStorage(traceDebugged, blockNumber, functionName, txHash,
             //if SHA3 is found then read all keys before being hashed
             // computation of the memory location and the storage index of a complex variable (mapping or struct)
             // in the stack we have the offset and the lenght of the memory
-            if (trace.op === "SHA3") {
+            if (trace.op === "KECCAK256") {
                 bufferPC = trace.pc;
                 const stackLength = trace.stack.length;
                 const memoryLocation = trace.stack[stackLength - 1];
@@ -1001,8 +1001,10 @@ function decodeStorageValue(variable, value, mainContract, storageVar, functionS
         const valueType = typeBuffer[typeBuffer.length - 1];
         if (valueType.includes("struct")) {
             //TODO decode mapping of struct
-            // try with "decodeStructType" method
-            return decodeStructType(variable, value, mainContract, storageVar)
+            // try with "decodeStructType" method, be careful to the variable name, it is not the
+            // same of the structname
+            // return decodeStructType(variable, value, mainContract, storageVar)
+            return value
         } else {
             //TODO decode mapping of arrays
             return decodePrimitiveType(valueType, value);
