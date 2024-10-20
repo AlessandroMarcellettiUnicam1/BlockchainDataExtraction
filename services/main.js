@@ -348,6 +348,7 @@ async function getTraceStorage(traceDebugged, blockNumber, functionName, txHash,
     let bufferPC = -10;
     let sstoreBuffer = [];
     let internalCalls = [];
+    let keccakBeforeAdd = {};
 
     if (traceDebugged.structLogs) {
         let internalTxId = 0
@@ -356,6 +357,7 @@ async function getTraceStorage(traceDebugged, blockNumber, functionName, txHash,
             // computation of the memory location and the storage index of a complex variable (mapping or struct)
             // in the stack we have the offset and the lenght of the memory
             if (trace.op === "KECCAK256") {
+                //console.log(trace)
                 bufferPC = trace.pc;
                 const stackLength = trace.stack.length;
                 const memoryLocation = trace.stack[stackLength - 1];
@@ -374,6 +376,7 @@ async function getTraceStorage(traceDebugged, blockNumber, functionName, txHash,
 
                 // end of a function execution -> returns the storage state with the keys and values in the storage
             } else if (trace.op === "STOP") {
+
                 //retrieve the entire storage after function execution
                 //for each storage key discard the ones of static variables and compare the remaining ones with the re-generated
                 for (const slot in trace.storage) {
@@ -382,13 +385,44 @@ async function getTraceStorage(traceDebugged, blockNumber, functionName, txHash,
             } else if (trace.pc === (bufferPC + 1)) {
                 bufferPC = 0;
                 trackBuffer[index].finalKey = trace.stack[trace.stack.length - 1];
+                keccakBeforeAdd = trackBuffer[index];
                 index++;
+                //todo compact with code below
+                if(trace.op == "ADD" && (trace.stack[trace.stack.length - 1] === keccakBeforeAdd.finalKey ||
+                        trace.stack[trace.stack.length - 2] === keccakBeforeAdd.finalKey) &&
+                        keccakBeforeAdd.hexStorageIndex === "0000000000000000000000000000000000000000000000000000000000000000") {
+                    const keyBuff =  trackBuffer[index-1].hexKey;
+                    const slotBuff =  trackBuffer[index-1].hexStorageIndex;
+                    trackBuffer[index-1].hexKey = slotBuff;
+                    trackBuffer[index-1].hexStorageIndex = keyBuff;
+                    console.log("----ADD trovato nel opcode dopo keccak---", trackBuffer[index-1])
+                }
             }
                 //in case the trace is a SSTORE save the key. CAUTION: not every SSTORE changes the final storage state but every storage state change has an sstore
                 // SSTORE -> updates the storage state
             // in the code we save the stack updated with the new value (the last element of the stack is the value to store in the storage slot)
             else if (trace.op === "SSTORE") {
                 sstoreBuffer.push(trace.stack[trace.stack.length - 1]);
+            } else if(trace.op == "ADD"){
+                /*ADD is the opcode that in case of arrays adds the next position to start to the computed keccak
+                if this is found and one of the inputs is the keccak and the previous keccak has 0 as slot then manage
+                this means that the keccak found is related to an array and we need to swap the slot with the key
+                this because for mappings we have K(h(k) . slot) while in arrays K(slot . 0x0...)*/
+                /*console.log(trace.stack[trace.stack.length - 1]);
+                console.log(trace.stack[trace.stack.length - 2]);
+                console.log(keccakBeforeAdd.finalKey);
+                console.log(keccakBeforeAdd.hexStorageIndex);*/
+
+                if ((trace.stack[trace.stack.length - 1] === keccakBeforeAdd.finalKey ||
+                    trace.stack[trace.stack.length - 2] === keccakBeforeAdd.finalKey) &&
+                    keccakBeforeAdd.hexStorageIndex === "0000000000000000000000000000000000000000000000000000000000000000"){
+                    const keyBuff =  trackBuffer[index-1].hexKey;
+                    const slotBuff =  trackBuffer[index-1].hexStorageIndex;
+                    trackBuffer[index-1].hexKey = slotBuff;
+                    trackBuffer[index-1].hexStorageIndex = keyBuff;
+                    console.log("----ADD trovato---", trackBuffer[index-1])
+
+                }
             } else if (trace.op === "CALL") {
                 //read the offset from the stack
                 const offsetBytes = trace.stack[trace.stack.length - 4];
@@ -509,8 +543,14 @@ function getContractVariable(slotIndex, contractTree, functionName, contracts, m
 
 // used to merge storage variables of structs member in static array
 function mergeVariableValues(arr) {
+    console.log("merge variable values ");
+    console.log(arr);
+    fs.writeFileSync('formattest.json', JSON.stringify(arr));
+
     return Object.values(arr.reduce((acc, item) => {
-        const variableValue = JSON.parse(item.variableValue);
+        //const variableValue2 = item;
+        const variableValue = item.variableValue
+        //const variableValue = JSON.parse(item.variableValue);
         const arrayIndex = variableValue.arrayIndex;
 
         if (arrayIndex !== undefined) {
@@ -551,11 +591,16 @@ async function newDecodeValues(sstore, contractTree, shaTraces, functionStorage,
     // console.log(contractTree["4514"].storage);
     let decodedValues = [];
     //iterate storage keys looking for complex keys coming from SHA3
+
     for (const storageVar in functionStorage) {
         for (const shaTrace of shaTraces) {
             if (storageVar === shaTrace.finalKey) {
+                console.log(shaTrace);
                 const slotIndex = web3.utils.hexToNumber("0x" + shaTrace.hexStorageIndex);
+                console.log("funzione eseguita: " + functionName);
                 const contractVar = getContractVariable(slotIndex, contractTree, functionName, contracts, mainContract);
+                console.log("Variable nel primo caso: ", contractVar[0])
+
                 const decodedValue = decodeStorageValue(contractVar[0], functionStorage[storageVar], mainContract, storageVar, functionStorage);
                 const bufferVariable = {
                     variableId: "variable_" + contractVar[0].name + "_" + _contractAddress,
@@ -579,6 +624,7 @@ async function newDecodeValues(sstore, contractTree, shaTraces, functionStorage,
                 if (contractVar.length > 1) {
                     const updatedVariables = readVarFromOffset(contractVar, functionStorage[storageVar]);
                     for (let varI = 0; varI < updatedVariables.length; varI++) {
+                        console.log("Variable nel secondo caso: ", updatedVariables[varI])
                         const decodedValue = decodeStorageValue(updatedVariables[varI], updatedVariables[varI].value, mainContract, storageVar, functionStorage);
                         const bufferVariable = {
                             variableId: "variable_" + contractVar[varI].name + "_" + _contractAddress,
@@ -590,13 +636,17 @@ async function newDecodeValues(sstore, contractTree, shaTraces, functionStorage,
                         decodedValues.push(bufferVariable);
                     }
                 } else if (contractVar.length === 1) {
+                    console.log("Variable nel terzo caso: ", contractVar[0])
+
                     const decodedValue = decodeStorageValue(contractVar[0], functionStorage[storageVar], mainContract, storageVar, functionStorage)
-                    const bufferVariable = {
-                        variableId: "variable_" + contractVar[0].name + "_" + _contractAddress,
-                        variableName: contractVar[0].name,
-                        type: contractVar[0].type,
-                        variableValue: decodedValue,
-                        variableRawValue: functionStorage[storageVar]
+
+
+                  const bufferVariable = {
+                        "variableId": "variable_" + contractVar[0].name + "_" + _contractAddress,
+                        "variableName": contractVar[0].name,
+                        "type": contractVar[0].type,
+                        "variableValue": decodedValue,
+                        "variableRawValue": functionStorage[storageVar]
                     };
                     decodedValues.push(bufferVariable);
                 }
@@ -716,13 +766,18 @@ function decodeStructType(variable, value, mainContract, storageVar) {
 
 function optimezedArray(arraySize, typeSize, functionStorage, slot) {
     const storageStringLength = 64
+    console.log("typesize: " + typeSize);
     const charsForElement = typeSize / 4
     const elementNumberPerString = storageStringLength / charsForElement
     if (arraySize <= elementNumberPerString - 1) {
         return functionStorage[slot].slice(0, storageStringLength - (arraySize * charsForElement))
     } else {
+        console.log("array suze: " + arraySize);
         const arrayStorageSlot = Math.floor(arraySize / elementNumberPerString)
+        console.log("array storage slot" + arrayStorageSlot);
         const newSlot = BigInt("0x" + slot) + BigInt(arrayStorageSlot)
+        console.log("new slot" + newSlot);
+        console.log("cose" + newSlot.toString(16).padStart(64, '0'));
         const newStorageSlot = functionStorage[newSlot.toString(16).padStart(64, '0')]
         return newStorageSlot.slice(0, storageStringLength - (arraySize * charsForElement))
     }
@@ -775,11 +830,21 @@ function decodeStaticArray(variable, value, mainContract, storageVar, arraySize,
 }
 
 function decodeDynamicArray(variable, value, mainContract, storageVar, functionStorage) {
+    console.log("------value------");
+    console.log(value)
+    console.log("------storage var------");
+    console.log(storageVar)
+    console.log("------function storage------");
+    console.log(functionStorage)
     const lastIndex = web3.utils.hexToNumber("0x" + value) - 1
+    console.log("------last index------");
+    console.log(lastIndex);
     let arrayStorageSlot = web3.utils.keccak256("0x" + storageVar)
     const output = {
         arrayIndex: lastIndex
     }
+    console.log("------array storage slot------")
+    console.log(arrayStorageSlot)
     if (variable.type.includes("struct")) {
         const structType = variable.type.split("(")[2].split(")")[0]
         const getContract = getMainContractCompiled(mainContract);
@@ -820,18 +885,19 @@ function decodeStorageValue(variable, value, mainContract, storageVar, functionS
             return value
         }
     } else if (variable.type.includes("array")) {
-        console.log("Variable: ", variable)
         const arrayTypeSplitted = variable.type.split(")")
         const arraySize = arrayTypeSplitted[arrayTypeSplitted.length - 1].split("_")[0]
         if (arraySize !== "dyn") {
             return decodeStaticArray(variable, value, mainContract, storageVar, Number(arraySize), functionStorage)
         } else {
-            return decodeDynamicArray(variable, value, mainContract, storageVar, functionStorage)
+            //todo bugfix
+            //return decodeDynamicArray(variable, value, mainContract, storageVar, functionStorage)
+            return value
         }
     } else if (variable.type.includes("struct")) {
         return decodeStructType(variable, value, mainContract, storageVar)
     } else {
-        return decodePrimitiveType(variable.type, value);
+        return decodePrimitiveType(variable.type, value)
     }
 }
 
@@ -884,13 +950,13 @@ async function getCompiledData(contracts, contractName) {
     const contractStorageTree = storageData;
     //get tree of functions for contract, NOT including inherited
     const contractTree = await getFunctionContractTree(source);
-    fs.writeFileSync('./temporaryTrials/contractTree.json', JSON.stringify(contractTree));
+    //fs.writeFileSync('./temporaryTrials/contractTree.json', JSON.stringify(contractTree));
     //construct full function tree including also the inherited ones
     const contractFunctionTree = await constructFullFunctionContractTree(contractTree);
-    fs.writeFileSync('./temporaryTrials/contractFunctionTree.json', JSON.stringify(contractFunctionTree));
+    //fs.writeFileSync('./temporaryTrials/contractFunctionTree.json', JSON.stringify(contractFunctionTree));
     //construct full contract tree including also variables
     const fullContractTree = await injectVariablesToTree(contractFunctionTree, contractStorageTree);
-    fs.writeFileSync('./temporaryTrials/fullContractTree.json', JSON.stringify(fullContractTree));
+    //fs.writeFileSync('./temporaryTrials/fullContractTree.json', JSON.stringify(fullContractTree));
 
     return fullContractTree;
 }
