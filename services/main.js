@@ -595,7 +595,7 @@ function mergeVariableValues(arr) {
                 };
             }
         } else {
-                acc[item.variableName] = item
+            acc[item.variableName] = item
         }
 
         return acc;
@@ -1105,6 +1105,9 @@ async function getAbi(compiled, contractName) {
         if (firstKey === contractName) {
             return compiled.contracts[contract][firstKey].abi;
         }
+    }
+    if (compiled.contracts["contract0"].hasOwnProperty(contractName)) {
+        return compiled.contracts["contract0"][contractName].abi;
     }
 }
 
