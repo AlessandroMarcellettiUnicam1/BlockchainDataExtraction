@@ -170,6 +170,8 @@ async function debugTransaction(txHash, blockNumber) {
     try {
         await hre.changeNetwork(networkName, blockNumber)
         const start = new Date()
+
+
         const response = await hre.network.provider.send("debug_traceTransaction", [
             txHash
         ]);
@@ -555,6 +557,7 @@ function getContractVariable(slotIndex, contractTree, functionName, mainContract
         //if contract is the chosen one and it has function then take variable
         if (contractTree[contractId].name === mainContract && contractTree[contractId].functions.includes(functionName)) {
             //iterate contract variables
+            console.log(contractTree[contractId]);
             for (let i = 0; i < contractTree[contractId].storage.length; i++) {
                 if (Number(contractTree[contractId].storage[i].slot) === Number(slotIndex)) {
                     contractVariables.push(contractTree[contractId].storage[i]);
@@ -1063,6 +1066,7 @@ async function getCompiledData(contracts, contractName) {
     }
 
     console.log(solidityVersion)
+    //solidityVersion = "v0.8.9+commit.e5eed63a";
     const solcSnapshot = await getRemoteVersion(solidityVersion.replace("soljson-", "").replace(".js", ""))
 
     const output = solcSnapshot.compile(JSON.stringify(input));
@@ -1074,9 +1078,11 @@ async function getCompiledData(contracts, contractName) {
 
     const source = JSON.parse(output).sources;
     contractAbi = JSON.stringify(await getAbi(JSON.parse(output), contractName));
+   // console.log(contractAbi);
     // fs.writeFileSync('abitest.json', JSON.stringify(contractAbi));
     //get all storage variable for contract, including inherited ones
     const storageData = await getContractVariableTree(JSON.parse(output));
+    console.log(storageData);
     //take the effective tree
     const contractStorageTree = storageData;
     //get tree of functions for contract, NOT including inherited
@@ -1101,12 +1107,24 @@ async function getCompiledData(contracts, contractName) {
  */
 async function getAbi(compiled, contractName) {
     for (const contract in compiled.contracts) {
+        console.log("contract", contract);
         const firstKey = Object.keys(compiled.contracts[contract])[0];
-        if (firstKey === contractName) {
+        console.log(firstKey);
+        console.log(contractName);
+        if (String(firstKey) === String(contractName)) {
+            console.log("trovato contratto abi")
             return compiled.contracts[contract][firstKey].abi;
+        }else{
+            for(const keyNumber in Object.keys(compiled.contracts[contract])){
+                otherKey = Object.keys(compiled.contracts[contract])[keyNumber];
+                if (String(otherKey) === String(contractName)) {
+                    console.log("trovato contratto abi 2");
+                    return compiled.contracts[contract][otherKey].abi;
+                }
+            }
         }
     }
-    if (compiled.contracts["contract0"].hasOwnProperty(contractName)) {
+    if (compiled && compiled.contracts && compiled.contracts["contract0"] && compiled.contracts["contract0"].hasOwnProperty(contractName)) {
         return compiled.contracts["contract0"][contractName].abi;
     }
 }
@@ -1132,6 +1150,8 @@ async function injectVariablesToTree(contractFunctionTree, contractStorageTree) 
             }
         }
     }
+    console.log("contract function tree");
+    console.log(contractFunctionTree);
     return contractFunctionTree;
 }
 
@@ -1262,7 +1282,9 @@ async function getContractVariableTree(compiled) {
         //utility for getting the key corresponding to the specific contract and access it
         const firstKey = Object.keys(compiled.contracts[contract])[0];
         //check that the contract has some state variables
-        if (compiled.contracts[contract][firstKey].storageLayout.storage.length !== 0) {
+        if (compiled.contracts[contract] && compiled.contracts[contract][firstKey] && compiled.contracts[contract][firstKey].storageLayout.storage.length !== 0) {
+            console.log("trovato ast 1");
+
             //get the storage of the contract
             const storageLay = compiled.contracts[contract][firstKey].storageLayout.storage;
             //read all variables from contract storage
@@ -1279,6 +1301,28 @@ async function getContractVariableTree(compiled) {
                 });
 
                 fs.writeFileSync('./temporaryTrials/contractStorageTree.json', JSON.stringify(contractStorageTree[firstKey]), {flag: "a+"})
+            }
+        }else{
+            for(const keyNumber in Object.keys(compiled.contracts[contract])){
+                const otherKey = Object.keys(compiled.contracts[contract])[keyNumber];
+                if (compiled.contracts[contract][otherKey].storageLayout.storage.length !== 0) {
+                    console.log("trovato ast 2");
+                    const storageLay = compiled.contracts[contract][otherKey].storageLayout.storage;
+                    for (const storageVar of storageLay) {
+                        //initialize first access to the contract
+                        if (contractStorageTree[otherKey] === undefined) {
+                            contractStorageTree[otherKey] = {};
+                            contractStorageTree[otherKey].storage = [];
+                            contractStorageTree[otherKey].name = otherKey;
+                        }
+                        contractStorageTree[otherKey].storage.push({
+                            name: storageVar.label, type: storageVar.type,
+                            slot: storageVar.slot, offset: storageVar.offset
+                        });
+
+                        fs.writeFileSync('./temporaryTrials/contractStorageTree.json', JSON.stringify(contractStorageTree[otherKey]), {flag: "a+"})
+                    }
+                }
             }
         }
     }
