@@ -43,7 +43,7 @@ const csvColumns = ["txHash", "debugTime", "decodeTime", "totalTime"]
  * @param smartContract - the smart contract uploaded file
  * @returns {Promise<*|*[]>} - the blockchain log with the extracted data
  */
-async function getAllTransactions(mainContract, contractAddress, fromBlock, toBlock, network, filters, smartContract) {
+async function getAllTransactions(mainContract, contractAddress, impl_contract, fromBlock, toBlock, network, filters, smartContract) {
 
     _contractAddress = contractAddress
     networkName = network;
@@ -75,21 +75,25 @@ async function getAllTransactions(mainContract, contractAddress, fromBlock, toBl
     web3 = new Web3(web3Endpoint)
 
     try {
+        console.log(contractAddress);
         const data = await axios.get(endpoint + `?module=account&action=txlist&address=${contractAddress}&startblock=${fromBlock}&endblock=${toBlock}&sort=asc&apikey=${apiKey}`)
         const contractTransactions = await data.data.result
+        console.log("transactions of hte contracttttt");
+        console.log(contractTransactions);
         // returns all contracts linked to te contract sent in input from etherscan
         let contracts = null
         // if the contract is uploaded by the user then the contract is compiled
         if (smartContract) {
             contracts = smartContract
         } else {
-            contracts = await getContractCodeEtherscan(contractAddress);
+            contracts = await getContractCodeEtherscan(impl_contract);
         }
         const contractTree = await getCompiledData(contracts, mainContract);
 
         const userLog = {
             networkUsed: networkName,
-            contractAddress,
+            proxyContract: contractAddress,
+            implementationContract: impl_contract,
             contractName: mainContract,
             fromBlock,
             toBlock,
@@ -104,7 +108,9 @@ async function getAllTransactions(mainContract, contractAddress, fromBlock, toBl
 
         await saveExtractionLog(userLog)
 
-        return await getStorageData(contractTransactions, mainContract, contractTree, contractAddress, filters);
+        //return await getStorageData(contractTransactions, mainContract, contractTree, contractAddress, filters);
+        //changed contratAddress to impl since it contains the storage to evaluate
+        return await getStorageData(contractTransactions, mainContract, contractTree, impl_contract, filters);
         // let csvRow = []
         // csvRow.push({
         //     txHash: null,
@@ -400,8 +406,9 @@ async function getTraceStorage(traceDebugged, blockNumber, functionName, txHash,
     let sstoreBuffer = [];
     const sstoreOptimization = []
     let internalCalls = [];
-
+    let keccakBeforeAdd = {};
     const sstoreToPrint = []
+    fs.writeFileSync("./temporaryTrials/trace.json", JSON.stringify(traceDebugged.structLogs), {flag: "a+"});
 
     if (traceDebugged.structLogs) {
         let internalTxId = 0
@@ -434,9 +441,20 @@ async function getTraceStorage(traceDebugged, blockNumber, functionName, txHash,
                     functionStorage[slot] = trace.storage[slot];
                 }
             } else if (trace.pc === (bufferPC + 1)) {
-                bufferPC = 0;
+                keccakBeforeAdd = trackBuffer[index];
+                bufferPC = -10;
                 trackBuffer[index].finalKey = trace.stack[trace.stack.length - 1];
                 index++;
+                //todo compact with code below
+                if(trace.op == "ADD" && (trace.stack[trace.stack.length - 1] === keccakBeforeAdd.finalKey ||
+                        trace.stack[trace.stack.length - 2] === keccakBeforeAdd.finalKey) &&
+                    keccakBeforeAdd.hexStorageIndex === "0000000000000000000000000000000000000000000000000000000000000000") {
+                    const keyBuff =  trackBuffer[index-1].hexKey;
+                    const slotBuff =  trackBuffer[index-1].hexStorageIndex;
+                    trackBuffer[index-1].hexKey = slotBuff;
+                    trackBuffer[index-1].hexStorageIndex = keyBuff;
+                    console.log("----ADD trovato nel opcode dopo keccak---", trackBuffer[index-1])
+                }
             }
                 //in case the trace is a SSTORE save the key. CAUTION: not every SSTORE changes the final storage state but every storage state change has an sstore
                 // SSTORE -> updates the storage state
@@ -447,6 +465,23 @@ async function getTraceStorage(traceDebugged, blockNumber, functionName, txHash,
                 sstoreOptimization.push(trace.stack)
                 // the last element of the stack is the value to store in the storage slot
                 sstoreBuffer.push(trace.stack[trace.stack.length - 1]);
+            } else if(trace.op == "ADD"){
+                /*ADD is the opcode that in case of arrays adds the next position to start to the computed keccak
+                if this is found and one of the inputs is the keccak and the previous keccak has 0 as slot then manage
+                this means that the keccak found is related to an array and we need to swap the slot with the key
+                this because for mappings we have K(h(k) . slot) while in arrays K(slot . 0x0...)*/
+                /*console.log(trace.stack[trace.stack.length - 1]);
+                console.log(trace.stack[trace.stack.length - 2]);
+                console.log(keccakBeforeAdd.finalKey);
+                console.log(keccakBeforeAdd.hexStorageIndex);*/
+                if ((trace.stack[trace.stack.length - 1] === keccakBeforeAdd.finalKey ||
+                        trace.stack[trace.stack.length - 2] === keccakBeforeAdd.finalKey) &&
+                    keccakBeforeAdd.hexStorageIndex === "0000000000000000000000000000000000000000000000000000000000000000"){
+                    const keyBuff =  trackBuffer[index-1].hexKey;
+                    const slotBuff =  trackBuffer[index-1].hexStorageIndex;
+                    trackBuffer[index-1].hexKey = slotBuff;
+                    trackBuffer[index-1].hexStorageIndex = keyBuff;
+                }
             } else if (trace.op === "CALL") {
                 //read the offset from the stack
                 const offsetBytes = trace.stack[trace.stack.length - 4];
@@ -463,12 +498,14 @@ async function getTraceStorage(traceDebugged, blockNumber, functionName, txHash,
                     to: trace.stack[trace.stack.length - 2],
                     inputsCall: []
                 }
+                console.log(trace.stack[trace.stack.length - 2]);
                 //read all the inputs from the memory and insert it in the call object
                 for (let i = offsetNumber; i <= offsetNumber + lengthNumber; i++) {
                     call.inputsCall.push(trace.memory[i]);
                 }
                 internalCalls.push(call);
             } else if (trace.op === "DELEGATECALL" || trace.op === "STATICCALL") {
+                console.log(trace.stack[trace.stack.length - 2]);
                 // internalCalls.push(trace.stack[trace.stack.length - 2]);
                 const offsetBytes = trace.stack[trace.stack.length - 3];
                 let offsetNumber = await web3.utils.hexToNumber("0x" + offsetBytes) / 32;
@@ -487,7 +524,7 @@ async function getTraceStorage(traceDebugged, blockNumber, functionName, txHash,
             } else if (trace.op === "RETURN") {
                 //console.log(trace);
             }
-            // fs.writeFileSync("./temporaryTrials/trace.json", JSON.stringify(trace), {flag: "a+"});
+//             fs.writeFileSync("./temporaryTrials/trace.json", JSON.stringify(trace), {flag: "a+"});
             internalTxId++
         }
     }
@@ -551,12 +588,22 @@ async function getTraceStorage(traceDebugged, blockNumber, functionName, txHash,
  * @returns {*[]} - the contract variables to decode
  */
 function getContractVariable(slotIndex, contractTree, functionName, mainContract) {
+    console.log("-----------contract treeee-----")
+    console.log(contractTree)
+    console.log("-----------function name-----")
+    console.log(functionName)
+    console.log("-----------main contract-----")
+    console.log(mainContract)
     let contractVariables = [];
     //iterates all contracts in contract tree
     for (const contractId in contractTree) {
+        console.log("-------contractId-------");
+        console.log(contractId);
         //if contract is the chosen one and it has function then take variable
-        if (contractTree[contractId].name === mainContract && contractTree[contractId].functions.includes(functionName)) {
+        // && contractTree[contractId].functions.includes(functionName) do we really need this?
+        if (contractTree[contractId].name === mainContract) {
             //iterate contract variables
+            console.log("-----------sono nell'if e sto vedendo il tree dell'id specifico-----")
             console.log(contractTree[contractId]);
             for (let i = 0; i < contractTree[contractId].storage.length; i++) {
                 if (Number(contractTree[contractId].storage[i].slot) === Number(slotIndex)) {
@@ -621,12 +668,19 @@ function mergeVariableValues(arr) {
  */
 async function newDecodeValues(sstore, contractTree, shaTraces, functionStorage, functionName, mainContract) {
     let decodedValues = [];
+    /*console.log("-------SHA TRACES---------")
+    console.log(shaTraces);
+    console.log("-------FUNCTION STORAGE---------")
+    console.log(functionStorage);*/
     //iterate storage keys looking for complex keys coming from SHA3
     for (const storageVar in functionStorage) {
         for (const shaTrace of shaTraces) {
             if (storageVar === shaTrace.finalKey) {
                 const slotIndex = web3.utils.hexToNumber("0x" + shaTrace.hexStorageIndex);
+                console.log("slot indexxxx", slotIndex);
                 const contractVar = getContractVariable(slotIndex, contractTree, functionName, mainContract);
+                console.log("contract var", contractVar);
+
                 const decodedValue = decodeStorageValue(contractVar[0], functionStorage[storageVar], mainContract, storageVar, functionStorage);
                 const bufferVariable = {
                     variableId: "variable_" + contractVar[0].name + "_" + _contractAddress,
@@ -733,6 +787,8 @@ function readVarFromOffset(variables, value) {
  * @returns {*|number|string} - the decoded value of the variable
  */
 function decodePrimitiveType(type, value) {
+    console.log("decoded primitive type!!!")
+    console.log(value)
     if (type.includes("uint")) {
         return Number(web3.utils.hexToNumber("0x" + value))
     } else if (type.includes("string")) {
@@ -1066,7 +1122,7 @@ async function getCompiledData(contracts, contractName) {
     }
 
     console.log(solidityVersion)
-    //solidityVersion = "v0.8.9+commit.e5eed63a";
+    solidityVersion = "v0.8.4+commit.c7e474f2";
     const solcSnapshot = await getRemoteVersion(solidityVersion.replace("soljson-", "").replace(".js", ""))
 
     const output = solcSnapshot.compile(JSON.stringify(input));
@@ -1082,7 +1138,7 @@ async function getCompiledData(contracts, contractName) {
     // fs.writeFileSync('abitest.json', JSON.stringify(contractAbi));
     //get all storage variable for contract, including inherited ones
     const storageData = await getContractVariableTree(JSON.parse(output));
-    console.log(storageData);
+    //console.log(storageData);
     //take the effective tree
     const contractStorageTree = storageData;
     //get tree of functions for contract, NOT including inherited
@@ -1107,18 +1163,18 @@ async function getCompiledData(contracts, contractName) {
  */
 async function getAbi(compiled, contractName) {
     for (const contract in compiled.contracts) {
-        console.log("contract", contract);
+        //console.log("contract", contract);
         const firstKey = Object.keys(compiled.contracts[contract])[0];
-        console.log(firstKey);
-        console.log(contractName);
         if (String(firstKey) === String(contractName)) {
             console.log("trovato contratto abi")
+            //console.log(compiled.contracts[contract]);
+            //console.log(compiled.contracts[contract][firstKey]);
             return compiled.contracts[contract][firstKey].abi;
         }else{
             for(const keyNumber in Object.keys(compiled.contracts[contract])){
                 otherKey = Object.keys(compiled.contracts[contract])[keyNumber];
                 if (String(otherKey) === String(contractName)) {
-                    console.log("trovato contratto abi 2");
+                    //console.log("trovato contratto abi 2");
                     return compiled.contracts[contract][otherKey].abi;
                 }
             }
@@ -1151,7 +1207,7 @@ async function injectVariablesToTree(contractFunctionTree, contractStorageTree) 
         }
     }
     console.log("contract function tree");
-    console.log(contractFunctionTree);
+    //console.log(contractFunctionTree);
     return contractFunctionTree;
 }
 
@@ -1283,7 +1339,7 @@ async function getContractVariableTree(compiled) {
         const firstKey = Object.keys(compiled.contracts[contract])[0];
         //check that the contract has some state variables
         if (compiled.contracts[contract] && compiled.contracts[contract][firstKey] && compiled.contracts[contract][firstKey].storageLayout.storage.length !== 0) {
-            console.log("trovato ast 1");
+            console.log("trovato storage 1");
 
             //get the storage of the contract
             const storageLay = compiled.contracts[contract][firstKey].storageLayout.storage;
@@ -1306,7 +1362,7 @@ async function getContractVariableTree(compiled) {
             for(const keyNumber in Object.keys(compiled.contracts[contract])){
                 const otherKey = Object.keys(compiled.contracts[contract])[keyNumber];
                 if (compiled.contracts[contract][otherKey].storageLayout.storage.length !== 0) {
-                    console.log("trovato ast 2");
+                    console.log("trovato storage 2");
                     const storageLay = compiled.contracts[contract][otherKey].storageLayout.storage;
                     for (const storageVar of storageLay) {
                         //initialize first access to the contract

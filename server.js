@@ -51,6 +51,7 @@ app.post('/api/query', async (req, res) => {
 // Route: Home Page
 app.post('/submit', upload.single('file'), async (req, res) => {
     const contractAddress = req.body.contractAddress; // Get data from input1
+    const implementationContractAddress = req.body.implementationContractAddress; // Get data from input1
     const contractName = req.body.contractName; // Get data from input2
     const fromBlock = req.body.fromBlock; // Get 'Start Block' value from form
     const toBlock = req.body.toBlock; // Get 'End Block' value from form
@@ -62,6 +63,7 @@ app.post('/submit', upload.single('file'), async (req, res) => {
     console.log(`End Block: ${toBlock}`);
     // Perform actions with the received data (you can customize this part)
     console.log(`contract Address: ${contractAddress}`);
+    console.log(`implementation contract Address: ${implementationContractAddress}`);
     console.log(`Contract name: ${contractName}`);
     let logs = []
     if (req.file) {
@@ -70,8 +72,7 @@ app.post('/submit', upload.single('file'), async (req, res) => {
                 console.error(err)
                 return res.status(500).send("Error reading file")
             }
-
-            logs = await getAllTransactions(contractName, contractAddress, fromBlock, toBlock, network, filters, data)
+            logs = await getAllTransactions(contractName, contractAddress, implementationContractAddress, fromBlock, toBlock, network, filters, data)
             fs.unlink(req.file.path, (err) => {
                 if (err) {
                     console.error(err)
@@ -84,7 +85,7 @@ app.post('/submit', upload.single('file'), async (req, res) => {
             })
         })
     } else {
-        logs = await getAllTransactions(contractName, contractAddress, fromBlock, toBlock, network, filters)
+        logs = await getAllTransactions(contractName, contractAddress, implementationContractAddress, fromBlock, toBlock, network, filters)
         if (logs instanceof Error) {
             res.status(404).send(logs.message)
         } else {
