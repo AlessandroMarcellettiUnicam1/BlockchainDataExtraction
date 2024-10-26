@@ -75,19 +75,19 @@ async function getAllTransactions(mainContract, contractAddress, impl_contract, 
     web3 = new Web3(web3Endpoint)
 
     try {
-        console.log(contractAddress);
+        //contractAddress = proxy address in which storage and txs are made
         const data = await axios.get(endpoint + `?module=account&action=txlist&address=${contractAddress}&startblock=${fromBlock}&endblock=${toBlock}&sort=asc&apikey=${apiKey}`)
         const contractTransactions = await data.data.result
-        console.log("transactions of hte contracttttt");
-        console.log(contractTransactions);
         // returns all contracts linked to te contract sent in input from etherscan
         let contracts = null
         // if the contract is uploaded by the user then the contract is compiled
         if (smartContract) {
             contracts = smartContract
         } else {
+            //implementation contract address
             contracts = await getContractCodeEtherscan(impl_contract);
         }
+        //mainContract = implementationContract name
         const contractTree = await getCompiledData(contracts, mainContract);
 
         const userLog = {
@@ -234,6 +234,7 @@ async function getStorageData(contractTransactions, mainContract, contractTree, 
 
         console.log("Transactions found -> ", response);
 
+
         if (response) {
             console.log("transaction already processed: ", tx.hash)
             const {_id, __v, ...transactionData} = response[0]
@@ -336,6 +337,7 @@ async function getStorageData(contractTransactions, mainContract, contractTree, 
     }
     console.log("Extraction finished")
     await mongoose.disconnect()
+    fs.writeFileSync('abitest.json', JSON.stringify(blockchainLog));
     return blockchainLog;
 }
 
@@ -417,6 +419,7 @@ async function getTraceStorage(traceDebugged, blockNumber, functionName, txHash,
             // computation of the memory location and the storage index of a complex variable (mapping or struct)
             // in the stack we have the offset and the lenght of the memory
             if (trace.op === "KECCAK256") {
+
                 bufferPC = trace.pc;
                 const stackLength = trace.stack.length;
                 const memoryLocation = trace.stack[stackLength - 1];
@@ -432,15 +435,21 @@ async function getTraceStorage(traceDebugged, blockNumber, functionName, txHash,
                     hexKey: hexKey,
                     hexStorageIndex: hexStorageIndex
                 };
-
+                console.log("----KECCAK WITH PC:----", trace.pc)
+                console.log("----LEFT:", hexKey)
+                console.log("----RIGHT:", hexStorageIndex)
                 // end of a function execution -> returns the storage state with the keys and values in the storage
             } else if (trace.op === "STOP") {
                 //retrieve the entire storage after function execution
                 //for each storage key discard the ones of static variables and compare the remaining ones with the re-generated
+                console.log("------STOP OPCODE-------");
+                console.log(trace);
                 for (const slot in trace.storage) {
                     functionStorage[slot] = trace.storage[slot];
                 }
             } else if (trace.pc === (bufferPC + 1)) {
+                /*console.log("----AFTER KECCAK:----", trace.pc)
+                console.log("----RIGHT:", trace.stack[trace.stack.length - 1])*/
                 keccakBeforeAdd = trackBuffer[index];
                 bufferPC = -10;
                 trackBuffer[index].finalKey = trace.stack[trace.stack.length - 1];
@@ -453,7 +462,9 @@ async function getTraceStorage(traceDebugged, blockNumber, functionName, txHash,
                     const slotBuff =  trackBuffer[index-1].hexStorageIndex;
                     trackBuffer[index-1].hexKey = slotBuff;
                     trackBuffer[index-1].hexStorageIndex = keyBuff;
-                    console.log("----ADD trovato nel opcode dopo keccak---", trackBuffer[index-1])
+                    console.log("----ADD OPCODE----")
+                    console.log("----first", trace.stack[trace.stack.length - 1]);
+                    console.log("----second", trace.stack[trace.stack.length - 2]);
                 }
             }
                 //in case the trace is a SSTORE save the key. CAUTION: not every SSTORE changes the final storage state but every storage state change has an sstore
@@ -463,17 +474,22 @@ async function getTraceStorage(traceDebugged, blockNumber, functionName, txHash,
                 sstoreToPrint.push(trace)
                 // used to store the entire stack of the SSTORE for the optimization
                 sstoreOptimization.push(trace.stack)
-                // the last element of the stack is the value to store in the storage slot
+                // the last element of the stack is the storage slot in which data is pushed
                 sstoreBuffer.push(trace.stack[trace.stack.length - 1]);
+                console.log("----SSTORE PUSHING:----")
+                console.log("----storage slot:", trace.stack[trace.stack.length - 1])
+                console.log("----value:", trace.stack[trace.stack.length - 2])
             } else if(trace.op == "ADD"){
                 /*ADD is the opcode that in case of arrays adds the next position to start to the computed keccak
                 if this is found and one of the inputs is the keccak and the previous keccak has 0 as slot then manage
                 this means that the keccak found is related to an array and we need to swap the slot with the key
                 this because for mappings we have K(h(k) . slot) while in arrays K(slot . 0x0...)*/
-                /*console.log(trace.stack[trace.stack.length - 1]);
-                console.log(trace.stack[trace.stack.length - 2]);
-                console.log(keccakBeforeAdd.finalKey);
+                console.log("----ADD OPCODE----")
+                console.log("----first", trace.stack[trace.stack.length - 1]);
+                console.log("----second", trace.stack[trace.stack.length - 2]);
+                /*console.log(keccakBeforeAdd.finalKey);
                 console.log(keccakBeforeAdd.hexStorageIndex);*/
+
                 if ((trace.stack[trace.stack.length - 1] === keccakBeforeAdd.finalKey ||
                         trace.stack[trace.stack.length - 2] === keccakBeforeAdd.finalKey) &&
                     keccakBeforeAdd.hexStorageIndex === "0000000000000000000000000000000000000000000000000000000000000000"){
@@ -498,14 +514,12 @@ async function getTraceStorage(traceDebugged, blockNumber, functionName, txHash,
                     to: trace.stack[trace.stack.length - 2],
                     inputsCall: []
                 }
-                console.log(trace.stack[trace.stack.length - 2]);
                 //read all the inputs from the memory and insert it in the call object
                 for (let i = offsetNumber; i <= offsetNumber + lengthNumber; i++) {
                     call.inputsCall.push(trace.memory[i]);
                 }
                 internalCalls.push(call);
             } else if (trace.op === "DELEGATECALL" || trace.op === "STATICCALL") {
-                console.log(trace.stack[trace.stack.length - 2]);
                 // internalCalls.push(trace.stack[trace.stack.length - 2]);
                 const offsetBytes = trace.stack[trace.stack.length - 3];
                 let offsetNumber = await web3.utils.hexToNumber("0x" + offsetBytes) / 32;
@@ -522,6 +536,7 @@ async function getTraceStorage(traceDebugged, blockNumber, functionName, txHash,
                 }
                 internalCalls.push(call);
             } else if (trace.op === "RETURN") {
+                //console.log("---------RETURN---------")
                 //console.log(trace);
             }
 //             fs.writeFileSync("./temporaryTrials/trace.json", JSON.stringify(trace), {flag: "a+"});
@@ -532,22 +547,29 @@ async function getTraceStorage(traceDebugged, blockNumber, functionName, txHash,
     // fs.writeFileSync("./temporaryTrials/sstoreToPrint.json", JSON.stringify(sstoreToPrint))
     fs.writeFileSync("./temporaryTrials/storeBuffer.json", JSON.stringify(sstoreBuffer));
     let finalShaTraces = [];
+    console.log(trackBuffer);
     for (let i = 0; i < trackBuffer.length; i++) {
-        //check if the SHA3 key is contained in an SSTORE
+        console.log("---sto iterando con indice i ---", i)
+        //check if the SHA3 key is contained in a SSTORE
         if (sstoreBuffer.includes(trackBuffer[i].finalKey)) {
+            console.log("---sstore contiene finalKey---")
             //create a final trace for that key
             const trace = {
                 finalKey: trackBuffer[i].finalKey
             }
             let flag = false;
             let test = i;
+            console.log("testtttttttt", test);
             //Iterate previous SHA3 looking for a simple integer slot index
             while (flag === false) {
+                console.log("---sono nel while cercando cose---")
                 //if the storage key is not a standard number then check for the previous one
-                if (!(web3.utils.hexToNumber("0x" + trackBuffer[test].hexStorageIndex) < 30)) {
+                if (!(web3.utils.hexToNumber("0x" + trackBuffer[test].hexStorageIndex) < 300)) {
                     test--;
+                    console.log("non ho trovato uno slot semplice e vado indietro")
                 } else {
                     //if the storage location is a simple one then save it in the final trace with the correct key
+                    console.log("storage è semplice quindi lo salvo", trackBuffer[test].hexStorageIndex)
                     trace.hexStorageIndex = trackBuffer[test].hexStorageIndex;
                     flag = true;
                     finalShaTraces.push(trace);
@@ -588,23 +610,23 @@ async function getTraceStorage(traceDebugged, blockNumber, functionName, txHash,
  * @returns {*[]} - the contract variables to decode
  */
 function getContractVariable(slotIndex, contractTree, functionName, mainContract) {
-    console.log("-----------contract treeee-----")
+    /*console.log("-----------contract treeee-----")
     console.log(contractTree)
     console.log("-----------function name-----")
     console.log(functionName)
     console.log("-----------main contract-----")
-    console.log(mainContract)
+    console.log(mainContract)*/
     let contractVariables = [];
     //iterates all contracts in contract tree
     for (const contractId in contractTree) {
-        console.log("-------contractId-------");
-        console.log(contractId);
+        //console.log("-------contractId-------");
+        //console.log(contractId);
         //if contract is the chosen one and it has function then take variable
         // && contractTree[contractId].functions.includes(functionName) do we really need this?
         if (contractTree[contractId].name === mainContract) {
             //iterate contract variables
-            console.log("-----------sono nell'if e sto vedendo il tree dell'id specifico-----")
-            console.log(contractTree[contractId]);
+            //console.log("-----------sono nell'if e sto vedendo il tree dell'id specifico-----")
+            //console.log(contractTree[contractId]);
             for (let i = 0; i < contractTree[contractId].storage.length; i++) {
                 if (Number(contractTree[contractId].storage[i].slot) === Number(slotIndex)) {
                     contractVariables.push(contractTree[contractId].storage[i]);
@@ -668,19 +690,21 @@ function mergeVariableValues(arr) {
  */
 async function newDecodeValues(sstore, contractTree, shaTraces, functionStorage, functionName, mainContract) {
     let decodedValues = [];
-    /*console.log("-------SHA TRACES---------")
+    console.log("-------SHA TRACES---------")
     console.log(shaTraces);
     console.log("-------FUNCTION STORAGE---------")
-    console.log(functionStorage);*/
+    console.log(functionStorage);
     //iterate storage keys looking for complex keys coming from SHA3
     for (const storageVar in functionStorage) {
         for (const shaTrace of shaTraces) {
             if (storageVar === shaTrace.finalKey) {
+                console.log("SONO NEL CASO 1")
+                console.log(shaTrace)
+                console.log(storageVar)
                 const slotIndex = web3.utils.hexToNumber("0x" + shaTrace.hexStorageIndex);
                 console.log("slot indexxxx", slotIndex);
                 const contractVar = getContractVariable(slotIndex, contractTree, functionName, mainContract);
                 console.log("contract var", contractVar);
-
                 const decodedValue = decodeStorageValue(contractVar[0], functionStorage[storageVar], mainContract, storageVar, functionStorage);
                 const bufferVariable = {
                     variableId: "variable_" + contractVar[0].name + "_" + _contractAddress,
@@ -704,6 +728,8 @@ async function newDecodeValues(sstore, contractTree, shaTraces, functionStorage,
             if (storageVar === sstoreBuffer[sstoreIndex]) {
                 const contractVar = getContractVariable(numberIndex, contractTree, functionName, mainContract);
                 if (contractVar.length > 1) {
+                    console.log("SONO NEL CASO 2")
+
                     const updatedVariables = readVarFromOffset(contractVar, functionStorage[storageVar]);
                     for (let varI = 0; varI < updatedVariables.length; varI++) {
                         const decodedValue = decodeStorageValue(updatedVariables[varI], updatedVariables[varI].value, mainContract, storageVar, functionStorage);
@@ -721,6 +747,8 @@ async function newDecodeValues(sstore, contractTree, shaTraces, functionStorage,
                     // handle array with data optimization
                     const regexUintArray = /(array.*(?:uint|int))|((?:uint|int).*array)/
                     if (regexUintArray.test(contractVar[0].type)/* && !contractVar[0].type.includes("int256")*/) {
+                        console.log("SONO NEL CASO 3")
+
                         optimizedArray.push({contractVar: contractVar[0], storageVar})
                         const optimezedVariables = optimizedArray.reduce((acc, item) => {
                             if (item.name === contractVar.name && item.type === contractVar.type && item.storageVar === storageVar) {
@@ -732,6 +760,8 @@ async function newDecodeValues(sstore, contractTree, shaTraces, functionStorage,
                         contractVar[0].index = optimezedVariables.length - 1
                         decodedValue = decodeStorageValue(contractVar[0], functionStorage[storageVar], mainContract, storageVar, functionStorage, sstoreOptimization)
                     } else {
+                        console.log("SONO NEL CASO 4")
+
                         decodedValue = decodeStorageValue(contractVar[0], functionStorage[storageVar], mainContract, storageVar, functionStorage)
                     }
                     const bufferVariable = {
@@ -787,8 +817,7 @@ function readVarFromOffset(variables, value) {
  * @returns {*|number|string} - the decoded value of the variable
  */
 function decodePrimitiveType(type, value) {
-    console.log("decoded primitive type!!!")
-    console.log(value)
+    console.log("variabileeee", value);
     if (type.includes("uint")) {
         return Number(web3.utils.hexToNumber("0x" + value))
     } else if (type.includes("string")) {
@@ -1339,8 +1368,6 @@ async function getContractVariableTree(compiled) {
         const firstKey = Object.keys(compiled.contracts[contract])[0];
         //check that the contract has some state variables
         if (compiled.contracts[contract] && compiled.contracts[contract][firstKey] && compiled.contracts[contract][firstKey].storageLayout.storage.length !== 0) {
-            console.log("trovato storage 1");
-
             //get the storage of the contract
             const storageLay = compiled.contracts[contract][firstKey].storageLayout.storage;
             //read all variables from contract storage
