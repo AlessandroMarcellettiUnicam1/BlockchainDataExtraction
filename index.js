@@ -357,7 +357,7 @@ async function getTransactionsByAddress() {
 }
 
 async function getAllTransactions(){
-
+    console.log("index.js")
 
 // Replace with your Etherscan API key
     const apiKey = 'I81RM42RCBH3HIC9YEK1GX6KYQ12U73K1C';
