@@ -1447,9 +1447,12 @@ async function getCompiledData(contracts, contractName) {
         input.sources[contractName].content = contracts;
         solidityVersion = await detectVersion(contracts)
     }
-
+    
     console.log(solidityVersion)
-    solidityVersion = "v0.8.4+commit.c7e474f2";
+    //v0.8.4+commit.c7e474f2
+    // v0.5.15+commit.6a57276f
+//v0.8.28+commit.7893614a
+    solidityVersion = "v0.8.28+commit.7893614a";
     const solcSnapshot = await getRemoteVersion(solidityVersion.replace("soljson-", "").replace(".js", ""))
 
     const output = solcSnapshot.compile(JSON.stringify(input));
