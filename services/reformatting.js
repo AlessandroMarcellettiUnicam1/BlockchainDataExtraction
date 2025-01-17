@@ -155,11 +155,15 @@ function decodePrimitiveType(type, value, shaTraces, functionStorage) {
         return Number(web3.utils.hexToNumber("0x" + value));
     } else if (type.includes("string")) {
         let decodedString = "";
-        if (shaTraces && functionStorage[shaTraces[0].finalKey] != web3.utils.padLeft("0", 64)) {
-            decodedString = decodeString(type,shaTraces, functionStorage);
+        if (shaTraces){
+            if(shaTraces.length>0){
+                if (functionStorage[shaTraces[0].finalKey] !== web3.utils.padLeft("0", 64)) {
+                    decodedString = decodeString(type,shaTraces, functionStorage);
+                }
+            }
         }
 
-        if (decodedString.length <= 32) {
+        if (decodedString.length <= 32 && decodedString!="") {
             let chars = value.split("0")[0];
             if (chars.length % 2 !== 0) chars = chars + "0";
             return web3.utils.hexToAscii("0x" + chars);
@@ -227,7 +231,7 @@ function decodeString(type,shaTraces, functionStorage) {
     }
     return listOfBlock;
 }
-funct
+
 
 function decodeStaticArray(variable, value, mainContract, storageVar, arraySize, functionStorage, completeSstore) {
     let arrayStorageSlot = Number(variable.slot);
