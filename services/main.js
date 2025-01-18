@@ -273,7 +273,6 @@ async function getStorageData(contractTransactions, mainContract, contractTree, 
             // newLog.activity = tx.method;
             newLog.timestamp = new Date(tx.timeStamp * 1000).toISOString()
 
-            let inputId = 0
             for (let i = 0; i < tx.inputDecoded.inputs.length; i++) {
                 //check if the input value is an array or a struct
                 // TODO -> check how a Struct array is represented
@@ -300,20 +299,17 @@ async function getStorageData(contractTransactions, mainContract, contractTree, 
                     }
 
                     newLog.inputs[i] = {
-                        inputId: "inputName_" + inputId + "_" + tx.hash,
                         inputName: inputName,
                         type: tx.inputDecoded.types[i],
                         inputValue: bufferTuple.toString()
                     }
                 } else {
                     newLog.inputs[i] = {
-                        inputId: "inputName_" + inputId + "_" + tx.hash,
                         inputName: inputName,
                         type: tx.inputDecoded.types[i],
                         inputValue: decodeInput(tx.inputDecoded.types[i], tx.inputDecoded.inputs[i])
                     }
                 }
-                inputId++
             }
 
             const storageVal = await getTraceStorage(response, tx.blockNumber, tx.inputDecoded.method, tx.hash,
@@ -418,7 +414,6 @@ async function getTraceStorage(traceDebugged, blockNumber, functionName, txHash,
     const sstoreToPrint = []
     fs.writeFileSync("./temporaryTrials/trace.json", JSON.stringify(traceDebugged.structLogs), {flag: "a+"});
     if (traceDebugged.structLogs) {
-        let internalTxId = 0
         for (const trace of traceDebugged.structLogs) {
             //if SHA3 is found then read all keys before being hashed
             // computation of the memory location and the storage index of a complex variable (mapping or struct)
@@ -525,7 +520,6 @@ async function getTraceStorage(traceDebugged, blockNumber, functionName, txHash,
                 let lengthNumber = web3.utils.hexToNumber("0x" + lengthBytes) / 32;
                 //create the call object
                 let call = {
-                    callId: "call_" + internalTxId + "_" + txHash,
                     callType: trace.op,
                     to: trace.stack[trace.stack.length - 2],
                     inputsCall: []
@@ -542,7 +536,6 @@ async function getTraceStorage(traceDebugged, blockNumber, functionName, txHash,
                 const lengthBytes = trace.stack[trace.stack.length - 4];
                 let lengthNumber = await web3.utils.hexToNumber("0x" + lengthBytes) / 32;
                 let call = {
-                    callId: "call_" + internalTxId + "_" + txHash,
                     callType: trace.op,
                     to: trace.stack[trace.stack.length - 2],
                     inputsCall: []
@@ -556,11 +549,9 @@ async function getTraceStorage(traceDebugged, blockNumber, functionName, txHash,
                 //console.log(trace);
             }
 //             fs.writeFileSync("./temporaryTrials/trace.json", JSON.stringify(trace), {flag: "a+"});
-            internalTxId++
         }
     }
     if (traceDebugged.structLogs) {
-        let internalTxId = 0
         for (const trace of traceDebugged.structLogs) {
 
             //if SHA3 is found then read all keys before being hashed
@@ -669,7 +660,6 @@ async function getTraceStorage(traceDebugged, blockNumber, functionName, txHash,
                 let lengthNumber = web3.utils.hexToNumber("0x" + lengthBytes) / 32;
                 //create the call object
                 let call = {
-                    callId: "call_" + internalTxId + "_" + txHash,
                     callType: trace.op,
                     to: trace.stack[trace.stack.length - 2],
                     inputsCall: []
@@ -686,7 +676,6 @@ async function getTraceStorage(traceDebugged, blockNumber, functionName, txHash,
                 const lengthBytes = trace.stack[trace.stack.length - 4];
                 let lengthNumber = await web3.utils.hexToNumber("0x" + lengthBytes) / 32;
                 let call = {
-                    callId: "call_" + internalTxId + "_" + txHash,
                     callType: trace.op,
                     to: trace.stack[trace.stack.length - 2],
                     inputsCall: []
@@ -700,7 +689,6 @@ async function getTraceStorage(traceDebugged, blockNumber, functionName, txHash,
                 //console.log(trace);
             }
 //             fs.writeFileSync("./temporaryTrials/trace.json", JSON.stringify(trace), {flag: "a+"});
-            internalTxId++
         }
     }
     
@@ -898,7 +886,6 @@ async function TempnewDecodeValues(sstore, contractTree, shaTraces, functionStor
 
                     const decodedValue = decodeStorageValue(contractVar[0], functionStorage[storageVar], mainContract, storageVar, functionStorage);
                     const bufferVariable = {
-                        variableId: "variable_" + contractVar[0].name + "_" + _contractAddress,
                         variableName: contractVar[0].name,
                         type: contractVar[0].type,
                         variableValue: decodedValue,
@@ -931,7 +918,6 @@ async function TempnewDecodeValues(sstore, contractTree, shaTraces, functionStor
                         for (let varI = 0; varI < updatedVariables.length; varI++) {
                             const decodedValue = decodeStorageValue(updatedVariables[varI], updatedVariables[varI].value, mainContract, storageVar, functionStorage);
                             const bufferVariable = {
-                                variableId: "variable_" + contractVar[varI].name + "_" + _contractAddress,
                                 variableName: updatedVariables[varI].name,
                                 type: updatedVariables[varI].type,
                                 variableValue: decodedValue,
@@ -964,7 +950,6 @@ async function TempnewDecodeValues(sstore, contractTree, shaTraces, functionStor
                         }
 
                         const bufferVariable = {
-                            variableId: "variable_" + contractVar[0].name + "_" + _contractAddress,
                             variableName: contractVar[0].name,
                             type: contractVar[0].type,
                             variableValue: decodedValue,
@@ -1726,7 +1711,6 @@ async function getEvents(txHash, block, contractAddress) {
     const myContract = new web3.eth.Contract(JSON.parse(contractAbi), contractAddress);
     let filteredEvents = [];
     const pastEvents = await myContract.getPastEvents("allEvents", {fromBlock: block, toBlock: block});
-    let eventId = 0
     for (let i = 0; i < pastEvents.length; i++) {
         for (const value in pastEvents[i].returnValues) {
             if (typeof pastEvents[i].returnValues[value] === "bigint") {
@@ -1734,12 +1718,10 @@ async function getEvents(txHash, block, contractAddress) {
             }
         }
         const event = {
-            eventId: "event_" + eventId + "_" + txHash,
             eventName: pastEvents[i].event,
             eventValues: pastEvents[i].returnValues
         };
         filteredEvents.push(event);
-        eventId++
     }
 
     return filteredEvents;

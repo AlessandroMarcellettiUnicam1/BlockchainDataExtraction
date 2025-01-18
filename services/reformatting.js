@@ -78,7 +78,6 @@ async function optimizedDecodeValues(sstore, contractTree, shaTraces, functionSt
 
 function createBufferVariable(contractVar, decodedValue, rawValue) {
     return {
-        variableId: "variable_" + contractVar.name + "_" + _contractAddress,
         variableName: contractVar.name,
         type: contractVar.type,
         variableValue: decodedValue,
@@ -352,7 +351,7 @@ function decodeStructType(variable, value, mainContract, storageVar, shaTraces, 
     const memberItem = {
         struct: variable.type.split("(")[1].split(")")[0],
     };
-    members.forEach((member) => {
+    members?.forEach((member) => {
         const memberSlot = Number(member.slot) + Number(variable.slot);
         if (memberSlot === web3.utils.toDecimal("0x" + storageVar)) {
             memberItem[member.label] = decodePrimitiveType(member.type, value, shaTraces, functionStorage);
