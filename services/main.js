@@ -5,7 +5,7 @@ const axios = require("axios");
 const {stringify} = require("csv-stringify")
 //let contractAbi = fs.readFileSync('abiEtherscan.json', 'utf8');
 let contractAbi = {};
-const { newDecodeValues } = require('./newDecodedValue');
+// const { newDecodeValues } = require('./newDecodedValue');
 const { optimizedDecodeValues }= require('./reformatting')
 // const { getTraceStorage } = require('./getTraceStorage');
 
@@ -273,8 +273,8 @@ async function getStorageData(contractTransactions, mainContract, contractTree, 
             // newLog.activity = tx.method;
             newLog.timestamp = new Date(tx.timeStamp * 1000).toISOString()
 
-            let inputId = 0
-            for (let i = 0; i < tx.inputDecoded.inputs.length; i++) {
+            let inputId = 0 
+            for (let i = 0; i < tx.inputDecoded.inputs.length; i++) { 
                 //check if the input value is an array or a struct
                 // TODO -> check how a Struct array is represented
                 // Deploy a SC in a Test Net and send a tx with input data to decode its structure
@@ -718,7 +718,8 @@ async function getTraceStorage(traceDebugged, blockNumber, functionName, txHash,
             console.log("---sstore contiene finalKey---")
             //create a final trace for that key
             const trace = {
-                finalKey: trackBuffer[i].finalKey
+                finalKey: trackBuffer[i].finalKey,
+                hexKey: trackBuffer[i].hexKey
             }
             console.log(trace)
             let flag = false;
@@ -726,6 +727,8 @@ async function getTraceStorage(traceDebugged, blockNumber, functionName, txHash,
             console.log("testtttttttt", test);
             //Iterate previous SHA3 looking for a simple integer slot index
             while (flag === false) {
+                //TODO non capisco questo controllo perché torna indietro anche se sono
+                //con l'indice 0
                 console.log("---sono nel while cercando cose---")
                 //if the storage key is not a standard number then check for the previous one
                 if (!(web3.utils.hexToNumber("0x" + trackBuffer[test].hexStorageIndex) < 300)) {
@@ -757,11 +760,16 @@ async function getTraceStorage(traceDebugged, blockNumber, functionName, txHash,
     const sstoreObject = {sstoreOptimization, sstoreBuffer}
     console.log("------FINAL SHA TRACES------")
     console.log(finalShaTraces);
-    //console.log(contractCompiled)
+    console.log(regroupShatrace(finalShaTraces))
+    finalShaTraces=regroupShatrace(finalShaTraces);
     const decodedValues = await optimizedDecodeValues(sstoreObject, contractTree, finalShaTraces, functionStorage, functionName, mainContract,web3,contractCompiled);
     return {decodedValues, internalCalls};
 }
-
+function regroupShatrace(finalShaTraces){
+    return Array.from(
+        new Map(finalShaTraces.map(item => [item.finalKey + item.hexStorageIndex, item])).values()
+      );
+}
 //cleanTest(18424870, "sendFrom", "0x446f97e43687382fefbc6a9c4cccd055829ef2909997fb102a1728db6b37b76a", "CakeOFT");
 
 //function for re-generating the key and understand the variable thanks to the tests on the storage locationapprove(address spender,uint256 amount)0x095ea7b3
@@ -860,7 +868,7 @@ function mergeVariableValues(arr) {
  * @param mainContract - the main contract to decode, used to identify the contract variables
  * @returns {Promise<(*&{variableValue: string|string|*})[]>} - the decoded value of the detected variable
  */
-async function TempnewDecodeValues(sstore, contractTree, shaTraces, functionStorage, functionName, mainContract) {
+async function newDecodeValues(sstore, contractTree, shaTraces, functionStorage, functionName, mainContract) {
     console.log("SSTORE");
     console.log(sstore);
     console.log("-------NEW DECODE VALUES---------");
