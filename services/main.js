@@ -331,7 +331,7 @@ async function getStorageData(contractTransactions, mainContract, contractTree, 
             // })
             blockchainLog.push(newLog)
             //TODO: remember to remove the comment
-            // await saveTransaction(newLog, tx.to)
+            await saveTransaction(newLog, tx.to)
             console.log("-----------------------------------------------------------------------");
         }
         partialInt++;
