@@ -4,7 +4,7 @@ const {
 } = require("../schema/data");
 
 async function searchTransaction(query) {
-    const {gasUsedFrom, gasUsedTo, blockNumberFrom, blockNumberTo, timestampFrom, timestampTo} = query;
+    const {gasUsedFrom, gasUsedTo, blockNumberFrom, blockNumberTo, timestampFrom, timestampTo, inputs} = query;
 
     if (gasUsedFrom || gasUsedTo) {
         query.gasUsed = {};
@@ -24,11 +24,12 @@ async function searchTransaction(query) {
 
     if (timestampFrom || timestampTo) {
         query.timestamp = {};
-        if (timestampFrom) query.timestamp.$gte = new Date(timestampFrom);
-        if (timestampTo) query.timestamp.$lte = new Date(timestampTo);
+        if (timestampFrom) query.timestamp.$gte = new Date(timestampFrom + 3600000);
+        if (timestampTo) query.timestamp.$lte = new Date(timestampTo + 3600000);
         delete query.timestampFrom
         delete query.timestampTo;
     }
+
     console.log("Query received -> ", query);
 
     try {
