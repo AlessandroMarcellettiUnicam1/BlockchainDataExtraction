@@ -8,6 +8,12 @@ const primitiveValue = ["uint", "int", "string", "bool", "address", "enum", "byt
 let contractCompiled = null;
 
 const csvColumns = ["txHash", "debugTime", "decodeTime", "totalTime"];
+//selezioni i casi da applicare in base alla shatrace 
+//ovvero se ho un shatrace mi potrei trovare in un caso di mapping o array per prima cosa
+//nel caso avessi una struttura non ho un shatrace tranne quando nella struttura ho array o mapping 
+//se ho una stringa >32 ho una shatrace a questo punto verifico prima se sia una stringa o no
+//se entro nel primo caso io salto tutte le casistiche sottostanti 
+//le casisitiche sottostanti sono per tutti i valori dello storage
 
 async function optimizedDecodeValues(sstore, contractTree, shaTraces, functionStorage, functionName, mainContract, web3Variable, contractCompiledPassed) {
     web3 = web3Variable;
@@ -33,6 +39,7 @@ async function optimizedDecodeValues(sstore, contractTree, shaTraces, functionSt
                     const members = getStructMembersByVariableName(contractVar[0].name, getContractCompiled);
                     members.forEach((member) => {
                         if(member.type.includes("string")){
+                            console.log("errore")
                             flagString32=false;
                         }
                     })
@@ -55,10 +62,11 @@ async function optimizedDecodeValues(sstore, contractTree, shaTraces, functionSt
                 const numberIndex = web3.utils.hexToNumber("0x" + sstoreBuffer[sstoreIndex]);
                 if (storageVar === sstoreBuffer[sstoreIndex]) {
                     const contractVar = getContractVariable(numberIndex, contractTree, functionName, mainContract);
+                    console.log("contraceVar",contractVar)
                     if (contractVar.length > 1 ) {
                         flagCase2=false;
                         console.log("Secondo")
-                        const updatedVariables = readVarFromOffset(contractVar, functionStorage[storageVar]);
+                        const updatedVariables = newReadVarFormOffset(contractVar, functionStorage[storageVar]);
                         updatedVariables.forEach(varItem => {
                             const decodedValue = decodeStorageValue(varItem, varItem.value, mainContract, storageVar, functionStorage);
                             decodedValues.push(createBufferVariable(varItem, decodedValue, varItem.value));
@@ -126,13 +134,15 @@ function getContractVariable(slotIndex, contractTree, functionName, mainContract
                     if (Number(contractTree[contractId].storage[i].slot) <= Number(slotIndex) && Number(contractTree[contractId].storage[i + 1].slot) > Number(slotIndex)) {
                         contractVariables.push(contractTree[contractId].storage[i]);
                     }
+                }else if(contractVariables.length==0 && i==contractTree[contractId].storage.length-1){
+                    contractVariables.push(contractTree[contractId].storage[i]);
                 }
             }
         }
     }
     return contractVariables;
 }
-
+//seleziono la variabile da decodificare in base al tipo della variabile 
 function decodeStorageValue(variable, value, mainContract, storageVar, functionStorage, completeSstore, shaTraces) {
     if (variable.type.includes("mapping")) {
         const typeBuffer = variable.type.split(",");
@@ -166,7 +176,7 @@ function decodeStorageValue(variable, value, mainContract, storageVar, functionS
     }
 }
 
-//TODO verificare il decode del mapping
+//Decodifico una variabile primitiva 
 function decodePrimitiveType(variable, value, shaTraces, functionStorage) {
     let type=variable.type || variable;
     if (type.includes("uint")) {
@@ -184,7 +194,7 @@ function decodePrimitiveType(variable, value, shaTraces, functionStorage) {
         if (decodedString.length <= 32 && decodedString!="") {
             let chars = value.split("0")[0];
             if (chars.length % 2 !== 0) chars = chars + "0";
-            return web3.utils.hexToAscii("0x" + chars);
+            return web3.utils.hexToAscii("0x" + value);
         } else if(decodedString===""){
             let chars = value.split("0")[0];
             if (chars.length % 2 !== 0) chars = chars + "0";
@@ -337,6 +347,7 @@ function decodeStringOnArray(variable,shaTraces,functionStorage){
 }
 
 function decodeStaticArray(variable, value, mainContract, storageVar, arraySize, functionStorage, completeSstore) {
+    console.log("decodeStaticArray")
     let arrayStorageSlot = Number(variable.slot);
     const output = {};
     if (variable.type.includes("struct")) {
@@ -382,7 +393,7 @@ function decodeStaticArray(variable, value, mainContract, storageVar, arraySize,
             for (let i = 0; i < arraySize; i++) {
                 const arrayStorageSlot = Number(variable.slot) + i;
                 if (arrayStorageSlot === web3.utils.hexToNumber("0x" + storageVar)) {
-                    //TODO: calcolo la dimensione dei dati dentro l'array 
+                    //calcolo la dimensione dei dati dentro l'array 
                     //spezzo l'array in base alla dimensione dei dati
                     //calcolo l'output
                     if(variable.type.includes("uint")){
@@ -401,6 +412,13 @@ function decodeStaticArray(variable, value, mainContract, storageVar, arraySize,
                                 output.value = decodePrimitiveType(variable.type, value);
                             }
                         }else{
+                            //TODO: in questa transazione 7596491 ho due array definiti di lunghezza 5
+                            // il problema è che per il primo array l'indice viene calcolato correttamente 
+                            //mentre per il secondo array io dovrei togliere la lunghezza del primo array oltre che dello slot
+                            // il problema è che la shatrace è vuota 
+                            // nel funcion storage ci sono solo i due array 
+                            //quindi ho prendo le leunghezze dei vari array quando estraggo i dati dalla struttura oppure non so 
+
                             for(const storageVarKey in functionStorage){
                                 let index=web3.utils.hexToNumber("0x" + storageVarKey.slice(2))-variable.slot;
                                 result.push({
@@ -469,17 +487,20 @@ function decodeStructType(variable, value, mainContract, storageVar, shaTraces, 
     }else{
         // function decodeStorageValue(variable, value, mainContract, storageVar, functionStorage, completeSstore, shaTraces)
         members.forEach((member) => {
-            // console.log(member)
+            console.log(member)
             // const memberSlot = Number(member.slot) + Number(variable.slot);
             // if (memberSlot === web3.utils.toDecimal("0x" + storageVar)) {
             //     memberItem[member.label] = decodePrimitiveType(member.type, value, shaTraces, functionStorage);
             // }
-            member.slot=variable.slot;
+            let memberNumberSlot = Number(member.slot);
+            memberNumberSlot+=Number(variable.slot);
+            member.slot=String(memberNumberSlot);
             memberItem[member.label] = decodeStorageValueIntoStruct(member, value, mainContract, storageVar, functionStorage, null, shaTraces);
         });
     }
 return JSON.stringify(memberItem);
 }
+//decodifica le variabili all'interno di una struttura 
 function decodeStorageValueIntoStruct(variable, value, mainContract, storageVar, functionStorage, completeSstore, shaTraces) {
 
     if (variable.type.includes("mapping")) {
@@ -513,6 +534,7 @@ function decodeStorageValueIntoStruct(variable, value, mainContract, storageVar,
         return decodePrimitiveType(variable.type, value, shaTraces, functionStorage);
     }
 }
+//tiro fuori le variabili all'iterno delle variabili
 function getStructMembersByVariableName(variableName, mainContractCompiled) {
     let members = [];
     const storageLayout = mainContractCompiled.storageLayout.storage;
@@ -594,46 +616,48 @@ function decodeDynamicArray(variable, value, mainContract, storageVar, functionS
     const varibleSlotSliced = varibleSlotToNumber.slice(2);
     const slotPadded = web3.utils.padLeft(varibleSlotSliced, 64);
     const firstNonZeroIndexBytes=functionStorage[slotPadded];
-    const firstNonZeroIndex = web3.utils.hexToNumber('0x' + firstNonZeroIndexBytes.slice(2));
-    const lastIndex = firstNonZeroIndex;
-    let arrayStorageSlot = web3.utils.hexToNumber("0x" + storageVar.slice(2));
-    const output = {
-        arrayIndex: lastIndex
-    };
-    if (variable.type.includes("struct")) {
-        const structType = variable.type.split("(")[2].split(")")[0];
-        const getContract = getMainContractCompiled(mainContract);
-        const structMembers = getStructMembersByStructType(structType, getContract);
-        arrayStorageSlot = arrayStorageSlot + (lastIndex * structMembers.length);
-        output.struct = structType;
-        for (let i = 0; i < structMembers.length; i++) {
-            const functionStorageIndex = arrayStorageSlot + i;
-            const functionStorageIndexHex = web3.utils.numberToHex(functionStorageIndex);
-            const numberToHex = functionStorageIndexHex.slice(2);
-            const functionStorageIndexPadded = web3.utils.padLeft(numberToHex, 64);
-            output[structMembers[i].label] = decodePrimitiveType(structMembers[i].type, functionStorage[functionStorageIndex.toString(16)]);
+    if(firstNonZeroIndexBytes){
+        const firstNonZeroIndex = web3.utils.hexToNumber('0x' + firstNonZeroIndexBytes.slice(2));
+        const lastIndex = firstNonZeroIndex;
+        let arrayStorageSlot = web3.utils.hexToNumber("0x" + storageVar.slice(2));
+        const output = {
+            arrayIndex: lastIndex
+        };
+        if (variable.type.includes("struct")) {
+            const structType = variable.type.split("(")[2].split(")")[0];
+            const getContract = getMainContractCompiled(mainContract);
+            const structMembers = getStructMembersByStructType(structType, getContract);
+            arrayStorageSlot = arrayStorageSlot + (lastIndex * structMembers.length);
+            output.struct = structType;
+            for (let i = 0; i < structMembers.length; i++) {
+                const functionStorageIndex = arrayStorageSlot + i;
+                const functionStorageIndexHex = web3.utils.numberToHex(functionStorageIndex);
+                const numberToHex = functionStorageIndexHex.slice(2);
+                const functionStorageIndexPadded = web3.utils.padLeft(numberToHex, 64);
+                output[structMembers[i].label] = decodePrimitiveType(structMembers[i].type, functionStorage[functionStorageIndex.toString(16)]);
+            }
+            return JSON.stringify(output);
+        } else if ((variable.type.includes("uint") || variable.type.includes("int")) && !variable.type.includes("256")) {
+            let resultOutput=[];
+            for(let i=0;i<lastIndex;i++){
+                const value = optimezedArray(i+1, variable.type.split("uint")[1].split(")")[0], functionStorage, storageVar);
+                resultOutput.push({
+                    arrayIndex:i,
+                    value:web3.utils.hexToNumber("0x" + value)
+                })
+            }
+    
+            // const value = optimezedArray(lastIndex, variable.type.split("uint")[1].split(")")[0], functionStorage, storageVar);
+            // output.value = web3.utils.hexToNumber("0x" + value);
+            return JSON.stringify(resultOutput);
+        } else {
+            if(variable.type.includes("string")){
+                output.value = decodePrimitiveType(variable, functionStorage[storageVar],shaTraces,functionStorage);    
+            }else{
+                output.value = decodePrimitiveType(variable, functionStorage[storageVar].slice(2));
+            }
+            return JSON.stringify(output);
         }
-        return JSON.stringify(output);
-    } else if ((variable.type.includes("uint") || variable.type.includes("int")) && !variable.type.includes("256")) {
-        let resultOutput=[];
-        for(let i=0;i<lastIndex;i++){
-            const value = optimezedArray(i+1, variable.type.split("uint")[1].split(")")[0], functionStorage, storageVar);
-            resultOutput.push({
-                arrayIndex:i,
-                value:web3.utils.hexToNumber("0x" + value)
-            })
-        }
-
-        // const value = optimezedArray(lastIndex, variable.type.split("uint")[1].split(")")[0], functionStorage, storageVar);
-        // output.value = web3.utils.hexToNumber("0x" + value);
-        return JSON.stringify(resultOutput);
-    } else {
-        if(variable.type.includes("string")){
-            output.value = decodePrimitiveType(variable, functionStorage[storageVar],shaTraces,functionStorage);    
-        }else{
-            output.value = decodePrimitiveType(variable, functionStorage[storageVar].slice(2));
-        }
-        return JSON.stringify(output);
     }
 }
 
@@ -653,32 +677,72 @@ function optimezedArray(arraySize, typeSize, functionStorage, slot) {
 }
 
 function mergeVariableValues(arr) {
-    return arr
-    // return Object.values(arr.reduce((acc, item) => {
-    //     if (typeof item.variableValue === "string" && item.variableValue.includes("arrayIndex")) {
-    //         const variableValue = JSON.parse(item.variableValue);
-    //         const arrayIndex = variableValue.arrayIndex;
-    //         const key = `${arrayIndex}_${item.type}`;
-    //         if (!acc[key]) {
-    //             acc[key] = {
-    //                 ...item,
-    //                 variableValue: variableValue
-    //             };
-    //         } else {
-    //             acc[key].variableValue = {
-    //                 ...acc[key].variableValue,
-    //                 ...variableValue
-    //             };
-    //         }
-    //     } else {
-    //         acc[item.variableName] = item;
-    //     }
-    //     return acc;
-    // }, {})).map(item => ({
-    //     ...item,
-    //     variableValue: typeof item.variableValue === "object" ? JSON.stringify(item.variableValue) : item.variableValue
-    // }));
+    // return arr
+    return Object.values(arr.reduce((acc, item) => {
+        if (typeof item.variableValue === "string" && item.variableValue.includes("arrayIndex")) {
+            const variableValue = JSON.parse(item.variableValue);
+            const arrayIndex = variableValue.arrayIndex;
+            const key = `${arrayIndex}_${item.type}`;
+            if (!acc[key]) {
+                acc[key] = {
+                    ...item,
+                    variableValue: variableValue
+                };
+            } else {
+                acc[key].variableValue = {
+                    ...acc[key].variableValue,
+                    ...variableValue
+                };
+            }
+        } else {
+            acc[item.variableName] = item;
+        }
+        return acc;
+    }, {})).map(item => ({
+        ...item,
+        variableValue: typeof item.variableValue === "object" ? JSON.stringify(item.variableValue) : item.variableValue
+    }));
 }
+function newReadVarFormOffset(variables, value) {
+    const storageStringLength = 64;
+    for (let i=0;i<variables.length;i++){
+        variables[i].value="";
+        if(variables[i+1]!== undefined){
+            if(variables[i].type.includes("uint") && !variables[i].type.includes("256")){
+                let typeSize=variables[i].type.split("uint")[1].split(")")[0]
+                const charsForElement = typeSize / 4;
+                //*2 perché la lunghezza di uno slot in memoria è da 64 invece che da 32 
+                const endOfTheElement = storageStringLength - (variables[i].offset * 2);
+                const startOfTheElement = endOfTheElement - charsForElement;
+                let result = value.slice(startOfTheElement, endOfTheElement);
+                variables[i].value=web3.utils.padLeft(result,64);
+            }else if(variables[i].type.includes("bytes") && !variables[i].type.includes("32")){
+                let typeSize=variables[i].type.split("bytes")[1].split(")")[0]
+                const charsForElement = typeSize * 2;
+                //*2 perché la lunghezza di uno slot in memoria è da 64 invece che da 32 
+                const endOfTheElement = storageStringLength - (variables[i].offset * 2);
+                const startOfTheElement = endOfTheElement - charsForElement;
+                let result = value.slice(startOfTheElement, endOfTheElement);
+                variables[i].value=web3.utils.padLeft(result,64);
+            }else {
+                const endOfTheElement = storageStringLength - (variables[i+1].offset * 2);
+                const startOfTheElement = storageStringLength - endOfTheElement;
+                let result = value.slice(startOfTheElement, endOfTheElement);
+                variables[i].value=web3.utils.padLeft(result,64);
+            }
+        }else{
+            const endOfTheElement = storageStringLength - (variables[i].offset * 2);
+            const startOfTheElement = storageStringLength - endOfTheElement;
+            let result = value.slice(startOfTheElement, endOfTheElement);
+            variables[i].value=web3.utils.padLeft(result,64);
+        }
+        
+    }
+    console.log(variables)
+   return variables;
+    
+}
+//TODO Fix this part of the code 0x85839D9140Ca6E7E4306A920b7bBbA84492D3d67 try with this contract
 function readVarFromOffset(variables, value) {
     const fullWord = value.split('');
     let len = fullWord.length;
@@ -690,13 +754,13 @@ function readVarFromOffset(variables, value) {
             //check if the offset is the first starting from 0
             if (variables[i].offset === 0) {
                 const nextOffset = (variables[i + 1].offset) * 2;
-                len = len - nextOffset;
-                const slicedWord = fullWord.splice(len, nextOffset);
+                let temp=  len - nextOffset;
+                const slicedWord = fullWord.slice(nextOffset,temp);
                 variables[i].value = slicedWord.join('');
             } else {
                 const nextOffset = (variables[i + 1].offset) * 2;
-                len = len - nextOffset;
-                const slicedWord = fullWord.slice(len, nextOffset);
+                let temp = len - nextOffset;
+                const slicedWord = fullWord.slice(nextOffset,temp);
                 variables[i].value = slicedWord.join('');
             }
         } else {

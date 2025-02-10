@@ -475,6 +475,7 @@ async function getTraceStorage(traceDebugged, blockNumber, functionName, txHash,
                     console.log("----ADD OPCODE----")
                     console.log("----first", trace.stack[trace.stack.length - 1]);
                     console.log("----second", trace.stack[trace.stack.length - 2]);
+                    
 
                 }
             }
@@ -512,7 +513,7 @@ async function getTraceStorage(traceDebugged, blockNumber, functionName, txHash,
                     const slotBuff =  trackBuffer[index-1].hexStorageIndex;
                     trackBuffer[index-1].hexKey = slotBuff;
                     trackBuffer[index-1].hexStorageIndex = keyBuff;
-
+                    
                 }
             } else if (trace.op === "CALL") {
                 //read the offset from the stack
@@ -624,6 +625,7 @@ async function getTraceStorage(traceDebugged, blockNumber, functionName, txHash,
                     console.log("----ADD OPCODE----")
                     console.log("----first", trace.stack[trace.stack.length - 1]);
                     console.log("----second", trace.stack[trace.stack.length - 2]);
+                    trackBuffer[index-1].indexSum= trace.stack[trace.stack.length - 2];
                 }
             }
                 //in case the trace is a SSTORE save the key. CAUTION: not every SSTORE changes the final storage state but every storage state change has an sstore
@@ -719,7 +721,8 @@ async function getTraceStorage(traceDebugged, blockNumber, functionName, txHash,
             //create a final trace for that key
             const trace = {
                 finalKey: trackBuffer[i].finalKey,
-                hexKey: trackBuffer[i].hexKey
+                hexKey: trackBuffer[i].hexKey,
+                indexSum:trackBuffer[i].indexSum
             }
             console.log(trace)
             let flag = false;
