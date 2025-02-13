@@ -6,7 +6,9 @@ const {stringify} = require("csv-stringify")
 //let contractAbi = fs.readFileSync('abiEtherscan.json', 'utf8');
 let contractAbi = {};
 // const { newDecodeValues } = require('./newDecodedValue');
-const { optimizedDecodeValues }= require('./reformatting')
+// const { optimizedDecodeValues }= require('./reformatting')
+const { optimizedDecodeValues }= require('./newReformattigCode')
+// const { optimizedDecodeValues }= require('./reformatting')
 // const { getTraceStorage } = require('./getTraceStorage');
 
 //const contractAddress = '0x152649eA73beAb28c5b49B26eb48f7EAD6d4c898'cake;
@@ -722,29 +724,31 @@ async function getTraceStorage(traceDebugged, blockNumber, functionName, txHash,
             const trace = {
                 finalKey: trackBuffer[i].finalKey,
                 hexKey: trackBuffer[i].hexKey,
-                indexSum:trackBuffer[i].indexSum
+                indexSum:trackBuffer[i].indexSum,
+                hexStorageIndex:trackBuffer[i].hexStorageIndex
             }
-            console.log(trace)
-            let flag = false;
-            let test = i;
-            console.log("testtttttttt", test);
-            //Iterate previous SHA3 looking for a simple integer slot index
-            while (flag === false) {
-                //TODO non capisco questo controllo perché torna indietro anche se sono
-                //con l'indice 0
-                console.log("---sono nel while cercando cose---")
-                //if the storage key is not a standard number then check for the previous one
-                if (!(web3.utils.hexToNumber("0x" + trackBuffer[test].hexStorageIndex) < 300)) {
-                    test--;
-                    console.log("non ho trovato uno slot semplice e vado indietro")
-                } else {
-                    //if the storage location is a simple one then save it in the final trace with the correct key
-                    console.log("storage è semplice quindi lo salvo", trackBuffer[test].hexStorageIndex)
-                    trace.hexStorageIndex = trackBuffer[test].hexStorageIndex;
-                    flag = true;
-                    finalShaTraces.push(trace);
-                }
-            }
+            // console.log(trace)
+            // let flag = false;
+            // let test = i;
+            // console.log("testtttttttt", test);
+            // //Iterate previous SHA3 looking for a simple integer slot index
+            // while (flag === false) {
+            //     //TODO non capisco questo controllo perché torna indietro anche se sono
+            //     //con l'indice 0
+            //     console.log("---sono nel while cercando cose---")
+            //     //if the storage key is not a standard number then check for the previous one
+            //     if (!(web3.utils.hexToNumber("0x" + trackBuffer[test].hexStorageIndex) < 300)) {
+            //         test--;
+            //         console.log("non ho trovato uno slot semplice e vado indietro")
+            //     } else {
+            //         //if the storage location is a simple one then save it in the final trace with the correct key
+            //         console.log("storage è semplice quindi lo salvo", trackBuffer[test].hexStorageIndex)
+            //         trace.hexStorageIndex = trackBuffer[test].hexStorageIndex;
+            //         flag = true;
+            //         finalShaTraces.push(trace);
+            //     }
+            // }
+            finalShaTraces.push(trace);
             sstoreBuffer.splice(sstoreBuffer.indexOf(trackBuffer[i].finalKey), 1);
         }
 
