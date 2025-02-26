@@ -1,7 +1,9 @@
 const mongoose = require('mongoose');
+const {connectDB} = require("../config/db");
 const {
     transactionSchema,
 } = require("../schema/data");
+
 
 async function searchTransaction(query) {
     const {gasUsedFrom, gasUsedTo, blockNumberFrom, blockNumberTo, timestampFrom, timestampTo} = query;
@@ -59,18 +61,26 @@ async function searchTransaction(query) {
 function getModelByContractAddress(contractAddress) {
     return mongoose.model(contractAddress, transactionSchema, contractAddress);
 }
-async function searchAbi(query) {
-
-    const {contractAddress}=query  
-    let abi=[];
-    const collections = await mongoose.connection.db.listCollections().toArray();
-    for (let collectionsDB of collections) {
-        const collection = mongoose.connection.db.collection(collectionsDB.name);
-        const transactions = await collection.find(query).toArray();
-        abi = abi.concat(transactions);
+async function searchAbi(query) { 
+    const { contractAddress } = query;
+    
+    if (!contractAddress) {
+        throw new Error("Contract address is required.");
     }
-    if (abi.length > 0)
-        return abi;
-    return null;
+
+    try {
+        const collection = mongoose.connection.db.collection('ExtractionAbi'); 
+        const result = await collection.find(query).toArray();
+        console.log("Result from searchAbi: ", result.length);
+        if(result.length>0){
+            return result[0].abi;
+        }
+        return null;
+
+    } catch (error) {
+        console.error("Error fetching ABI:", error);
+        throw new Error(error.message);
+    }
+    
 }
 module.exports = {getModelByContractAddress, searchTransaction,searchAbi};

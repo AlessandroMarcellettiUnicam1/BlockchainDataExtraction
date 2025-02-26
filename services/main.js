@@ -236,6 +236,7 @@ async function getStorageData(contractTransactions, mainContract, contractTree, 
 
     // before to start the extraction, the connection to the database is established to check if the transaction has already been processed
     await connectDB(networkName)
+    
     for (const tx of transactionsFiltered) {
         let query = {
             txHash: tx.hash.toLowerCase(),
@@ -343,7 +344,8 @@ async function getStorageData(contractTransactions, mainContract, contractTree, 
             // })
             blockchainLog.push(newLog)
             //TODO: remember to remove the comment
-            // await saveTransaction(newLog, tx.to)
+            await connectDB(networkName)
+            await saveTransaction(newLog, tx.to)
             console.log("-----------------------------------------------------------------------");
         }
         partialInt++;
@@ -565,11 +567,19 @@ async function getTraceStorage(traceDebugged, blockNumber, functionName, txHash,
                     callId: "call_" + internalTxId + "_" + txHash,
                     callType: trace.op,
                     to: trace.stack[trace.stack.length - 2],
-                    inputsCall: []
+                    inputsCall: ""
                 }
-                for (let i = offsetNumber; i <= offsetNumber + lengthNumber; i++) {
-                    call.inputsCall.push(trace.memory[i]);
-                }
+                let stringMemory="";
+                trace.memory.forEach((element)=>{
+                    stringMemory+=element;
+                })
+                 //taglio i valori che mi interessano 
+                 stringMemory=stringMemory.slice(web3.utils.hexToNumber("0x" + offsetBytes)*2, (web3.utils.hexToNumber("0x" + offsetBytes)*2)+web3.utils.hexToNumber("0x" + lengthBytes)*2);
+                 call.inputsCall=stringMemory;
+ 
+                // for (let i = offsetNumber; i <= offsetNumber + lengthNumber; i++) {
+                //     call.inputsCall.push(trace.memory[i]);
+                // }
                 internalCalls.push(call);
             } else if (trace.op === "RETURN") {
                 //console.log("---------RETURN---------")
@@ -693,12 +703,19 @@ async function getTraceStorage(traceDebugged, blockNumber, functionName, txHash,
                     callId: "call_" + internalTxId + "_" + txHash,
                     callType: trace.op,
                     to: trace.stack[trace.stack.length - 2],
-                    inputsCall: []
+                    inputsCall: ""
                 }
+                let stringMemory="";
+                trace.memory.forEach((element)=>{
+                    stringMemory+=element;
+                })
+                 //taglio i valori che mi interessano 
+                 stringMemory=stringMemory.slice(web3.utils.hexToNumber("0x" + offsetBytes)*2, (web3.utils.hexToNumber("0x" + offsetBytes)*2)+web3.utils.hexToNumber("0x" + lengthBytes)*2);
+                 call.inputsCall=stringMemory;
                 //read all the inputs from the memory and insert it in the call object
-                for (let i = offsetNumber; i <= offsetNumber + lengthNumber; i++) {
-                    call.inputsCall.push(trace.memory[i]);
-                }
+                // for (let i = offsetNumber; i <= offsetNumber + lengthNumber; i++) {
+                //     call.inputsCall.push(trace.memory[i]);
+                // }
                 internalCalls.push(call);
             } else if (trace.op === "DELEGATECALL" || trace.op === "STATICCALL") {
                 // internalCalls.push(trace.stack[trace.stack.length - 2]);
@@ -710,11 +727,18 @@ async function getTraceStorage(traceDebugged, blockNumber, functionName, txHash,
                     callId: "call_" + internalTxId + "_" + txHash,
                     callType: trace.op,
                     to: trace.stack[trace.stack.length - 2],
-                    inputsCall: []
+                    inputsCall: ""
                 }
-                for (let i = offsetNumber; i <= offsetNumber + lengthNumber; i++) {
-                    call.inputsCall.push(trace.memory[i]);
-                }
+                let stringMemory="";
+                trace.memory.forEach((element)=>{
+                    stringMemory+=element;
+                })
+                 //taglio i valori che mi interessano 
+                 stringMemory=stringMemory.slice(web3.utils.hexToNumber("0x" + offsetBytes)*2, (web3.utils.hexToNumber("0x" + offsetBytes)*2)+web3.utils.hexToNumber("0x" + lengthBytes)*2);
+                 call.inputsCall=stringMemory;
+                // for (let i = offsetNumber; i <= offsetNumber + lengthNumber; i++) {
+                //     call.inputsCall.push(trace.memory[i]);
+                // }
                 internalCalls.push(call);
             } else if (trace.op === "RETURN") {
                 //console.log("---------RETURN---------")
@@ -788,6 +812,7 @@ async function getTraceStorage(traceDebugged, blockNumber, functionName, txHash,
     finalShaTraces=regroupShatrace(finalShaTraces);
     const decodedValues = await optimizedDecodeValues(sstoreObject, contractTree, finalShaTraces, functionStorage, functionName, mainContract,web3,contractCompiled);
     const decodeInternal= await decodeInternalTransaction(internalCalls,apiKey,endpoint,contractAbi)
+    console.log(decodeInternal)
     return {decodedValues, internalCalls};
 }
 function regroupShatrace(finalShaTraces){
