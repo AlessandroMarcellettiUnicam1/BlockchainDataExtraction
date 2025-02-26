@@ -59,5 +59,18 @@ async function searchTransaction(query) {
 function getModelByContractAddress(contractAddress) {
     return mongoose.model(contractAddress, transactionSchema, contractAddress);
 }
+async function searchAbi(query) {
 
-module.exports = {getModelByContractAddress, searchTransaction};
+    const {contractAddress}=query  
+    let abi=[];
+    const collections = await mongoose.connection.db.listCollections().toArray();
+    for (let collectionsDB of collections) {
+        const collection = mongoose.connection.db.collection(collectionsDB.name);
+        const transactions = await collection.find(query).toArray();
+        abi = abi.concat(transactions);
+    }
+    if (abi.length > 0)
+        return abi;
+    return null;
+}
+module.exports = {getModelByContractAddress, searchTransaction,searchAbi};

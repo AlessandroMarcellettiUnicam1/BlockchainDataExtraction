@@ -7,7 +7,8 @@ const {stringify} = require("csv-stringify")
 let contractAbi = {};
 // const { newDecodeValues } = require('./newDecodedValue');
 // const { optimizedDecodeValues }= require('./reformatting')
-const { optimizedDecodeValues }= require('./newReformattigCode')
+const { optimizedDecodeValues }= require('./reformatting')
+const { decodeInternalTransaction } = require('./DecodeInternalTransaction');
 // const { optimizedDecodeValues }= require('./reformatting')
 // const { getTraceStorage } = require('./getTraceStorage');
 
@@ -190,6 +191,10 @@ async function debugTransaction(txHash, blockNumber) {
         ]);
 
         fs.writeFileSync("./temporaryTrials/trace.json", JSON.stringify(response));
+        const internalCalls = response.structLogs
+        .filter(log => log.op === "CALL" || log.op === "DELEGATECALL" || log.op === "STATICCALL");
+
+        const indiceTemp=response.structLogs.indexOf(internalCalls[0]);
         const end = new Date()
         const requiredTime = parseFloat(((end - start) / 1000).toFixed(2))
         traceTime += requiredTime
@@ -325,6 +330,7 @@ async function getStorageData(contractTransactions, mainContract, contractTree, 
             const end = new Date()
             const requiredDecodeTime = parseFloat(((end - start) / 1000).toFixed(2))
             decodeTime += requiredDecodeTime
+
             // let csvRow = []
             // csvRow.push({
             //     txHash: tx.hash,
@@ -520,23 +526,34 @@ async function getTraceStorage(traceDebugged, blockNumber, functionName, txHash,
             } else if (trace.op === "CALL") {
                 //read the offset from the stack
                 const offsetBytes = trace.stack[trace.stack.length - 4];
-                //convert the offset to number
-                let offsetNumber = web3.utils.hexToNumber("0x" + offsetBytes) / 32;
-                //read the length of the memory to read
+                //convert the offset to number 896
+                let offsetNumber =Math.trunc( web3.utils.hexToNumber("0x" + offsetBytes) / 32);
+                //read the length of the memory to read 914
                 const lengthBytes = trace.stack[trace.stack.length - 5];
                 //convert the length to number
-                let lengthNumber = web3.utils.hexToNumber("0x" + lengthBytes) / 32;
+                let lengthNumber =Math.trunc( web3.utils.hexToNumber("0x" + lengthBytes) / 32);
                 //create the call object
                 let call = {
                     callId: "call_" + internalTxId + "_" + txHash,
                     callType: trace.op,
                     to: trace.stack[trace.stack.length - 2],
-                    inputsCall: []
+                    inputsCall: ""
                 }
+                let stringMemory="";
+                trace.memory.forEach((element)=>{
+                    stringMemory+=element;
+                })
+                //taglio i valori che mi interessano 
+                stringMemory=stringMemory.slice(web3.utils.hexToNumber("0x" + offsetBytes)*2, (web3.utils.hexToNumber("0x" + offsetBytes)*2)+web3.utils.hexToNumber("0x" + lengthBytes)*2);
+                call.inputsCall=stringMemory;
+
                 //read all the inputs from the memory and insert it in the call object
-                for (let i = offsetNumber; i <= offsetNumber + lengthNumber; i++) {
-                    call.inputsCall.push(trace.memory[i]);
-                }
+                // let stringTemp="";
+                // for (let i = offsetNumber; i <= offsetNumber + lengthNumber; i++) {
+                //     call.inputsCall.push(trace.memory[i]);
+                //     stringTemp+=trace.memory[i];
+                // }
+                // console.log("string Temp", stringTemp);
                 internalCalls.push(call);
             } else if (trace.op === "DELEGATECALL" || trace.op === "STATICCALL") {
                 // internalCalls.push(trace.stack[trace.stack.length - 2]);
@@ -727,27 +744,27 @@ async function getTraceStorage(traceDebugged, blockNumber, functionName, txHash,
                 indexSum:trackBuffer[i].indexSum,
                 hexStorageIndex:trackBuffer[i].hexStorageIndex
             }
-            // console.log(trace)
-            // let flag = false;
-            // let test = i;
-            // console.log("testtttttttt", test);
-            // //Iterate previous SHA3 looking for a simple integer slot index
-            // while (flag === false) {
-            //     //TODO non capisco questo controllo perché torna indietro anche se sono
-            //     //con l'indice 0
-            //     console.log("---sono nel while cercando cose---")
-            //     //if the storage key is not a standard number then check for the previous one
-            //     if (!(web3.utils.hexToNumber("0x" + trackBuffer[test].hexStorageIndex) < 300)) {
-            //         test--;
-            //         console.log("non ho trovato uno slot semplice e vado indietro")
-            //     } else {
-            //         //if the storage location is a simple one then save it in the final trace with the correct key
-            //         console.log("storage è semplice quindi lo salvo", trackBuffer[test].hexStorageIndex)
-            //         trace.hexStorageIndex = trackBuffer[test].hexStorageIndex;
-            //         flag = true;
-            //         finalShaTraces.push(trace);
-            //     }
-            // }
+            console.log(trace)
+            let flag = false;
+            let test = i;
+            console.log("testtttttttt", test);
+            //Iterate previous SHA3 looking for a simple integer slot index
+            while (flag === false) {
+                //TODO non capisco questo controllo perché torna indietro anche se sono
+                //con l'indice 0
+                console.log("---sono nel while cercando cose---")
+                //if the storage key is not a standard number then check for the previous one
+                if (!(web3.utils.hexToNumber("0x" + trackBuffer[test].hexStorageIndex) < 300)) {
+                    test--;
+                    console.log("non ho trovato uno slot semplice e vado indietro")
+                } else {
+                    //if the storage location is a simple one then save it in the final trace with the correct key
+                    console.log("storage è semplice quindi lo salvo", trackBuffer[test].hexStorageIndex)
+                    trace.hexStorageIndex = trackBuffer[test].hexStorageIndex;
+                    flag = true;
+                    finalShaTraces.push(trace);
+                }
+            }
             finalShaTraces.push(trace);
             sstoreBuffer.splice(sstoreBuffer.indexOf(trackBuffer[i].finalKey), 1);
         }
@@ -770,6 +787,7 @@ async function getTraceStorage(traceDebugged, blockNumber, functionName, txHash,
     console.log(regroupShatrace(finalShaTraces))
     finalShaTraces=regroupShatrace(finalShaTraces);
     const decodedValues = await optimizedDecodeValues(sstoreObject, contractTree, finalShaTraces, functionStorage, functionName, mainContract,web3,contractCompiled);
+    const decodeInternal= await decodeInternalTransaction(internalCalls,apiKey,endpoint,contractAbi)
     return {decodedValues, internalCalls};
 }
 function regroupShatrace(finalShaTraces){
