@@ -9,7 +9,7 @@ let contractAbi = {};
 // const { optimizedDecodeValues }= require('./reformatting')
 const { optimizedDecodeValues }= require('./reformatting')
 const { decodeInternalTransaction } = require('./DecodeInternalTransaction');
-// const { optimizedDecodeValues }= require('./reformatting')
+// const { optimizedDecodeValues }= require('./newReformatting')
 // const { getTraceStorage } = require('./getTraceStorage');
 
 //const contractAddress = '0x152649eA73beAb28c5b49B26eb48f7EAD6d4c898'cake;
@@ -195,6 +195,7 @@ async function debugTransaction(txHash, blockNumber) {
         .filter(log => log.op === "CALL" || log.op === "DELEGATECALL" || log.op === "STATICCALL");
 
         const indiceTemp=response.structLogs.indexOf(internalCalls[0]);
+
         const end = new Date()
         const requiredTime = parseFloat(((end - start) / 1000).toFixed(2))
         traceTime += requiredTime
@@ -344,8 +345,8 @@ async function getStorageData(contractTransactions, mainContract, contractTree, 
             // })
             blockchainLog.push(newLog)
             //TODO: remember to remove the comment
-            await connectDB(networkName)
-            await saveTransaction(newLog, tx.to)
+            // await connectDB(networkName)
+            // await saveTransaction(newLog, tx.to)
             console.log("-----------------------------------------------------------------------");
         }
         partialInt++;
@@ -538,7 +539,10 @@ async function getTraceStorage(traceDebugged, blockNumber, functionName, txHash,
                 let call = {
                     callId: "call_" + internalTxId + "_" + txHash,
                     callType: trace.op,
-                    to: trace.stack[trace.stack.length - 2],
+                    callDepth: trace.depth,
+                    gasUsed: web3.utils.hexToNumber("0x"+trace.stack[trace.stack.length - 1]),
+                    value: trace.stack[trace.stack.length - 3],
+                    to: trace.stack[trace.stack.length - 2].slice(-40),
                     inputsCall: ""
                 }
                 let stringMemory="";
@@ -566,7 +570,9 @@ async function getTraceStorage(traceDebugged, blockNumber, functionName, txHash,
                 let call = {
                     callId: "call_" + internalTxId + "_" + txHash,
                     callType: trace.op,
-                    to: trace.stack[trace.stack.length - 2],
+                    callDepth: trace.depth,
+                    gas: web3.utils.hexToNumber("0x"+trace.stack[trace.stack.length - 1]),
+                    to: trace.stack[trace.stack.length - 2].slice(-40),
                     inputsCall: ""
                 }
                 let stringMemory="";
@@ -702,7 +708,10 @@ async function getTraceStorage(traceDebugged, blockNumber, functionName, txHash,
                 let call = {
                     callId: "call_" + internalTxId + "_" + txHash,
                     callType: trace.op,
-                    to: trace.stack[trace.stack.length - 2],
+                    callDepth: trace.depth,
+                    gasUsed: web3.utils.hexToNumber("0x"+trace.stack[trace.stack.length - 1]),
+                    value: trace.stack[trace.stack.length - 3],
+                    to: trace.stack[trace.stack.length - 2].slice(-40),
                     inputsCall: ""
                 }
                 let stringMemory="";
@@ -726,7 +735,9 @@ async function getTraceStorage(traceDebugged, blockNumber, functionName, txHash,
                 let call = {
                     callId: "call_" + internalTxId + "_" + txHash,
                     callType: trace.op,
-                    to: trace.stack[trace.stack.length - 2],
+                    callDepth: trace.depth,
+                    gas: web3.utils.hexToNumber("0x"+trace.stack[trace.stack.length - 1]),
+                    to: trace.stack[trace.stack.length - 2].slice(-40),
                     inputsCall: ""
                 }
                 let stringMemory="";
