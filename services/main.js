@@ -7,9 +7,9 @@ const {stringify} = require("csv-stringify")
 let contractAbi = {};
 // const { newDecodeValues } = require('./newDecodedValue');
 // const { optimizedDecodeValues }= require('./reformatting')
-const { optimizedDecodeValues }= require('./reformatting')
-const { decodeInternalTransaction } = require('./DecodeInternalTransaction');
-// const { optimizedDecodeValues }= require('./newReformatting')
+// const { optimizedDecodeValues }= require('./reformatting')
+// const { decodeInternalTransaction } = require('./DecodeInternalTransaction');
+const { optimizedDecodeValues }= require('./newReformattigCode')
 // const { getTraceStorage } = require('./getTraceStorage');
 
 //const contractAddress = '0x152649eA73beAb28c5b49B26eb48f7EAD6d4c898'cake;
@@ -23,6 +23,8 @@ const {searchTransaction} = require("../query/query")
 const {connectDB} = require("../config/db");
 const mongoose = require("mongoose");
 require('dotenv').config();
+
+const {ethers} = require("hardhat");
 
 let networkName = ""
 let web3 = null
@@ -118,7 +120,7 @@ async function getAllTransactions(mainContract, contractAddress, impl_contract, 
 
         //return await getStorageData(contractTransactions, mainContract, contractTree, contractAddress, filters);
         //changed contratAddress to impl since it contains the storage to evaluate
-        return await getStorageData(contractTransactions, mainContract, contractTree, impl_contract, filters);
+        return await getStorageData(contractTransactions, mainContract, contractTree, impl_contract, filters,smartContract);
         // let csvRow = []
         // csvRow.push({
         //     txHash: null,
@@ -185,11 +187,14 @@ async function debugTransaction(txHash, blockNumber) {
         await hre.changeNetwork(networkName, blockNumber)
         const start = new Date()
 
-
+       
         const response = await hre.network.provider.send("debug_traceTransaction", [
             txHash
         ]);
 
+        
+       
+    
         fs.writeFileSync("./temporaryTrials/trace.json", JSON.stringify(response));
         const internalCalls = response.structLogs
         .filter(log => log.op === "CALL" || log.op === "DELEGATECALL" || log.op === "STATICCALL");
@@ -219,7 +224,7 @@ async function debugTransaction(txHash, blockNumber) {
  * @param filters - the filters to be applied to the transactions
  * @returns {Promise<*[]>} - the blockchain log with the extracted data
  */
-async function getStorageData(contractTransactions, mainContract, contractTree, contractAddress, filters) {
+async function getStorageData(contractTransactions, mainContract, contractTree, contractAddress, filters,smartContract) {
     let blockchainLog = [];
     let partialInt = 0;
 
@@ -326,7 +331,7 @@ async function getStorageData(contractTransactions, mainContract, contractTree, 
             }
 
             const storageVal = await getTraceStorage(response, tx.blockNumber, tx.inputDecoded.method, tx.hash,
-                mainContract, contractTree);
+                mainContract, contractTree,smartContract);
             newLog.storageState = storageVal.decodedValues;
             newLog.internalTxs = storageVal.internalCalls;
             const end = new Date()
@@ -346,7 +351,7 @@ async function getStorageData(contractTransactions, mainContract, contractTree, 
             blockchainLog.push(newLog)
             //TODO: remember to remove the comment
             // await connectDB(networkName)
-            // await saveTransaction(newLog, tx.to)
+            // await saveTransaction(newLog, tx.to,networkName)
             console.log("-----------------------------------------------------------------------");
         }
         partialInt++;
@@ -383,7 +388,7 @@ function decodeInput(type, value) {
  * @param contractTree - the contract tree used to identify the contract variables with the 'mainContract'
  * @returns {Promise<{decodedValues: (*&{variableValue: string|string|*})[], internalCalls: *[]}>} - the decoded values of the storage state and the internal calls
  */
-async function getTraceStorage(traceDebugged, blockNumber, functionName, txHash, mainContract, contractTree) {
+async function getTraceStorage(traceDebugged, blockNumber, functionName, txHash, mainContract, contractTree,smartContract) {
     /* const provider = ganache.provider({
          network_id: 1,
          fork: 'https://mainnet.infura.io/v3/f3851e4d467341f1b5927b6546d9f30c\@' + blockNumber
@@ -536,13 +541,18 @@ async function getTraceStorage(traceDebugged, blockNumber, functionName, txHash,
                 //convert the length to number
                 let lengthNumber =Math.trunc( web3.utils.hexToNumber("0x" + lengthBytes) / 32);
                 //create the call object
+                let stringDepthConstruction="";
+                for(let i=0;i<trace.depth-1;i++){
+                    stringDepthConstruction+="_0";
+                }
+                // internalTxId + "_" + txHash,
                 let call = {
-                    callId: "call_" + internalTxId + "_" + txHash,
+                    callId: "call_" + stringDepthConstruction+"_1",
                     callType: trace.op,
                     callDepth: trace.depth,
                     gasUsed: web3.utils.hexToNumber("0x"+trace.stack[trace.stack.length - 1]),
                     value: trace.stack[trace.stack.length - 3],
-                    to: trace.stack[trace.stack.length - 2].slice(-40),
+                    to: "0x"+trace.stack[trace.stack.length - 2].slice(-40),
                     inputsCall: ""
                 }
                 let stringMemory="";
@@ -567,12 +577,16 @@ async function getTraceStorage(traceDebugged, blockNumber, functionName, txHash,
                 let offsetNumber = await web3.utils.hexToNumber("0x" + offsetBytes) / 32;
                 const lengthBytes = trace.stack[trace.stack.length - 4];
                 let lengthNumber = await web3.utils.hexToNumber("0x" + lengthBytes) / 32;
+                let stringDepthConstruction="";
+                for(let i=0;i<trace.depth-1;i++){
+                    stringDepthConstruction+="_0";
+                }
                 let call = {
-                    callId: "call_" + internalTxId + "_" + txHash,
+                    callId: "call_" + stringDepthConstruction+"_1",
                     callType: trace.op,
                     callDepth: trace.depth,
                     gas: web3.utils.hexToNumber("0x"+trace.stack[trace.stack.length - 1]),
-                    to: trace.stack[trace.stack.length - 2].slice(-40),
+                    to: "0x"+trace.stack[trace.stack.length - 2].slice(-40),
                     inputsCall: ""
                 }
                 let stringMemory="";
@@ -705,13 +719,17 @@ async function getTraceStorage(traceDebugged, blockNumber, functionName, txHash,
                 //convert the length to number
                 let lengthNumber = web3.utils.hexToNumber("0x" + lengthBytes) / 32;
                 //create the call object
+                let stringDepthConstruction="";
+                for(let i=0;i<trace.depth-1;i++){
+                    stringDepthConstruction+="_0";
+                }
                 let call = {
-                    callId: "call_" + internalTxId + "_" + txHash,
+                    callId: "call_" + stringDepthConstruction+"_1",
                     callType: trace.op,
                     callDepth: trace.depth,
                     gasUsed: web3.utils.hexToNumber("0x"+trace.stack[trace.stack.length - 1]),
                     value: trace.stack[trace.stack.length - 3],
-                    to: trace.stack[trace.stack.length - 2].slice(-40),
+                    to: "0x"+trace.stack[trace.stack.length - 2].slice(-40),
                     inputsCall: ""
                 }
                 let stringMemory="";
@@ -732,12 +750,16 @@ async function getTraceStorage(traceDebugged, blockNumber, functionName, txHash,
                 let offsetNumber = await web3.utils.hexToNumber("0x" + offsetBytes) / 32;
                 const lengthBytes = trace.stack[trace.stack.length - 4];
                 let lengthNumber = await web3.utils.hexToNumber("0x" + lengthBytes) / 32;
+                let stringDepthConstruction="";
+                for(let i=0;i<trace.depth-1;i++){
+                    stringDepthConstruction+="_0";
+                }
                 let call = {
-                    callId: "call_" + internalTxId + "_" + txHash,
+                    callId: "call_" + stringDepthConstruction+"_1",
                     callType: trace.op,
                     callDepth: trace.depth,
                     gas: web3.utils.hexToNumber("0x"+trace.stack[trace.stack.length - 1]),
-                    to: trace.stack[trace.stack.length - 2].slice(-40),
+                    to: "0x"+trace.stack[trace.stack.length - 2].slice(-40),
                     inputsCall: ""
                 }
                 let stringMemory="";
@@ -817,13 +839,13 @@ async function getTraceStorage(traceDebugged, blockNumber, functionName, txHash,
     }
 
     const sstoreObject = {sstoreOptimization, sstoreBuffer}
-    console.log("------FINAL SHA TRACES------")
-    console.log(finalShaTraces);
-    console.log(regroupShatrace(finalShaTraces))
+    // console.log("------FINAL SHA TRACES------")
+    // console.log(finalShaTraces);
+    // console.log(regroupShatrace(finalShaTraces))
     finalShaTraces=regroupShatrace(finalShaTraces);
     const decodedValues = await optimizedDecodeValues(sstoreObject, contractTree, finalShaTraces, functionStorage, functionName, mainContract,web3,contractCompiled);
-    const decodeInternal= await decodeInternalTransaction(internalCalls,apiKey,endpoint,contractAbi)
-    console.log(decodeInternal)
+    // const decodedValues = await decodeValues(sstoreObject, contractTree, finalShaTraces, functionStorage, functionName, mainContract);
+    // const decodeInternal= await decodeInternalTransaction(internalCalls,apiKey,smartContract,endpoint,web3)
     return {decodedValues, internalCalls};
 }
 function regroupShatrace(finalShaTraces){
@@ -929,7 +951,7 @@ function mergeVariableValues(arr) {
  * @param mainContract - the main contract to decode, used to identify the contract variables
  * @returns {Promise<(*&{variableValue: string|string|*})[]>} - the decoded value of the detected variable
  */
-async function newDecodeValues(sstore, contractTree, shaTraces, functionStorage, functionName, mainContract) {
+async function decodeValues(sstore, contractTree, shaTraces, functionStorage, functionName, mainContract) {
     console.log("SSTORE");
     console.log(sstore);
     console.log("-------NEW DECODE VALUES---------");

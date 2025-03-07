@@ -18,10 +18,9 @@ async function optimizedDecodeValues(sstore, contractTree, shaTraces, functionSt
         //nel caso di una chiave complessa ottengo sempre un solo elemento da questa chiamata
         //TODO verificare affermazione di sopra
             let slotNumber=web3.utils.hexToNumber("0x" + shatrace.hexStorageIndex);
-            if(slotNumber<300 && !shatracesProcessed.includes(shatrace.hexStorageIndex) ){
+            if(slotNumber<300 && !shatracesProcessed.includes(shatrace.finalKey)){
                 
                 let variabilePerSlot=getContractVariable(slotNumber,contractTree,functionName,mainContract)[0];
-                if(!variabilePerSlot.type.includes("t_struct")){
                     //shatraceProcessed lo passo anche al read complex data perchè vado ad inserirci tutte quelle chiavi che ottengo
                     //durante magari l'estrazioni di una stringa
                     //dove nella shatrace trovo un solo elemento mentre nel funcitonstorage trovo tutte le chiavi complesse che contengono la stringa
@@ -35,7 +34,6 @@ async function optimizedDecodeValues(sstore, contractTree, shaTraces, functionSt
                     }
                     shatracesProcessed.push(shatrace.finalKey);
                     shatracesProcessed.push(shatrace.hexStorageIndex)
-                }
 
                 
             }else {
@@ -67,20 +65,15 @@ async function optimizedDecodeValues(sstore, contractTree, shaTraces, functionSt
         }
     }
     let result=[];
-    console.log("resultOfPreprocessing")
-    console.log(resultOfPreprocessing)
+    // console.log("resultOfPreprocessing")
+    // console.log(resultOfPreprocessing)
     resultOfPreprocessing.forEach((element)=>{
         let resultElement=decodeValue(element,functionStorage,mainContractCompiled);
         result.push(resultElement)
-        // if(resultElement.length!=undefined){
-        //     result.push(resultElement);
-        // }else{
-        //     resultElement.forEach((e)=>{
-        //         result.push(e);
-        //     })
-        // }
+        
     })
     console.log(result)
+    return result;
     
 }
 
@@ -88,6 +81,8 @@ async function optimizedDecodeValues(sstore, contractTree, shaTraces, functionSt
 
 //la struttura che mi rappresenta la variabile
 //la shatrace è specifica per una varibile 
+//se trovo una struttura devo saltare la decodifica complessa e la passo a quella semplice 
+// 
 function readComplexData(variable, shaTraces, functionStorage,shatracesProcessed){
     let variableType=variable.type.split("(")[0];
     if(variableType.includes("struct")){
@@ -98,35 +93,47 @@ function readComplexData(variable, shaTraces, functionStorage,shatracesProcessed
         return readArray(variable,shaTraces,functionStorage,shatracesProcessed);
     }else if (variableType.includes("string")){
         return readString(variable,shaTraces,functionStorage,shatracesProcessed);
+    }else{
+        //se entro qui significa che sono passato da una contenunto di una variabile complessa
+        // ad una complessa quindi devo solo riprendere il valore poi passo tutto alla decodifica
+        variable.value=functionStorage[variable.contentSlot];
+        return variable;
     }
 }
 // se mi trovo in questa funzione significa che sto analizzando le shatrace
 function readStructFromComplexData(variable, shaTraces, functionStorage,shatracesProcessed){
-    variable.type="";
-    variable.memberName="";
     let members=getStructMembersByVariable(variable,contractCompiled);
+    if(Number(variable.slot)!==web3.utils.hexToNumber("0x"+variable.contentSlot)){
+        variable.contentSlot=web3.utils.padLeft( web3.utils.numberToHex(variable.slot).slice(2),64);        
+    }
     let result=[];
+    variable.element=[];
     members.forEach((element)=>{
-        let slotElementStruct=BigInt(element.slot)+web3.utils.hexToNumber("0x"+variable.contentSlot);
-        slotElementStruct=web3.utils.numberToHex(slotElementStruct).slice(2);
-        if(functionStorage[slotElementStruct]){
-            let resultVariable=variable;
-            shatracesProcessed.push(slotElementStruct);
-            resultVariable.type=element.type;
-            resultVariable.memberName=element.label;
-            resultVariable.contentSlot=slotElementStruct;
-            result.push({
-                contentSlot:slotElementStruct,
-                memberName:element.label,
-                type:element.type,
-                offset:variable.offset,
-                slot:element.slot,
-                value:functionStorage[slotElementStruct]
-            });
-        }
-
+        // let slotElementStruct=BigInt(element.slot)+web3.utils.hexToNumber("0x"+variable.contentSlot);
+        // slotElementStruct=web3.utils.numberToHex(slotElementStruct).slice(2);
+        // if(functionStorage[slotElementStruct]){
+        //     let resultVariable=variable;
+        //     shatracesProcessed.push(slotElementStruct);
+        //     resultVariable.type=element.type;
+        //     resultVariable.memberName=element.label;
+        //     resultVariable.contentSlot=slotElementStruct;
+        //     result.push({
+        //         contentSlot:slotElementStruct,
+        //         memberName:element.label,
+        //         type:element.type,
+        //         offset:variable.offset,
+        //         slot:element.slot,
+        //         value:functionStorage[slotElementStruct]
+        //     });
+        // }    
+        let slotElementStruct=BigInt(element.slot)+BigInt(web3.utils.hexToNumber("0x"+variable.contentSlot));
+        element.slot=Number(slotElementStruct);
+        element.contentSlot=web3.utils.padLeft( web3.utils.numberToHex(slotElementStruct).slice(2),64);
+        shatracesProcessed.push(element.contentSlot);
+        element=readComplexData(element,shaTraces,functionStorage,shatracesProcessed)
+        variable.element.push(element)
     })
-    return result;
+    return variable;
 }
 
 //Function fro decoding mapping 
@@ -328,7 +335,20 @@ function decodeOptimizeUintDynamicArray(variable,shaTraces ,functionStorage,shat
     return variable
 }
 function readUintArray(variable,shaTraces,functionStorage,shatracesProcessed){
-
+    variable.value=undefined;
+    // let arrayLength=parseInt(variable.type.split(")")[1].split("_storage")[0]);
+    // let charsForElement = typeSize / 4;
+    // const slotLength = 64;
+    // for (let i=0;i<arrayLength;i++){
+    //     let startOfTheElement = slotLength - (i*charsForElement);
+    //     let endOfTheElement = startOfTheElement - charsForElement;
+    //     let valueExatracted = variable.value.slice(endOfTheElement,startOfTheElement);
+    //     let valuePadded=web3.utils.padLeft(valueExatracted,64);
+    //     variable.decoded.push(web3.utils.hexToNumber("0x"+valuePadded));
+    // }
+    return variable;
+    // variable.push(functionStorage[variable.contentSlot]);
+    return variable;
 }
 //i valori primitivi li posso dividere in primitivi completi o partiziali 
 //i parziali sono gli array 
@@ -337,7 +357,8 @@ function readUintArray(variable,shaTraces,functionStorage,shatracesProcessed){
 function decodeValue(variable,functionStorage,contractCompiled){
     //take the first type 
     if(!variable.type.includes("(")){
-        return decodePrimitive(variable,functionStorage);
+        variable.decodedValue=decodePrimitive(variable,functionStorage);
+        return variable;
     }else{
         //se trovo una parantesi mi trovo in un caso di decodifica parziale
         return decodePartialPrimitive(variable,functionStorage,contractCompiled);
@@ -352,7 +373,7 @@ function decodePrimitive(variable,functionStorage){
         return web3.eth.abi.decodeParameter("bool", "0x" + value);
     } else if (type.includes("bytes")) {
         // return JSON.stringify(web3.utils.hexToBytes("0x" + value)).replace("\"", "");
-        return JSON.stringify(value);
+        return "0x"+value;
 
     } else if (type.includes("address")) {
         return "0x" + value.slice(-40);
@@ -367,9 +388,10 @@ function decodePrimitive(variable,functionStorage){
 
 //funzione per tirare fuori i valori da un array 
 function decodePartialPrimitive(variable,functionStorage,contractCompiled){
-    let type=variable.type;
-    let value = variable.value;
+    let type=variable.type.split("(")[0];
+    // let type=variable.type;
     if (type.includes("enum")) {
+        let value = variable.value;
         let bigIntvalue = web3.eth.abi.decodeParameter("uint256", "0x" + value);
         return Number(bigIntvalue);
     }else if (type.includes("array")){
@@ -380,18 +402,39 @@ function decodePartialPrimitive(variable,functionStorage,contractCompiled){
     }
 }
 function readStruct(variable,functionStorage,contractCompiled){
+    // if(Number(variable.slot)!==web3.utils.hexToNumber("0x"+variable.contentSlot)){
+    //     variable.contentSlot=web3.utils.padLeft( web3.utils.numberToHex(variable.slot).slice(2),64);        
+    // }
+    if(variable.element){
+        variable.element.forEach((element)=>{
+            element=(decodeValue(element,functionStorage,contractCompiled))
+        })
+        return variable
+    }else{
+        let members=getStructMembersByVariable(variable,contractCompiled);
+        variable.element=[];
+        members.forEach((element)=>{
+            // Number(variable.slot)
+            let slotElementStruct=Number(element.slot)+web3.utils.hexToNumber("0x"+variable.contentSlot);
+            element.slot=slotElementStruct;
+            element.contentSlot=web3.utils.padLeft( web3.utils.numberToHex(slotElementStruct).slice(2),64);
+            if(functionStorage[element.contentSlot]){
+                element.value=functionStorage[element.contentSlot];
+                variable.element.push(element);
+            }
+            // if(slotElementStruct===Number(web3.utils.hexToNumber("0x"+variable.contentSlot)) ){
+            //     variable.type=element.type;
+            //     variable.memberName=element.label;   
+            // }
+        })
+        return decodeValue(variable,functionStorage,contractCompiled);
+
+    }
+    return variable;
     variable.type="";
     variable.memberName="";
-    let members=getStructMembersByVariable(variable,contractCompiled);
-    members.forEach((element)=>{
-        let slotElementStruct=Number(element.slot)+Number(variable.slot);
-        if(slotElementStruct===Number(web3.utils.hexToNumber("0x"+variable.contentSlot)) ){
-            variable.type=element.type;
-            variable.memberName=element.label;
-            
-        }
-
-    })
+    
+    
     return decodeValue(variable,functionStorage,contractCompiled);
 }
 function decodeArray(variable,functionStorage){
@@ -415,52 +458,62 @@ function decodeArray(variable,functionStorage){
 }
 function decodeOtherTypeArray(variable,functionStorage){
     if(variable.value.length!==undefined){
-        return decodePrimitive(variable,functionStorage);
+        variable.decodedValue=decodePrimitive(variable,functionStorage);
+        return variable;
     }else{
+        variable.decodedValue=[];
         variable.value.forEach((element)=>{
-            resultVariable.value="";
-            resultVariable.value=element;
-            result.push(decodePrimitive(resultVariable,functionStorage));
+            // resultVariable.value="";
+            // resultVariable.value=element;
+            variable.decodedValue.push(decodePrimitive({type:variable.type,value:element},functionStorage));
         }) 
-        return result;
+        return variable;
     }
 }
 function decodeBytesArrayDynamic(variable,functionStorage){
-    if(variable.type.includes("32")){
-        return "0x"+variable.value;
-    }else{
-        let typeSize=parseInt(variable.type.split(")")[0].split("uint")[1]);
-        let arrayLength=parseInt(variable.type.split(")")[1].split("_storage")[0]);
-        let result=[];
-        let charsForElement = typeSize * 2;
-        const slotLength = 64;
-        for (let i=0;i<arrayLength;i++){
-            let startOfTheElement = slotLength - (i*charsForElement);
-            let endOfTheElement = startOfTheElement - charsForElement;
-            let valueExatracted = variable.value.slice(endOfTheElement,startOfTheElement);
-            let valuePadded=web3.utils.padLeft(valueExatracted,64);
-            result.push("0x"+valuePadded);
-        }
-        return result;
-    }
+    variable.decodeValue=[];
+    variable.value.forEach((element)=>{
+        variable.decodeValue.push(decodePrimitive({type:variable.type,value:element},functionStorage));
+    }) 
+    return variable;
+    // if(variable.type.includes("32")){
+    //     variable.elementDecoded.push("0x"+variable.value);
+    //     return variable;
+    // }else{
+    //     let typeSize=parseInt(variable.type.split(")")[0].split("uint")[1]);
+    //     let arrayLength=parseInt(variable.type.split(")")[1].split("_storage")[0]);
+    //     let result=[];
+    //     let charsForElement = typeSize * 2;
+    //     const slotLength = 64;
+    //     for (let i=0;i<arrayLength;i++){
+    //         let startOfTheElement = slotLength - (i*charsForElement);
+    //         let endOfTheElement = startOfTheElement - charsForElement;
+    //         let valueExatracted = variable.value.slice(endOfTheElement,startOfTheElement);
+    //         let valuePadded=web3.utils.padLeft(valueExatracted,64);
+    //         variable.elementDecoded.push("0x"+valuePadded);
+    //     }
+    //     return variable;
+    // }
 }
 function decodeBytesArray(variable,functionStorage){
     if(variable.type.includes("32")){
-        return "0x"+variable.value;
+        variable.decodedValue="0x"+variable.value;
+        return variable;
     }else{
         let typeSize=parseInt(variable.type.split(")")[0].split("bytes")[1]);
         let arrayLength=parseInt(variable.type.split(")")[1].split("_storage")[0]);
         let result=[];
         let charsForElement = typeSize * 2;
         const slotLength = 64;
+        variable.decodedValue=[];
         for (let i=0;i<arrayLength;i++){
             let startOfTheElement = slotLength - (i*charsForElement);
             let endOfTheElement = startOfTheElement - charsForElement;
             let valueExatracted = variable.value.slice(endOfTheElement,startOfTheElement);
             let valuePadded=web3.utils.padLeft(valueExatracted,64);
-            result.push("0x"+valuePadded);
+            variable.decodedValue.push("0x"+valuePadded);
         }
-        return result;
+        return variable;
 
     }
     
@@ -468,11 +521,16 @@ function decodeBytesArray(variable,functionStorage){
 
 function decodeUintArray(variable,functionStorage){
     if(variable.type.includes("256")){
-        return web3.utils.hexToNumber("0x"+variable.value);
+        if(variable.value==undefined){
+            return variable;
+        }
+        variable.decodedValue=web3.utils.hexToNumber("0x"+variable.value);
+        return variable
     }else{
         let typeSize=parseInt(variable.type.split(")")[0].split("uint")[1]);
         let arrayLength=parseInt(variable.type.split(")")[1].split("_storage")[0]);
         let result=[];
+        variable.decoded=[];
         let charsForElement = typeSize / 4;
         const slotLength = 64;
         for (let i=0;i<arrayLength;i++){
@@ -480,21 +538,18 @@ function decodeUintArray(variable,functionStorage){
             let endOfTheElement = startOfTheElement - charsForElement;
             let valueExatracted = variable.value.slice(endOfTheElement,startOfTheElement);
             let valuePadded=web3.utils.padLeft(valueExatracted,64);
-            result.push(web3.utils.hexToNumber("0x"+valuePadded));
+            variable.decoded.push(web3.utils.hexToNumber("0x"+valuePadded));
         }
-        return result;
+        return variable;
     }
 }
 //decode uintArrayDynamic
 function decodeUintArrayDynamic(variable,functionStorage){
-        let result=[];
-        let resultVariable=variable;
+        variable.decodeValue=[];
         variable.value.forEach((element)=>{
-            resultVariable.value="";
-            resultVariable.value=element;
-            result.push(decodePrimitive(resultVariable,functionStorage));
+            variable.decodeValue.push(decodePrimitive({type:variable.type,value:element},functionStorage));
         }) 
-        return result;
+        return variable;
 }
 
 function getContractVariable(slotIndex, contractTree, functionName, mainContract) {
