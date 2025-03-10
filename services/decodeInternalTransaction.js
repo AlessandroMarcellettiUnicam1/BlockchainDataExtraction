@@ -25,31 +25,33 @@ async function decodeInternalTransaction(internalCalls,apiKey,smartContract,endp
                                 abi: callForAbi.data.result[0].ABI
                             };
                             await saveAbi(storeAbi);
-                            const decoder = new InputDataDecoder(storeAbi.abi);
-                            let tempResult=decoder.decodeData("0x" + element.inputsCall);
-                            element.activity=tempResult.method;
-                            element.contractCalledName=callForAbi.data.result[0].ContractName;
-                            element.inputs=[];
-                            
-                            for(let i=0;i<tempResult.inputs.length;i++){
-                                let numberConverted=tempResult.inputs[i];
-                                if(tempResult.inputs[i]._isBigNumber){
-                                    numberConverted=web3.utils.hexToNumber(tempResult.inputs[i]._hex);
+                            if(!storeAbi.abi.includes("Contract source code not verified")){
+                                const decoder = new InputDataDecoder(storeAbi.abi);
+                                let tempResult=decoder.decodeData("0x" + element.inputsCall);
+                                element.activity=tempResult.method;
+                                element.contractCalledName=callForAbi.data.result[0].ContractName;
+                                element.inputs=[];
+                                
+                                for(let i=0;i<tempResult.inputs.length;i++){
+                                    let numberConverted=tempResult.inputs[i];
+                                    if(tempResult.inputs[i]._isBigNumber){
+                                        numberConverted=web3.utils.hexToNumber(tempResult.inputs[i]._hex);
+                                    }
+                                    element.inputs.push({
+                                        name:tempResult.names[i],
+                                        type:tempResult.types[i],
+                                        value:numberConverted
+                                    })
                                 }
-                                element.inputs.push({
-                                    name:tempResult.names[i],
-                                    type:tempResult.types[i],
-                                    value:numberConverted
-                                })
                             }
                             success = true;
-                    }else{
-                        if(callForAbi.data.result[0].ABI.includes("Contract source code not verified")){
-                            success = true;
-                            element.activity="Contract source code not verified";
                         }else{
-                            await new Promise(resolve => setTimeout(resolve, 5000)); // wait for 5 seconds
-                        }
+                            if(!callForAbi.data.message.includes('NOTOK') && callForAbi.data.result[0].ABI.includes("Contract source code not verified")){
+                                success = true;
+                                element.activity="Contract source code not verified";
+                            }else{
+                                await new Promise(resolve => setTimeout(resolve, 5000)); // wait for 5 seconds
+                            }
                     }
                 }
                 

@@ -71,9 +71,8 @@ async function searchAbi(query) {
     try {
         const collection = mongoose.connection.db.collection('ExtractionAbi'); 
         const result = await collection.find(query).toArray();
-        console.log("Result from searchAbi: ", result.length);
         if(result.length>0){
-            return result[0].abi;
+            return result[0];
         }
         return null;
 

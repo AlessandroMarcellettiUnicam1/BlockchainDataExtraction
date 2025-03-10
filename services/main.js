@@ -8,7 +8,7 @@ let contractAbi = {};
 // const { newDecodeValues } = require('./newDecodedValue');
 // const { optimizedDecodeValues }= require('./reformatting')
 // const { optimizedDecodeValues }= require('./reformatting')
-// const { decodeInternalTransaction } = require('./DecodeInternalTransaction');
+const { decodeInternalTransaction } = require('./DecodeInternalTransaction');
 const { optimizedDecodeValues }= require('./newReformattigCode')
 // const { getTraceStorage } = require('./getTraceStorage');
 
@@ -115,12 +115,19 @@ async function getAllTransactions(mainContract, contractAddress, impl_contract, 
             },
             timestampLog: new Date().toISOString()
         }
-
+        await connectDB(process.env.LOG_DB_NAME);
         await saveExtractionLog(userLog)
 
-        //return await getStorageData(contractTransactions, mainContract, contractTree, contractAddress, filters);
+        // return await getStorageData(contractTransactions, mainContract, contractTree, contractAddress, filters).then(async ()=>{
+        //     await removeCollectionFromDB(networkName);
+        // });
+
+        const result = await getStorageData(contractTransactions, mainContract, contractTree, contractAddress, filters);
+        await removeCollectionsInOrder(contractAddress,networkName,process.env.LOG_DB_NAME);
+        // await removeCollectionFromDB(networkName).then(removeAddressCollection(contractAddress,process.env.LOG_DB_NAME));
+        return result;
         //changed contratAddress to impl since it contains the storage to evaluate
-        return await getStorageData(contractTransactions, mainContract, contractTree, impl_contract, filters,smartContract);
+        // return await getStorageData(contractTransactions, mainContract, contractTree, impl_contract, filters,smartContract);
         // let csvRow = []
         // csvRow.push({
         //     txHash: null,
@@ -249,8 +256,7 @@ async function getStorageData(contractTransactions, mainContract, contractTree, 
             contractAddress: contractAddress.toLowerCase()
         }
 
-        const response = await searchTransaction(query)
-
+        const response = await searchTransaction(query,networkName)
         console.log("Transactions found -> ", response);
 
 
@@ -333,7 +339,7 @@ async function getStorageData(contractTransactions, mainContract, contractTree, 
             const storageVal = await getTraceStorage(response, tx.blockNumber, tx.inputDecoded.method, tx.hash,
                 mainContract, contractTree,smartContract);
             newLog.storageState = storageVal.decodedValues;
-            newLog.internalTxs = storageVal.internalCalls;
+            newLog.internalTxs = storageVal.internalTxs;
             const end = new Date()
             const requiredDecodeTime = parseFloat(((end - start) / 1000).toFixed(2))
             decodeTime += requiredDecodeTime
@@ -350,18 +356,57 @@ async function getStorageData(contractTransactions, mainContract, contractTree, 
             // })
             blockchainLog.push(newLog)
             //TODO: remember to remove the comment
-            // await connectDB(networkName)
-            // await saveTransaction(newLog, tx.to,networkName)
+            await connectDB(networkName)
+            await saveTransaction(newLog, tx.to,networkName)
             console.log("-----------------------------------------------------------------------");
+
         }
         partialInt++;
     }
     console.log("Extraction finished")
     await mongoose.disconnect()
+    // await removeCollectionFromDB(networkName);
+    // await mongoose.disconnect()
     fs.writeFileSync('abitest.json', JSON.stringify(blockchainLog));
     return blockchainLog;
 }
 
+async function removeCollectionsInOrder(contractAddress, networkMain,backlog) {
+    try {
+        await removeCollectionFromDB(networkMain).then(()=>removeAddressCollection(contractAddress,backlog)); // Executes first
+        // await removeAddressCollection(contractAddress, backlog); // Executes after the first one completes
+        console.log("Both collections deleted successfully.");
+    } catch (error) {
+        console.error("Error in removing collections:", error);
+    }
+}
+async function removeCollectionFromDB(network){
+    try {
+        await connectDB(network);
+        await mongoose.connection.db.dropCollection('ExtractionLog');
+        await mongoose.connection.db.dropCollection('ExtractionAbi');
+        console.log(`Collection ExtractionLog deleted successfully.`);
+    } catch (err) {
+        if (err.code === 26) {
+            console.log(`Collection ExtractionLog does not exist.`);
+        } else {
+            console.error(`Error deleting collection ExtractionLog:`, err);
+        }
+    }
+}
+async function removeAddressCollection(contractAddress,network){
+    try {
+        await connectDB(network);
+        await mongoose.connection.db.dropCollection(contractAddress);
+        console.log(`Collection  deleted successfully.`);
+    } catch (err) {
+        if (err.code === 26) {
+            console.log(`Collection  does not exist.`);
+        } else {
+            console.error(`Error deleting collection :`, err);
+        }
+    }
+}
 function decodeInput(type, value) {
     if (type === 'uint256') {
         return Number(web3.utils.hexToNumber(value._hex));
@@ -846,8 +891,8 @@ async function getTraceStorage(traceDebugged, blockNumber, functionName, txHash,
     finalShaTraces=regroupShatrace(finalShaTraces);
     const decodedValues = await optimizedDecodeValues(sstoreObject, contractTree, finalShaTraces, functionStorage, functionName, mainContract,web3,contractCompiled);
     // const decodedValues = await decodeValues(sstoreObject, contractTree, finalShaTraces, functionStorage, functionName, mainContract);
-    // const decodeInternal= await decodeInternalTransaction(internalCalls,apiKey,smartContract,endpoint,web3)
-    return {decodedValues, internalCalls};
+    const internalTxs= await decodeInternalTransaction(internalCalls,apiKey,smartContract,endpoint,web3)
+    return {decodedValues, internalTxs};
 }
 function regroupShatrace(finalShaTraces){
     return Array.from(
