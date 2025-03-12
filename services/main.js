@@ -5,8 +5,11 @@ const axios = require("axios");
 const {stringify} = require("csv-stringify")
 //let contractAbi = fs.readFileSync('abiEtherscan.json', 'utf8');
 let contractAbi = {};
-const { newDecodeValues } = require('./newDecodedValue');
-const { optimizedDecodeValues }= require('./reformatting')
+// const { newDecodeValues } = require('./newDecodedValue');
+// const { optimizedDecodeValues }= require('./reformatting')
+// const { optimizedDecodeValues }= require('./reformatting')
+const { decodeInternalTransaction } = require('./DecodeInternalTransaction');
+const { optimizedDecodeValues }= require('./newReformattigCode')
 // const { getTraceStorage } = require('./getTraceStorage');
 
 //const contractAddress = '0x152649eA73beAb28c5b49B26eb48f7EAD6d4c898'cake;
@@ -20,6 +23,8 @@ const {searchTransaction} = require("../query/query")
 const {connectDB} = require("../config/db");
 const mongoose = require("mongoose");
 require('dotenv').config();
+
+const {ethers} = require("hardhat");
 
 let networkName = ""
 let web3 = null
@@ -110,12 +115,19 @@ async function getAllTransactions(mainContract, contractAddress, impl_contract, 
             },
             timestampLog: new Date().toISOString()
         }
-
+        await connectDB(process.env.LOG_DB_NAME);
         await saveExtractionLog(userLog)
 
-        //return await getStorageData(contractTransactions, mainContract, contractTree, contractAddress, filters);
+        // return await getStorageData(contractTransactions, mainContract, contractTree, contractAddress, filters).then(async ()=>{
+        //     await removeCollectionFromDB(networkName);
+        // });
+
+        const result = await getStorageData(contractTransactions, mainContract, contractTree, contractAddress, filters);
+        await removeCollectionsInOrder(contractAddress,networkName,process.env.LOG_DB_NAME);
+        // await removeCollectionFromDB(networkName).then(removeAddressCollection(contractAddress,process.env.LOG_DB_NAME));
+        return result;
         //changed contratAddress to impl since it contains the storage to evaluate
-        return await getStorageData(contractTransactions, mainContract, contractTree, impl_contract, filters);
+        // return await getStorageData(contractTransactions, mainContract, contractTree, impl_contract, filters,smartContract);
         // let csvRow = []
         // csvRow.push({
         //     txHash: null,
@@ -182,12 +194,20 @@ async function debugTransaction(txHash, blockNumber) {
         await hre.changeNetwork(networkName, blockNumber)
         const start = new Date()
 
-
+       
         const response = await hre.network.provider.send("debug_traceTransaction", [
             txHash
         ]);
 
+        
+       
+    
         fs.writeFileSync("./temporaryTrials/trace.json", JSON.stringify(response));
+        const internalCalls = response.structLogs
+        .filter(log => log.op === "CALL" || log.op === "DELEGATECALL" || log.op === "STATICCALL");
+
+        const indiceTemp=response.structLogs.indexOf(internalCalls[0]);
+
         const end = new Date()
         const requiredTime = parseFloat(((end - start) / 1000).toFixed(2))
         traceTime += requiredTime
@@ -211,7 +231,7 @@ async function debugTransaction(txHash, blockNumber) {
  * @param filters - the filters to be applied to the transactions
  * @returns {Promise<*[]>} - the blockchain log with the extracted data
  */
-async function getStorageData(contractTransactions, mainContract, contractTree, contractAddress, filters) {
+async function getStorageData(contractTransactions, mainContract, contractTree, contractAddress, filters,smartContract) {
     let blockchainLog = [];
     let partialInt = 0;
 
@@ -229,14 +249,14 @@ async function getStorageData(contractTransactions, mainContract, contractTree, 
 
     // before to start the extraction, the connection to the database is established to check if the transaction has already been processed
     await connectDB(networkName)
+    
     for (const tx of transactionsFiltered) {
         let query = {
             txHash: tx.hash.toLowerCase(),
             contractAddress: contractAddress.toLowerCase()
         }
 
-        const response = await searchTransaction(query)
-
+        const response = await searchTransaction(query,networkName)
         console.log("Transactions found -> ", response);
 
 
@@ -273,8 +293,8 @@ async function getStorageData(contractTransactions, mainContract, contractTree, 
             // newLog.activity = tx.method;
             newLog.timestamp = new Date(tx.timeStamp * 1000).toISOString()
 
-            let inputId = 0
-            for (let i = 0; i < tx.inputDecoded.inputs.length; i++) {
+            let inputId = 0 
+            for (let i = 0; i < tx.inputDecoded.inputs.length; i++) { 
                 //check if the input value is an array or a struct
                 // TODO -> check how a Struct array is represented
                 // Deploy a SC in a Test Net and send a tx with input data to decode its structure
@@ -317,12 +337,13 @@ async function getStorageData(contractTransactions, mainContract, contractTree, 
             }
 
             const storageVal = await getTraceStorage(response, tx.blockNumber, tx.inputDecoded.method, tx.hash,
-                mainContract, contractTree);
+                mainContract, contractTree,smartContract);
             newLog.storageState = storageVal.decodedValues;
-            newLog.internalTxs = storageVal.internalCalls;
+            newLog.internalTxs = storageVal.internalTxs;
             const end = new Date()
             const requiredDecodeTime = parseFloat(((end - start) / 1000).toFixed(2))
             decodeTime += requiredDecodeTime
+
             // let csvRow = []
             // csvRow.push({
             //     txHash: tx.hash,
@@ -335,17 +356,57 @@ async function getStorageData(contractTransactions, mainContract, contractTree, 
             // })
             blockchainLog.push(newLog)
             //TODO: remember to remove the comment
-            // await saveTransaction(newLog, tx.to)
+            await connectDB(networkName)
+            await saveTransaction(newLog, tx.to,networkName)
             console.log("-----------------------------------------------------------------------");
+
         }
         partialInt++;
     }
     console.log("Extraction finished")
     await mongoose.disconnect()
+    // await removeCollectionFromDB(networkName);
+    // await mongoose.disconnect()
     fs.writeFileSync('abitest.json', JSON.stringify(blockchainLog));
     return blockchainLog;
 }
 
+async function removeCollectionsInOrder(contractAddress, networkMain,backlog) {
+    try {
+        await removeCollectionFromDB(networkMain).then(()=>removeAddressCollection(contractAddress,backlog)); // Executes first
+        // await removeAddressCollection(contractAddress, backlog); // Executes after the first one completes
+        console.log("Both collections deleted successfully.");
+    } catch (error) {
+        console.error("Error in removing collections:", error);
+    }
+}
+async function removeCollectionFromDB(network){
+    try {
+        await connectDB(network);
+        await mongoose.connection.db.dropCollection('ExtractionLog');
+        await mongoose.connection.db.dropCollection('ExtractionAbi');
+        console.log(`Collection ExtractionLog deleted successfully.`);
+    } catch (err) {
+        if (err.code === 26) {
+            console.log(`Collection ExtractionLog does not exist.`);
+        } else {
+            console.error(`Error deleting collection ExtractionLog:`, err);
+        }
+    }
+}
+async function removeAddressCollection(contractAddress,network){
+    try {
+        await connectDB(network);
+        await mongoose.connection.db.dropCollection(contractAddress);
+        console.log(`Collection  deleted successfully.`);
+    } catch (err) {
+        if (err.code === 26) {
+            console.log(`Collection  does not exist.`);
+        } else {
+            console.error(`Error deleting collection :`, err);
+        }
+    }
+}
 function decodeInput(type, value) {
     if (type === 'uint256') {
         return Number(web3.utils.hexToNumber(value._hex));
@@ -372,7 +433,7 @@ function decodeInput(type, value) {
  * @param contractTree - the contract tree used to identify the contract variables with the 'mainContract'
  * @returns {Promise<{decodedValues: (*&{variableValue: string|string|*})[], internalCalls: *[]}>} - the decoded values of the storage state and the internal calls
  */
-async function getTraceStorage(traceDebugged, blockNumber, functionName, txHash, mainContract, contractTree) {
+async function getTraceStorage(traceDebugged, blockNumber, functionName, txHash, mainContract, contractTree,smartContract) {
     /* const provider = ganache.provider({
          network_id: 1,
          fork: 'https://mainnet.infura.io/v3/f3851e4d467341f1b5927b6546d9f30c\@' + blockNumber
@@ -440,15 +501,15 @@ async function getTraceStorage(traceDebugged, blockNumber, functionName, txHash,
                     hexKey: hexKey,
                     hexStorageIndex: hexStorageIndex
                 };
-                console.log("----KECCAK WITH PC:----", trace.pc)
-                console.log("----LEFT:", hexKey)
-                console.log("----RIGHT:", hexStorageIndex)
+                // console.log("----KECCAK WITH PC:----", trace.pc)
+                // console.log("----LEFT:", hexKey)
+                // console.log("----RIGHT:", hexStorageIndex)
                 // end of a function execution -> returns the storage state with the keys and values in the storage
             } else if (trace.op === "STOP") {
 
                 //retrieve the entire storage after function execution
                 //for each storage key discard the ones of static variables and compare the remaining ones with the re-generated
-                console.log("------STOP OPCODE-------");
+                // console.log("------STOP OPCODE-------");
                 //console.log(trace);
                 for (const slot in trace.storage) {
                     functionStorage[slot] = trace.storage[slot];
@@ -472,9 +533,10 @@ async function getTraceStorage(traceDebugged, blockNumber, functionName, txHash,
                     trackBuffer[index-1].hexKey = slotBuff;
                     trackBuffer[index-1].hexStorageIndex = keyBuff;
 
-                    console.log("----ADD OPCODE----")
-                    console.log("----first", trace.stack[trace.stack.length - 1]);
-                    console.log("----second", trace.stack[trace.stack.length - 2]);
+                    // console.log("----ADD OPCODE----")
+                    // console.log("----first", trace.stack[trace.stack.length - 1]);
+                    // console.log("----second", trace.stack[trace.stack.length - 2]);
+                    
 
                 }
             }
@@ -488,9 +550,9 @@ async function getTraceStorage(traceDebugged, blockNumber, functionName, txHash,
                 // the last element of the stack is the storage slot in which data is pushed
                 sstoreBuffer.push(trace.stack[trace.stack.length - 1]);
 
-                console.log("----SSTORE PUSHING:----")
-                console.log("----storage slot:", trace.stack[trace.stack.length - 1])
-                console.log("----value:", trace.stack[trace.stack.length - 2])
+                // console.log("----SSTORE PUSHING:----")
+                // console.log("----storage slot:", trace.stack[trace.stack.length - 1])
+                // console.log("----value:", trace.stack[trace.stack.length - 2])
 
             } else if(trace.op == "ADD"){
                 /*ADD is the opcode that in case of arrays adds the next position to start to the computed keccak
@@ -498,9 +560,9 @@ async function getTraceStorage(traceDebugged, blockNumber, functionName, txHash,
                 this means that the keccak found is related to an array and we need to swap the slot with the key
                 this because for mappings we have K(h(k) . slot) while in arrays K(slot . 0x0...)*/
 
-                console.log("----ADD OPCODE----")
-                console.log("----first", trace.stack[trace.stack.length - 1]);
-                console.log("----second", trace.stack[trace.stack.length - 2]);
+                // console.log("----ADD OPCODE----")
+                // console.log("----first", trace.stack[trace.stack.length - 1]);
+                // console.log("----second", trace.stack[trace.stack.length - 2]);
                 /*console.log(keccakBeforeAdd.finalKey);
                 console.log(keccakBeforeAdd.hexStorageIndex);*/
 
@@ -512,28 +574,47 @@ async function getTraceStorage(traceDebugged, blockNumber, functionName, txHash,
                     const slotBuff =  trackBuffer[index-1].hexStorageIndex;
                     trackBuffer[index-1].hexKey = slotBuff;
                     trackBuffer[index-1].hexStorageIndex = keyBuff;
-
+                    
                 }
             } else if (trace.op === "CALL") {
                 //read the offset from the stack
                 const offsetBytes = trace.stack[trace.stack.length - 4];
-                //convert the offset to number
-                let offsetNumber = web3.utils.hexToNumber("0x" + offsetBytes) / 32;
-                //read the length of the memory to read
+                //convert the offset to number 896
+                let offsetNumber =Math.trunc( web3.utils.hexToNumber("0x" + offsetBytes) / 32);
+                //read the length of the memory to read 914
                 const lengthBytes = trace.stack[trace.stack.length - 5];
                 //convert the length to number
-                let lengthNumber = web3.utils.hexToNumber("0x" + lengthBytes) / 32;
+                let lengthNumber =Math.trunc( web3.utils.hexToNumber("0x" + lengthBytes) / 32);
                 //create the call object
+                let stringDepthConstruction="";
+                for(let i=0;i<trace.depth-1;i++){
+                    stringDepthConstruction+="_0";
+                }
+                // internalTxId + "_" + txHash,
                 let call = {
-                    callId: "call_" + internalTxId + "_" + txHash,
+                    callId: "call_" + stringDepthConstruction+"_1",
                     callType: trace.op,
-                    to: trace.stack[trace.stack.length - 2],
-                    inputsCall: []
+                    callDepth: trace.depth,
+                    gasUsed: web3.utils.hexToNumber("0x"+trace.stack[trace.stack.length - 1]),
+                    value: trace.stack[trace.stack.length - 3],
+                    to: "0x"+trace.stack[trace.stack.length - 2].slice(-40),
+                    inputsCall: ""
                 }
+                let stringMemory="";
+                trace.memory.forEach((element)=>{
+                    stringMemory+=element;
+                })
+                //taglio i valori che mi interessano 
+                stringMemory=stringMemory.slice(web3.utils.hexToNumber("0x" + offsetBytes)*2, (web3.utils.hexToNumber("0x" + offsetBytes)*2)+web3.utils.hexToNumber("0x" + lengthBytes)*2);
+                call.inputsCall=stringMemory;
+
                 //read all the inputs from the memory and insert it in the call object
-                for (let i = offsetNumber; i <= offsetNumber + lengthNumber; i++) {
-                    call.inputsCall.push(trace.memory[i]);
-                }
+                // let stringTemp="";
+                // for (let i = offsetNumber; i <= offsetNumber + lengthNumber; i++) {
+                //     call.inputsCall.push(trace.memory[i]);
+                //     stringTemp+=trace.memory[i];
+                // }
+                // console.log("string Temp", stringTemp);
                 internalCalls.push(call);
             } else if (trace.op === "DELEGATECALL" || trace.op === "STATICCALL") {
                 // internalCalls.push(trace.stack[trace.stack.length - 2]);
@@ -541,15 +622,29 @@ async function getTraceStorage(traceDebugged, blockNumber, functionName, txHash,
                 let offsetNumber = await web3.utils.hexToNumber("0x" + offsetBytes) / 32;
                 const lengthBytes = trace.stack[trace.stack.length - 4];
                 let lengthNumber = await web3.utils.hexToNumber("0x" + lengthBytes) / 32;
+                let stringDepthConstruction="";
+                for(let i=0;i<trace.depth-1;i++){
+                    stringDepthConstruction+="_0";
+                }
                 let call = {
-                    callId: "call_" + internalTxId + "_" + txHash,
+                    callId: "call_" + stringDepthConstruction+"_1",
                     callType: trace.op,
-                    to: trace.stack[trace.stack.length - 2],
-                    inputsCall: []
+                    callDepth: trace.depth,
+                    gas: web3.utils.hexToNumber("0x"+trace.stack[trace.stack.length - 1]),
+                    to: "0x"+trace.stack[trace.stack.length - 2].slice(-40),
+                    inputsCall: ""
                 }
-                for (let i = offsetNumber; i <= offsetNumber + lengthNumber; i++) {
-                    call.inputsCall.push(trace.memory[i]);
-                }
+                let stringMemory="";
+                trace.memory.forEach((element)=>{
+                    stringMemory+=element;
+                })
+                 //taglio i valori che mi interessano 
+                 stringMemory=stringMemory.slice(web3.utils.hexToNumber("0x" + offsetBytes)*2, (web3.utils.hexToNumber("0x" + offsetBytes)*2)+web3.utils.hexToNumber("0x" + lengthBytes)*2);
+                 call.inputsCall=stringMemory;
+ 
+                // for (let i = offsetNumber; i <= offsetNumber + lengthNumber; i++) {
+                //     call.inputsCall.push(trace.memory[i]);
+                // }
                 internalCalls.push(call);
             } else if (trace.op === "RETURN") {
                 //console.log("---------RETURN---------")
@@ -583,14 +678,14 @@ async function getTraceStorage(traceDebugged, blockNumber, functionName, txHash,
                     hexKey: hexKey,
                     hexStorageIndex: hexStorageIndex
                 };
-                console.log("----KECCAK WITH PC:----", trace.pc)
-                console.log("----LEFT:", hexKey)
-                console.log("----RIGHT:", hexStorageIndex)
+                // console.log("----KECCAK WITH PC:----", trace.pc)
+                // console.log("----LEFT:", hexKey)
+                // console.log("----RIGHT:", hexStorageIndex)
                 // end of a function execution -> returns the storage state with the keys and values in the storage
             } else if (trace.op === "STOP") {
                 //retrieve the entire storage after function execution
                 //for each storage key discard the ones of static variables and compare the remaining ones with the re-generated
-                console.log("------STOP OPCODE-------");
+                // console.log("------STOP OPCODE-------");
                 //console.log(trace);
                 for (const slot in trace.storage) {
                     functionStorage[slot] = trace.storage[slot];
@@ -601,17 +696,17 @@ async function getTraceStorage(traceDebugged, blockNumber, functionName, txHash,
                 keccakBeforeAdd = trackBuffer[index];
                 bufferPC = -10;
                 trackBuffer[index].finalKey = trace.stack[trace.stack.length - 1];
-                console.log(trackBuffer[index]);
+                // console.log(trackBuffer[index]);
                 index++;
                 //todo compact with code below
-                console.log('keccakBeforeAdd', keccakBeforeAdd)
-                console.log('trace.stack[trace.stack.length - 1]', trace.stack[trace.stack.length - 1])
-                console.log('trace.stack[trace.stack.length - 2]',trace.stack[trace.stack.length - 2])
+                // console.log('keccakBeforeAdd', keccakBeforeAdd)
+                // console.log('trace.stack[trace.stack.length - 1]', trace.stack[trace.stack.length - 1])
+                // console.log('trace.stack[trace.stack.length - 2]',trace.stack[trace.stack.length - 2])
                 if(trace.op == "ADD" && (trace.stack[trace.stack.length - 1] === keccakBeforeAdd.finalKey ||
                         trace.stack[trace.stack.length - 2] === keccakBeforeAdd.finalKey) &&
                     keccakBeforeAdd.hexStorageIndex === "0000000000000000000000000000000000000000000000000000000000000000") {
-                        console.log('PRIMO ADD ')
-                        console.log('trace stack', trace.stack)
+                        // console.log('PRIMO ADD ')
+                        // console.log('trace stack', trace.stack)
 
                     const keyBuff =  trackBuffer[index-1].hexKey;
                     const slotBuff =  trackBuffer[index-1].hexStorageIndex;
@@ -619,11 +714,12 @@ async function getTraceStorage(traceDebugged, blockNumber, functionName, txHash,
                     trackBuffer[index-1].hexStorageIndex = keyBuff;
                     const nextTrace=traceDebugged.structLogs[traceDebugged.structLogs.indexOf(trace)+1];
                     const nextTraceStack=nextTrace.stack[nextTrace.stack.length - 1];
-                    console.log( nextTraceStack);
+                    // console.log( nextTraceStack);
                     trackBuffer[index-1].finalKey =nextTraceStack;
-                    console.log("----ADD OPCODE----")
-                    console.log("----first", trace.stack[trace.stack.length - 1]);
-                    console.log("----second", trace.stack[trace.stack.length - 2]);
+                    // console.log("----ADD OPCODE----")
+                    // console.log("----first", trace.stack[trace.stack.length - 1]);
+                    // console.log("----second", trace.stack[trace.stack.length - 2]);
+                    trackBuffer[index-1].indexSum= trace.stack[trace.stack.length - 2];
                 }
             }
                 //in case the trace is a SSTORE save the key. CAUTION: not every SSTORE changes the final storage state but every storage state change has an sstore
@@ -635,18 +731,18 @@ async function getTraceStorage(traceDebugged, blockNumber, functionName, txHash,
                 sstoreOptimization.push(trace.stack)
                 // the last element of the stack is the storage slot in which data is pushed
                 sstoreBuffer.push(trace.stack[trace.stack.length - 1]);
-                console.log("----SSTORE PUSHING:----")
-                console.log("----storage slot:", trace.stack[trace.stack.length - 1])
-                console.log("----value:", trace.stack[trace.stack.length - 2])
+                // console.log("----SSTORE PUSHING:----")
+                // console.log("----storage slot:", trace.stack[trace.stack.length - 1])
+                // console.log("----value:", trace.stack[trace.stack.length - 2])
             } else if(trace.op == "ADD"){
-                console.log('SECONDO ADD')
+                // console.log('SECONDO ADD')
                 /*ADD is the opcode that in case of arrays adds the next position to start to the computed keccak
                 if this is found and one of the inputs is the keccak and the previous keccak has 0 as slot then manage
                 this means that the keccak found is related to an array and we need to swap the slot with the key
                 this because for mappings we have K(h(k) . slot) while in arrays K(slot . 0x0...)*/
-                console.log("----ADD OPCODE----")
-                console.log("----first", trace.stack[trace.stack.length - 1]);
-                console.log("----second", trace.stack[trace.stack.length - 2]);
+                // console.log("----ADD OPCODE----")
+                // console.log("----first", trace.stack[trace.stack.length - 1]);
+                // console.log("----second", trace.stack[trace.stack.length - 2]);
                 /*console.log(keccakBeforeAdd.finalKey);
                 console.log(keccakBeforeAdd.hexStorageIndex);*/
 
@@ -668,16 +764,30 @@ async function getTraceStorage(traceDebugged, blockNumber, functionName, txHash,
                 //convert the length to number
                 let lengthNumber = web3.utils.hexToNumber("0x" + lengthBytes) / 32;
                 //create the call object
+                let stringDepthConstruction="";
+                for(let i=0;i<trace.depth-1;i++){
+                    stringDepthConstruction+="_0";
+                }
                 let call = {
-                    callId: "call_" + internalTxId + "_" + txHash,
+                    callId: "call_" + stringDepthConstruction+"_1",
                     callType: trace.op,
-                    to: trace.stack[trace.stack.length - 2],
-                    inputsCall: []
+                    callDepth: trace.depth,
+                    gasUsed: web3.utils.hexToNumber("0x"+trace.stack[trace.stack.length - 1]),
+                    value: trace.stack[trace.stack.length - 3],
+                    to: "0x"+trace.stack[trace.stack.length - 2].slice(-40),
+                    inputsCall: ""
                 }
+                let stringMemory="";
+                trace.memory.forEach((element)=>{
+                    stringMemory+=element;
+                })
+                 //taglio i valori che mi interessano 
+                 stringMemory=stringMemory.slice(web3.utils.hexToNumber("0x" + offsetBytes)*2, (web3.utils.hexToNumber("0x" + offsetBytes)*2)+web3.utils.hexToNumber("0x" + lengthBytes)*2);
+                 call.inputsCall=stringMemory;
                 //read all the inputs from the memory and insert it in the call object
-                for (let i = offsetNumber; i <= offsetNumber + lengthNumber; i++) {
-                    call.inputsCall.push(trace.memory[i]);
-                }
+                // for (let i = offsetNumber; i <= offsetNumber + lengthNumber; i++) {
+                //     call.inputsCall.push(trace.memory[i]);
+                // }
                 internalCalls.push(call);
             } else if (trace.op === "DELEGATECALL" || trace.op === "STATICCALL") {
                 // internalCalls.push(trace.stack[trace.stack.length - 2]);
@@ -685,15 +795,28 @@ async function getTraceStorage(traceDebugged, blockNumber, functionName, txHash,
                 let offsetNumber = await web3.utils.hexToNumber("0x" + offsetBytes) / 32;
                 const lengthBytes = trace.stack[trace.stack.length - 4];
                 let lengthNumber = await web3.utils.hexToNumber("0x" + lengthBytes) / 32;
+                let stringDepthConstruction="";
+                for(let i=0;i<trace.depth-1;i++){
+                    stringDepthConstruction+="_0";
+                }
                 let call = {
-                    callId: "call_" + internalTxId + "_" + txHash,
+                    callId: "call_" + stringDepthConstruction+"_1",
                     callType: trace.op,
-                    to: trace.stack[trace.stack.length - 2],
-                    inputsCall: []
+                    callDepth: trace.depth,
+                    gas: web3.utils.hexToNumber("0x"+trace.stack[trace.stack.length - 1]),
+                    to: "0x"+trace.stack[trace.stack.length - 2].slice(-40),
+                    inputsCall: ""
                 }
-                for (let i = offsetNumber; i <= offsetNumber + lengthNumber; i++) {
-                    call.inputsCall.push(trace.memory[i]);
-                }
+                let stringMemory="";
+                trace.memory.forEach((element)=>{
+                    stringMemory+=element;
+                })
+                 //taglio i valori che mi interessano 
+                 stringMemory=stringMemory.slice(web3.utils.hexToNumber("0x" + offsetBytes)*2, (web3.utils.hexToNumber("0x" + offsetBytes)*2)+web3.utils.hexToNumber("0x" + lengthBytes)*2);
+                 call.inputsCall=stringMemory;
+                // for (let i = offsetNumber; i <= offsetNumber + lengthNumber; i++) {
+                //     call.inputsCall.push(trace.memory[i]);
+                // }
                 internalCalls.push(call);
             } else if (trace.op === "RETURN") {
                 //console.log("---------RETURN---------")
@@ -707,30 +830,36 @@ async function getTraceStorage(traceDebugged, blockNumber, functionName, txHash,
     // fs.writeFileSync("./temporaryTrials/sstoreToPrint.json", JSON.stringify(sstoreToPrint))
     fs.writeFileSync("./temporaryTrials/storeBuffer.json", JSON.stringify(sstoreBuffer));
     let finalShaTraces = [];
-    console.log('SSTOREBUFER',sstoreBuffer);
-    console.log('TRACK BUFFER', trackBuffer);
-    console.log('Track buffer length', trackBuffer.length);
+    finalShaTraces=trackBuffer
+    // console.log('SSTOREBUFER',sstoreBuffer);
+    // console.log('TRACK BUFFER', trackBuffer);
+    // console.log('Track buffer length', trackBuffer.length);
     for (let i = 0; i < trackBuffer.length; i++) {
-        console.log("---sto iterando con indice i ---", i)
-        console.log('trackBuffer[i].finalKey', trackBuffer[i].finalKey)
+        // console.log("---sto iterando con indice i ---", i)
+        // console.log('trackBuffer[i].finalKey', trackBuffer[i].finalKey)
         //check if the SHA3 key is contained in a SSTORE
         if (sstoreBuffer.includes(trackBuffer[i].finalKey)) {
-            console.log("---sstore contiene finalKey---")
+            // console.log("---sstore contiene finalKey---")
             //create a final trace for that key
             const trace = {
-                finalKey: trackBuffer[i].finalKey
+                finalKey: trackBuffer[i].finalKey,
+                hexKey: trackBuffer[i].hexKey,
+                indexSum:trackBuffer[i].indexSum,
+                hexStorageIndex:trackBuffer[i].hexStorageIndex
             }
-            console.log(trace)
+            // console.log(trace)
             let flag = false;
             let test = i;
-            console.log("testtttttttt", test);
+            // console.log("testtttttttt", test);
             //Iterate previous SHA3 looking for a simple integer slot index
             while (flag === false) {
-                console.log("---sono nel while cercando cose---")
+                //TODO non capisco questo controllo perché torna indietro anche se sono
+                //con l'indice 0
+                // console.log("---sono nel while cercando cose---")
                 //if the storage key is not a standard number then check for the previous one
                 if (!(web3.utils.hexToNumber("0x" + trackBuffer[test].hexStorageIndex) < 300)) {
                     test--;
-                    console.log("non ho trovato uno slot semplice e vado indietro")
+                    // console.log("non ho trovato uno slot semplice e vado indietro")
                 } else {
                     //if the storage location is a simple one then save it in the final trace with the correct key
                     console.log("storage è semplice quindi lo salvo", trackBuffer[test].hexStorageIndex)
@@ -739,6 +868,7 @@ async function getTraceStorage(traceDebugged, blockNumber, functionName, txHash,
                     finalShaTraces.push(trace);
                 }
             }
+            finalShaTraces.push(trace);
             sstoreBuffer.splice(sstoreBuffer.indexOf(trackBuffer[i].finalKey), 1);
         }
 
@@ -755,13 +885,20 @@ async function getTraceStorage(traceDebugged, blockNumber, functionName, txHash,
     }
 
     const sstoreObject = {sstoreOptimization, sstoreBuffer}
-    console.log("------FINAL SHA TRACES------")
-    console.log(finalShaTraces);
-    //console.log(contractCompiled)
+    // console.log("------FINAL SHA TRACES------")
+    // console.log(finalShaTraces);
+    // console.log(regroupShatrace(finalShaTraces))
+    finalShaTraces=regroupShatrace(finalShaTraces);
     const decodedValues = await optimizedDecodeValues(sstoreObject, contractTree, finalShaTraces, functionStorage, functionName, mainContract,web3,contractCompiled);
-    return {decodedValues, internalCalls};
+    // const decodedValues = await decodeValues(sstoreObject, contractTree, finalShaTraces, functionStorage, functionName, mainContract);
+    const internalTxs= await decodeInternalTransaction(internalCalls,apiKey,smartContract,endpoint,web3)
+    return {decodedValues, internalTxs};
 }
-
+function regroupShatrace(finalShaTraces){
+    return Array.from(
+        new Map(finalShaTraces.map(item => [item.finalKey + item.hexStorageIndex, item])).values()
+      );
+}
 //cleanTest(18424870, "sendFrom", "0x446f97e43687382fefbc6a9c4cccd055829ef2909997fb102a1728db6b37b76a", "CakeOFT");
 
 //function for re-generating the key and understand the variable thanks to the tests on the storage locationapprove(address spender,uint256 amount)0x095ea7b3
@@ -860,7 +997,7 @@ function mergeVariableValues(arr) {
  * @param mainContract - the main contract to decode, used to identify the contract variables
  * @returns {Promise<(*&{variableValue: string|string|*})[]>} - the decoded value of the detected variable
  */
-async function TempnewDecodeValues(sstore, contractTree, shaTraces, functionStorage, functionName, mainContract) {
+async function decodeValues(sstore, contractTree, shaTraces, functionStorage, functionName, mainContract) {
     console.log("SSTORE");
     console.log(sstore);
     console.log("-------NEW DECODE VALUES---------");
@@ -1447,9 +1584,12 @@ async function getCompiledData(contracts, contractName) {
         input.sources[contractName].content = contracts;
         solidityVersion = await detectVersion(contracts)
     }
-
+    
     console.log(solidityVersion)
-    solidityVersion = "v0.8.4+commit.c7e474f2";
+    //v0.8.4+commit.c7e474f2
+    // v0.5.15+commit.6a57276f
+//v0.8.28+commit.7893614a
+    solidityVersion = "v0.8.28+commit.7893614a";
     const solcSnapshot = await getRemoteVersion(solidityVersion.replace("soljson-", "").replace(".js", ""))
 
     const output = solcSnapshot.compile(JSON.stringify(input));
