@@ -274,12 +274,12 @@ async function getStorageData(contractTransactions, mainContract, contractTree, 
             const start = new Date()
             const pastEvents = await getEvents(tx.hash, Number(tx.blockNumber), contractAddress);
             let newLog = {
-                txHash: tx.hash,
+                functionName: tx.inputDecoded.method,
+                transactionHash: tx.hash,
                 blockNumber: parseInt(tx.blockNumber),
                 contractAddress: tx.to,
                 sender: tx.from,
                 gasUsed: parseInt(tx.gasUsed),
-                activity: tx.inputDecoded.method,
                 timestamp: '',
                 inputs: [],
                 storageState: [],
@@ -320,14 +320,14 @@ async function getStorageData(contractTransactions, mainContract, contractTree, 
                     }
 
                     newLog.inputs[i] = {
-                        inputId: "inputName_" + inputId + "_" + tx.hash,
+                        // inputId: "inputName_" + inputId + "_" + tx.hash,
                         inputName: inputName,
                         type: tx.inputDecoded.types[i],
                         inputValue: bufferTuple.toString()
                     }
                 } else {
                     newLog.inputs[i] = {
-                        inputId: "inputName_" + inputId + "_" + tx.hash,
+                        // inputId: "inputName_" + inputId + "_" + tx.hash,
                         inputName: inputName,
                         type: tx.inputDecoded.types[i],
                         inputValue: decodeInput(tx.inputDecoded.types[i], tx.inputDecoded.inputs[i])
@@ -588,11 +588,11 @@ async function getTraceStorage(traceDebugged, blockNumber, functionName, txHash,
                 //create the call object
                 let stringDepthConstruction="";
                 for(let i=0;i<trace.depth-1;i++){
-                    stringDepthConstruction+="_0";
+                    stringDepthConstruction+="_1";
                 }
                 // internalTxId + "_" + txHash,
                 let call = {
-                    callId: "call_" + stringDepthConstruction+"_1",
+                    callId: "call_" + stringDepthConstruction+"_0",
                     callType: trace.op,
                     callDepth: trace.depth,
                     gasUsed: web3.utils.hexToNumber("0x"+trace.stack[trace.stack.length - 1]),
@@ -624,10 +624,10 @@ async function getTraceStorage(traceDebugged, blockNumber, functionName, txHash,
                 let lengthNumber = await web3.utils.hexToNumber("0x" + lengthBytes) / 32;
                 let stringDepthConstruction="";
                 for(let i=0;i<trace.depth-1;i++){
-                    stringDepthConstruction+="_0";
+                    stringDepthConstruction+="_1";
                 }
                 let call = {
-                    callId: "call_" + stringDepthConstruction+"_1",
+                    callId: "call_" + stringDepthConstruction+"_0",
                     callType: trace.op,
                     callDepth: trace.depth,
                     gas: web3.utils.hexToNumber("0x"+trace.stack[trace.stack.length - 1]),
@@ -766,10 +766,10 @@ async function getTraceStorage(traceDebugged, blockNumber, functionName, txHash,
                 //create the call object
                 let stringDepthConstruction="";
                 for(let i=0;i<trace.depth-1;i++){
-                    stringDepthConstruction+="_0";
+                    stringDepthConstruction+="_1";
                 }
                 let call = {
-                    callId: "call_" + stringDepthConstruction+"_1",
+                    callId: "call_" + stringDepthConstruction+"_0",
                     callType: trace.op,
                     callDepth: trace.depth,
                     gasUsed: web3.utils.hexToNumber("0x"+trace.stack[trace.stack.length - 1]),
@@ -797,10 +797,10 @@ async function getTraceStorage(traceDebugged, blockNumber, functionName, txHash,
                 let lengthNumber = await web3.utils.hexToNumber("0x" + lengthBytes) / 32;
                 let stringDepthConstruction="";
                 for(let i=0;i<trace.depth-1;i++){
-                    stringDepthConstruction+="_0";
+                    stringDepthConstruction+="_1";
                 }
                 let call = {
-                    callId: "call_" + stringDepthConstruction+"_1",
+                    callId: "call_" + stringDepthConstruction+"_0",
                     callType: trace.op,
                     callDepth: trace.depth,
                     gas: web3.utils.hexToNumber("0x"+trace.stack[trace.stack.length - 1]),

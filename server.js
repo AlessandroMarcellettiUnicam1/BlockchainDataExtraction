@@ -11,7 +11,7 @@ const {getAllTransactions} = require("./services/main");
 const app = express();
 const upload = multer({dest: 'uploads/'})
 const port = 8000;
-
+const { setEventTypes }=require("./ocelMapping/eventTypes");
 app.use(cors());
 
 // Middleware: Logging for every request
@@ -27,6 +27,7 @@ app.use(bodyParser.json({limit: '1mb'}));
 
 const {searchTransaction} = require('./query/query');
 const {connectDB} = require("./config/db");
+const { setObjectTypes } = require('./ocelMapping/objectTypes/objectTypes');
 
 app.post('/api/query', async (req, res) => {
     const query = req.body;
@@ -240,7 +241,23 @@ app.post('/csvocel-download', (req, res) => {
     });
     // fs.writeFileSync(filename, csvRow)
 })
-
+app.post('/api/ocelMap',(req,res)=>{
+    const ocelMap=req.body;
+    console.log(ocelMap)
+    let ocel = {
+        eventTypes: [],
+        objectTypes: [],
+        events: [],
+        objects: []
+    }
+    const eventTypes=setEventTypes(ocelMap.blockchainLog,ocel)
+    ocel.events = eventTypes.events
+    ocel.eventTypes = eventTypes.eventTypes
+    ocelMap.objectsToMap.forEach((obj)=>{
+        ocel=setObjectTypes(obj,ocel,ocelMap.blockchainLog)
+    })
+    res.send(ocel);
+})
 app.get('/', (req, res) => {
     res.send('Welcome to the Home Page!');
 });
@@ -259,3 +276,4 @@ app.get('/user/:id', (req, res) => {
 app.listen(port, () => {
     console.log(`Server running at http://localhost:${port}`);
 });
+

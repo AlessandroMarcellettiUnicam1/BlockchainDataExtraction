@@ -85,6 +85,14 @@ async function optimizedDecodeValues(sstore, contractTree, shaTraces, functionSt
         })
 
         result=fixOutput(result);
+        result.map(function(obj){
+            obj['variableName']=obj['name'];
+            delete obj['name']
+            obj['variableRawValue']=obj['value'];
+            delete obj['value']
+            obj['variableValue']=obj['decodedValue'];
+            delete obj['decodedValue']
+        })
         return result;
     }
     
