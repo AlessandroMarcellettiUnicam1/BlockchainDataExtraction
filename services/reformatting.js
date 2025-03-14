@@ -7,7 +7,7 @@ let _contractAddress = "";
 const primitiveValue = ["uint", "int", "string", "bool", "address", "enum", "bytes"];
 let contractCompiled = null;
 
-const csvColumns = ["txHash", "debugTime", "decodeTime", "totalTime"];
+const csvColumns = ["transactionHash", "debugTime", "decodeTime", "totalTime"];
 //selezioni i casi da applicare in base alla shatrace 
 //ovvero se ho un shatrace mi potrei trovare in un caso di mapping o array per prima cosa
 //nel caso avessi una struttura non ho un shatrace tranne quando nella struttura ho array o mapping 

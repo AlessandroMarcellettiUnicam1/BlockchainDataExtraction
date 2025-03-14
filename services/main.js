@@ -38,7 +38,7 @@ let contractCompiled = null
 
 let traceTime = 0
 let decodeTime = 0
-const csvColumns = ["txHash", "debugTime", "decodeTime", "totalTime"]
+const csvColumns = ["transactionHash", "debugTime", "decodeTime", "totalTime"]
 
 /**
  * Method called by the server to extract the transactions
@@ -123,14 +123,14 @@ async function getAllTransactions(mainContract, contractAddress, impl_contract, 
         // });
 
         const result = await getStorageData(contractTransactions, mainContract, contractTree, contractAddress, filters);
-        await removeCollectionsInOrder(contractAddress,networkName,process.env.LOG_DB_NAME);
+        // await removeCollectionsInOrder(contractAddress,networkName,process.env.LOG_DB_NAME);
         // await removeCollectionFromDB(networkName).then(removeAddressCollection(contractAddress,process.env.LOG_DB_NAME));
         return result;
         //changed contratAddress to impl since it contains the storage to evaluate
         // return await getStorageData(contractTransactions, mainContract, contractTree, impl_contract, filters,smartContract);
         // let csvRow = []
         // csvRow.push({
-        //     txHash: null,
+        //     transactionHash: null,
         //     debugTime: null,
         //     decodeTime: null,
         //     totalTime: parseFloat((traceTime + decodeTime).toFixed(2))
@@ -185,18 +185,18 @@ function applyFilters(contractTransactions, filters) {
  * This method involves the debugging of the transaction to extract the storage state.
  * The debugging is handled by the Hardhat environment configured in the file "hardhat.config.js"
  *
- * @param txHash - the transaction hash to be debugged
+ * @param transactionHash - the transaction hash to be debugged
  * @param blockNumber - the block number where the transaction is stored
  * @returns {Promise<{requiredTime: number, response: any}>} - the response of the debugged transaction and the required time to debug it
  */
-async function debugTransaction(txHash, blockNumber) {
+async function debugTransaction(transactionHash, blockNumber) {
     try {
         await hre.changeNetwork(networkName, blockNumber)
         const start = new Date()
 
        
         const response = await hre.network.provider.send("debug_traceTransaction", [
-            txHash
+            transactionHash
         ]);
 
         
@@ -252,7 +252,7 @@ async function getStorageData(contractTransactions, mainContract, contractTree, 
     
     for (const tx of transactionsFiltered) {
         let query = {
-            txHash: tx.hash.toLowerCase(),
+            transactionHash: tx.hash.toLowerCase(),
             contractAddress: contractAddress.toLowerCase()
         }
 
@@ -346,7 +346,7 @@ async function getStorageData(contractTransactions, mainContract, contractTree, 
 
             // let csvRow = []
             // csvRow.push({
-            //     txHash: tx.hash,
+            //     transactionHash: tx.hash,
             //     debugTime: requiredTime,
             //     decodeTime: requiredDecodeTime,
             //     totalTime: parseFloat((requiredTime + requiredDecodeTime).toFixed(2))
@@ -357,7 +357,7 @@ async function getStorageData(contractTransactions, mainContract, contractTree, 
             blockchainLog.push(newLog)
             //TODO: remember to remove the comment
             await connectDB(networkName)
-            await saveTransaction(newLog, tx.to,networkName)
+            await saveTransaction(newLog, tx.to)
             console.log("-----------------------------------------------------------------------");
 
         }
@@ -428,19 +428,19 @@ function decodeInput(type, value) {
  * @param traceDebugged - the debugged transaction with its opcodes
  * @param blockNumber - the block number where the transaction is stored
  * @param functionName - the function name of the invoked method, useful to decode the storage state
- * @param txHash - the transaction hash used only to identify the internal transactions
+ * @param transactionHash - the transaction hash used only to identify the internal transactions
  * @param mainContract - the main contract to decode, used to identify the contract variables
  * @param contractTree - the contract tree used to identify the contract variables with the 'mainContract'
  * @returns {Promise<{decodedValues: (*&{variableValue: string|string|*})[], internalCalls: *[]}>} - the decoded values of the storage state and the internal calls
  */
-async function getTraceStorage(traceDebugged, blockNumber, functionName, txHash, mainContract, contractTree,smartContract) {
+async function getTraceStorage(traceDebugged, blockNumber, functionName, transactionHash, mainContract, contractTree,smartContract) {
     /* const provider = ganache.provider({
          network_id: 1,
          fork: 'https://mainnet.infura.io/v3/f3851e4d467341f1b5927b6546d9f30c\@' + blockNumber
      });
      const response = await provider.request({
          method: "debug_traceTransaction",
-         params: [txHash]
+         params: [transactionHash]
      });*/
 
     // await helpers.reset(web3Endpoint, Number(blockNumber));
@@ -461,7 +461,7 @@ async function getTraceStorage(traceDebugged, blockNumber, functionName, txHash,
     // })
 
     // const response = await hre.network.provider.send("debug_traceTransaction", [
-    //     txHash
+    //     transactionHash
     // ]);
     //used to store the storage changed by the function. Used to compare the generated keys
     let functionStorage = {};
@@ -590,7 +590,7 @@ async function getTraceStorage(traceDebugged, blockNumber, functionName, txHash,
                 for(let i=0;i<trace.depth-1;i++){
                     stringDepthConstruction+="_1";
                 }
-                // internalTxId + "_" + txHash,
+                // internalTxId + "_" + transactionHash,
                 let call = {
                     callId: "call_" + stringDepthConstruction+"_0",
                     callType: trace.op,
@@ -880,7 +880,7 @@ async function getTraceStorage(traceDebugged, blockNumber, functionName, txHash,
     // const uniqueStorage = Array.from(new Set(functionStorage.map(JSON.stringify))).map(JSON.parse);
     fs.writeFileSync('./temporaryTrials/uniqueSStore.json', JSON.stringify(uniqueSStore));
     if (Object.keys(functionStorage).length !== 0) {
-        // fs.writeFileSync(`./temporaryTrials/functionStorage_${txHash}.json`, JSON.stringify(functionStorage));
+        // fs.writeFileSync(`./temporaryTrials/functionStorage_${transactionHash}.json`, JSON.stringify(functionStorage));
         fs.writeFileSync('./temporaryTrials/finalShaTraces.json', JSON.stringify(finalShaTraces));
     }
 
@@ -1854,12 +1854,12 @@ async function getContractVariableTree(compiled) {
 /**
  * Method used to retrieve the emitted events in the transaction block, using web3.js.
  *
- * @param txHash - the hash of the transaction to get the events
+ * @param transactionHash - the hash of the transaction to get the events
  * @param block - the block number of the transaction
  * @param contractAddress - the address of the contract to get the events
  * @returns {Promise<*[]>} - the events emitted by the transaction
  */
-async function getEvents(txHash, block, contractAddress) {
+async function getEvents(transactionHash, block, contractAddress) {
     const myContract = new web3.eth.Contract(JSON.parse(contractAbi), contractAddress);
     let filteredEvents = [];
     const pastEvents = await myContract.getPastEvents("allEvents", {fromBlock: block, toBlock: block});
@@ -1871,7 +1871,7 @@ async function getEvents(txHash, block, contractAddress) {
             }
         }
         const event = {
-            eventId: "event_" + eventId + "_" + txHash,
+            eventId: "event_" + eventId + "_" + transactionHash,
             eventName: pastEvents[i].event,
             eventValues: pastEvents[i].returnValues
         };

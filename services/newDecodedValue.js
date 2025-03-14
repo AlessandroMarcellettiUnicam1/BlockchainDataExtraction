@@ -12,7 +12,7 @@ let contractCompiled = null;
 
 let traceTime = 0
 let decodeTime = 0
-const csvColumns = ["txHash", "debugTime", "decodeTime", "totalTime"]
+const csvColumns = ["transactionHash", "debugTime", "decodeTime", "totalTime"]
 
 async function optimizedDecodeValues(sstore, contractTree, shaTraces, functionStorage, functionName, mainContract, web3Variable, contractCompiledPassed) {
     web3 = web3Variable;

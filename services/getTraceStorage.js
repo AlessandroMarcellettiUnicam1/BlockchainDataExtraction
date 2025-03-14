@@ -3,20 +3,20 @@
  * @param traceDebugged - the debugged transaction with its opcodes
  * @param blockNumber - the block number where the transaction is stored
  * @param functionName - the function name of the invoked method, useful to decode the storage state
- * @param txHash - the transaction hash used only to identify the internal transactions
+ * @param transactionHash - the transaction hash used only to identify the internal transactions
  * @param mainContract - the main contract to decode, used to identify the contract variables
  * @param contractTree - the contract tree used to identify the contract variables with the 'mainContract'
  * @returns {Promise<{decodedValues: (*&{variableValue: string|string|*})[], internalCalls: *[]}>} - the decoded values of the storage state and the internal calls
  */
 const { newDecodeValues } = require('./newDecodeValues');
-async function getTraceStorage(traceDebugged, blockNumber, functionName, txHash, mainContract, contractTree) {
+async function getTraceStorage(traceDebugged, blockNumber, functionName, transactionHash, mainContract, contractTree) {
     /* const provider = ganache.provider({
          network_id: 1,
          fork: 'https://mainnet.infura.io/v3/f3851e4d467341f1b5927b6546d9f30c\@' + blockNumber
      });
      const response = await provider.request({
          method: "debug_traceTransaction",
-         params: [txHash]
+         params: [transactionHash]
      });*/
 
     // await helpers.reset(web3Endpoint, Number(blockNumber));
@@ -37,7 +37,7 @@ async function getTraceStorage(traceDebugged, blockNumber, functionName, txHash,
     // })
 
     // const response = await hre.network.provider.send("debug_traceTransaction", [
-    //     txHash
+    //     transactionHash
     // ]);
     //used to store the storage changed by the function. Used to compare the generated keys
     let functionStorage = {};
@@ -164,7 +164,7 @@ async function getTraceStorage(traceDebugged, blockNumber, functionName, txHash,
                 let lengthNumber = web3.utils.hexToNumber("0x" + lengthBytes) / 32;
                 //create the call object
                 let call = {
-                    callId: "call_" + internalTxId + "_" + txHash,
+                    callId: "call_" + internalTxId + "_" + transactionHash,
                     callType: trace.op,
                     to: trace.stack[trace.stack.length - 2],
                     inputsCall: []
@@ -181,7 +181,7 @@ async function getTraceStorage(traceDebugged, blockNumber, functionName, txHash,
                 const lengthBytes = trace.stack[trace.stack.length - 4];
                 let lengthNumber = await web3.utils.hexToNumber("0x" + lengthBytes) / 32;
                 let call = {
-                    callId: "call_" + internalTxId + "_" + txHash,
+                    callId: "call_" + internalTxId + "_" + transactionHash,
                     callType: trace.op,
                     to: trace.stack[trace.stack.length - 2],
                     inputsCall: []
@@ -245,7 +245,7 @@ async function getTraceStorage(traceDebugged, blockNumber, functionName, txHash,
     // const uniqueStorage = Array.from(new Set(functionStorage.map(JSON.stringify))).map(JSON.parse);
     fs.writeFileSync('./temporaryTrials/uniqueSStore.json', JSON.stringify(uniqueSStore));
     if (Object.keys(functionStorage).length !== 0) {
-        // fs.writeFileSync(`./temporaryTrials/functionStorage_${txHash}.json`, JSON.stringify(functionStorage));
+        // fs.writeFileSync(`./temporaryTrials/functionStorage_${transactionHash}.json`, JSON.stringify(functionStorage));
         fs.writeFileSync('./temporaryTrials/finalShaTraces.json', JSON.stringify(finalShaTraces));
     }
 

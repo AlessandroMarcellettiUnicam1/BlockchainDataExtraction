@@ -4,8 +4,7 @@ const {extractionLogSchema,extractionAbiSchema} = require("./schema/data");
 const {getModelByContractAddress} = require('./query/query');
 const {searchAbi} =require("./query/query");
 
-async function saveTransaction(data, contractAddress,network) {
-    await connectDB(network)
+async function saveTransaction(data, contractAddress) {
     try {
         const TransactionModel = getModelByContractAddress(contractAddress);
         
@@ -17,7 +16,6 @@ async function saveTransaction(data, contractAddress,network) {
     }
 }
 async function saveExtractionLog(userLog,network) {
-    await connectDB(network)
     try {
         const ExtractionLog = mongoose.model('ExtractionLog', extractionLogSchema, 'ExtractionLog');
         const newExtractionLog = new ExtractionLog(userLog);

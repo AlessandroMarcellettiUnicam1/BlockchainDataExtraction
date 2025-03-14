@@ -121,13 +121,13 @@ app.post('/csv-download', async (req, res) => {
     const jsonToDownload = req.body.jsonLog;
     const fileName = 'jsonLog.csv';
 
-    const columns = ["BlockNumber", "TxHash", "Activity", "Timestamp", "Sender", "GasFee", "StorageState", "Inputs", "Events", "InternalTxs"]
+    const columns = ["BlockNumber", "transactionHash", "Activity", "Timestamp", "Sender", "GasFee", "StorageState", "Inputs", "Events", "InternalTxs"]
     const logs = jsonToDownload.map(log => {
 
         const customDate = log.timestamp.split(".")[0] + ".000+0100"
 
         const blockNumber = log.blockNumber;
-        const txHash = log.txHash;
+        const tr = log.transactionHash;
         const activity = log.activity;
         const timestamp = customDate;
         const sender = log.sender;
@@ -138,7 +138,7 @@ app.post('/csv-download', async (req, res) => {
         const internalTxs = log.internalTxs.map(tx => tx.callType).toString();
         return {
             BlockNumber: blockNumber,
-            TxHash: txHash,
+            transactionHash: transactionHash,
             Activity: activity,
             Timestamp: timestamp,
             Sender: sender,

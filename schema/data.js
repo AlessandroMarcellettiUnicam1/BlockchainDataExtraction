@@ -1,7 +1,7 @@
 const mongoose = require('mongoose');
 
 const transactionSchema = new mongoose.Schema({
-    txHash: {type: String, unique: true},
+    transactionHash: {type: String, unique: true},
     contractAddress: {type: String},
     sender: {type: String},
     gasUsed: {type: Number},
@@ -55,6 +55,7 @@ const extractionLogSchema = new mongoose.Schema({
 })
 
 const extractionAbiSchema = new mongoose.Schema({
+    contractName: {type: String},
     contractAddress: {type: String},
     abi: {type: String}
 })
