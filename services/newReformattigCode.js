@@ -92,6 +92,11 @@ async function optimizedDecodeValues(sstore, contractTree, shaTraces, functionSt
             delete obj['value']
             obj['variableValue']=obj['decodedValue'];
             delete obj['decodedValue']
+
+            // TODO: code used to remove unnecessary fields
+            delete obj['slot']
+            delete obj['offset']
+            delete obj['contentSlot']
         })
         return result;
     }

@@ -479,7 +479,6 @@ async function getTraceStorage(traceDebugged, blockNumber, functionName, transac
     const sstoreToPrint = []
     fs.writeFileSync("./temporaryTrials/trace.json", JSON.stringify(traceDebugged.structLogs), {flag: "a+"});
     if (traceDebugged.structLogs) {
-        let internalTxId = 0
         for (const trace of traceDebugged.structLogs) {
             //if SHA3 is found then read all keys before being hashed
             // computation of the memory location and the storage index of a complex variable (mapping or struct)
@@ -586,13 +585,7 @@ async function getTraceStorage(traceDebugged, blockNumber, functionName, transac
                 //convert the length to number
                 let lengthNumber =Math.trunc( web3.utils.hexToNumber("0x" + lengthBytes) / 32);
                 //create the call object
-                let stringDepthConstruction="";
-                for(let i=0;i<trace.depth-1;i++){
-                    stringDepthConstruction+="_1";
-                }
-                // internalTxId + "_" + transactionHash,
                 let call = {
-                    callId: "call_" + stringDepthConstruction+"_0",
                     callType: trace.op,
                     callDepth: trace.depth,
                     gasUsed: web3.utils.hexToNumber("0x"+trace.stack[trace.stack.length - 1]),
@@ -622,12 +615,7 @@ async function getTraceStorage(traceDebugged, blockNumber, functionName, transac
                 let offsetNumber = await web3.utils.hexToNumber("0x" + offsetBytes) / 32;
                 const lengthBytes = trace.stack[trace.stack.length - 4];
                 let lengthNumber = await web3.utils.hexToNumber("0x" + lengthBytes) / 32;
-                let stringDepthConstruction="";
-                for(let i=0;i<trace.depth-1;i++){
-                    stringDepthConstruction+="_1";
-                }
                 let call = {
-                    callId: "call_" + stringDepthConstruction+"_0",
                     callType: trace.op,
                     callDepth: trace.depth,
                     gas: web3.utils.hexToNumber("0x"+trace.stack[trace.stack.length - 1]),
@@ -651,11 +639,9 @@ async function getTraceStorage(traceDebugged, blockNumber, functionName, transac
                 //console.log(trace);
             }
 //             fs.writeFileSync("./temporaryTrials/trace.json", JSON.stringify(trace), {flag: "a+"});
-            internalTxId++
         }
     }
     if (traceDebugged.structLogs) {
-        let internalTxId = 0
         for (const trace of traceDebugged.structLogs) {
 
             //if SHA3 is found then read all keys before being hashed
@@ -764,12 +750,7 @@ async function getTraceStorage(traceDebugged, blockNumber, functionName, transac
                 //convert the length to number
                 let lengthNumber = web3.utils.hexToNumber("0x" + lengthBytes) / 32;
                 //create the call object
-                let stringDepthConstruction="";
-                for(let i=0;i<trace.depth-1;i++){
-                    stringDepthConstruction+="_1";
-                }
                 let call = {
-                    callId: "call_" + stringDepthConstruction+"_0",
                     callType: trace.op,
                     callDepth: trace.depth,
                     gasUsed: web3.utils.hexToNumber("0x"+trace.stack[trace.stack.length - 1]),
@@ -795,12 +776,7 @@ async function getTraceStorage(traceDebugged, blockNumber, functionName, transac
                 let offsetNumber = await web3.utils.hexToNumber("0x" + offsetBytes) / 32;
                 const lengthBytes = trace.stack[trace.stack.length - 4];
                 let lengthNumber = await web3.utils.hexToNumber("0x" + lengthBytes) / 32;
-                let stringDepthConstruction="";
-                for(let i=0;i<trace.depth-1;i++){
-                    stringDepthConstruction+="_1";
-                }
                 let call = {
-                    callId: "call_" + stringDepthConstruction+"_0",
                     callType: trace.op,
                     callDepth: trace.depth,
                     gas: web3.utils.hexToNumber("0x"+trace.stack[trace.stack.length - 1]),
@@ -823,7 +799,6 @@ async function getTraceStorage(traceDebugged, blockNumber, functionName, transac
                 //console.log(trace);
             }
 //             fs.writeFileSync("./temporaryTrials/trace.json", JSON.stringify(trace), {flag: "a+"});
-            internalTxId++
         }
     }
     
@@ -1863,7 +1838,6 @@ async function getEvents(transactionHash, block, contractAddress) {
     const myContract = new web3.eth.Contract(JSON.parse(contractAbi), contractAddress);
     let filteredEvents = [];
     const pastEvents = await myContract.getPastEvents("allEvents", {fromBlock: block, toBlock: block});
-    let eventId = 0
     for (let i = 0; i < pastEvents.length; i++) {
         for (const value in pastEvents[i].returnValues) {
             if (typeof pastEvents[i].returnValues[value] === "bigint") {
@@ -1871,12 +1845,10 @@ async function getEvents(transactionHash, block, contractAddress) {
             }
         }
         const event = {
-            eventId: "event_" + eventId + "_" + transactionHash,
             eventName: pastEvents[i].event,
             eventValues: pastEvents[i].returnValues
         };
         filteredEvents.push(event);
-        eventId++
     }
 
     return filteredEvents;

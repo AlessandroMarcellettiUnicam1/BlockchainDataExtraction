@@ -11,7 +11,7 @@ const setEventTypes = (jsonLog, ocel) => {
             id: log.transactionHash,
             relationships: [],
             timestamp: log.timestamp,
-            name: log.activity || "",
+            name: log.functionName || "",
             gasUsed: log.gasUsed,
             blockNumber: log.blockNumber,
             sender: log.sender,

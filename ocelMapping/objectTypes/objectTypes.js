@@ -16,7 +16,7 @@ export const setObjectTypes = (obj, ocel,jsonLog) => {
             newOcel.objects = contractAddressObjectTypes.objects
             newOcel.events = contractAddressObjectTypes.events
             break;
-        case "transactionHash":
+        case "txHash":
             const txHashObjectTypes = handleTxHashObjects(jsonLog, newOcel)
             newOcel.objectTypes = txHashObjectTypes.objectTypes
             newOcel.objects = txHashObjectTypes.objects
