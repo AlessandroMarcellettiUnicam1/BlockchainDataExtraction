@@ -27,7 +27,7 @@ const eventSchema = new mongoose.Schema({
 }, { _id : false });
 
 const transactionSchema = new mongoose.Schema({
-    txHash: {type: String, unique: true},
+    transactionHash: {type: String, unique: true},
     contractAddress: {type: String},
     sender: {type: String},
     gasUsed: {type: Number},
@@ -66,4 +66,9 @@ const extractionLogSchema = new mongoose.Schema({
     timestampLog: {type: String}
 }, {versionKey: false});
 
-module.exports = {transactionSchema, extractionLogSchema};
+const extractionAbiSchema = new mongoose.Schema({
+    contractName: {type: String},
+    contractAddress: {type: String},
+    abi: {type: String}
+})
+module.exports = {transactionSchema, extractionLogSchema,extractionAbiSchema};
