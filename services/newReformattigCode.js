@@ -98,11 +98,29 @@ async function optimizedDecodeValues(sstore, contractTree, shaTraces, functionSt
             delete obj['offset']
             delete obj['contentSlot']
         })
+        result=removeStrunctFormOutput(result);
         return result;
     }
     
 }
-
+function removeStrunctFormOutput(result){
+    let outputResult=[]
+    result.forEach((element)=>{
+        if(element.type.includes("struct")){
+            element.element.forEach((e)=>{
+                outputResult.push({
+                    type:element.type,
+                    variableName:element.variableName+"_"+e.label,
+                    variableRawValue:e.contentSlot,
+                    variableValue:e.decodedValue
+                })
+            })
+        }else{
+            outputResult.push(element);
+        }
+    })
+    return outputResult;
+}
 function fixOutput(result){
     let outputResult=[]
     result.forEach((element)=>{

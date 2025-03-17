@@ -66,4 +66,9 @@ const extractionLogSchema = new mongoose.Schema({
     timestampLog: {type: String}
 }, {versionKey: false});
 
-module.exports = {transactionSchema, extractionLogSchema};
+const extractionAbiSchema = new mongoose.Schema({
+    contractName: {type: String},
+    contractAddress: {type: String},
+    abi: {type: String}
+})
+module.exports = {transactionSchema, extractionLogSchema,extractionAbiSchema};
