@@ -29,7 +29,7 @@ async function optimizedDecodeValues(sstore, contractTree, shaTraces, functionSt
     let resultOfPreprocessing=[]
     if(functionStorage!={}){
         for( const shatrace of shaTraces){
-            if(shatrace.hasOwnProperty("indexSum")){
+            // if(shatrace.hasOwnProperty("indexSum")){
                 let slotNumber=web3.utils.hexToNumber("0x" + shatrace.hexStorageIndex);
                 if(slotNumber<300 && !shatracesProcessed.includes(shatrace.finalKey)){
                     let variabilePerSlot=getContractVariable(slotNumber,contractTree,functionName,mainContract)[0];
@@ -51,7 +51,7 @@ async function optimizedDecodeValues(sstore, contractTree, shaTraces, functionSt
                 }else {
                     shatracesProcessed.push(shatrace.finalKey);
                 }
-            }
+            // }
         }
     //tiro fuori che cosa ho dentro il function storage in base agli slot di memori che leggo 
         let mainContractCompiled=getMainContractCompiled(mainContract);
@@ -83,7 +83,7 @@ async function optimizedDecodeValues(sstore, contractTree, shaTraces, functionSt
             result.push(resultElement)
             
         })
-        result = result.filter(obj => obj !== undefined);
+        
         result=fixOutput(result);
         result.map(function(obj){
             obj['variableName']=obj['name'];
@@ -118,9 +118,23 @@ async function optimizedDecodeValues(sstore, contractTree, shaTraces, functionSt
         result = expandedResult;
         result=removeStrunctFormOutput(result);
         result = result.filter(obj => obj.variableRawValue !== undefined && obj.variableValue !== undefined);
+        result=removeDuplicateV2(result);
         return result;
     }
     
+}
+function removeDuplicateV2(result){
+    let uniqueResults = [];
+    let seen =[];
+
+    result.forEach((element) => {
+        const key =element.type+element.variableName+element.variableRawValue+element.variableValue;
+        if (!seen.includes(key)) {
+            seen.push(key);
+            uniqueResults.push(element);
+        }
+    });
+    return uniqueResults;
 }
 function removeStrunctFormOutput(result){
     let outputResult=[]
