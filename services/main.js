@@ -832,7 +832,6 @@ async function getTraceStorage(traceDebugged, blockNumber, functionName, transac
                 //con l'indice 0
                 // console.log("---sono nel while cercando cose---")
                 //if the storage key is not a standard number then check for the previous one
-                console.log(web3.utils.hexToNumber("0x" + trackBuffer[test].hexStorageIndex))
                 if (!(web3.utils.hexToNumber("0x" + trackBuffer[test].hexStorageIndex) < 300)) {
                     if(test > 0){
                         test--;

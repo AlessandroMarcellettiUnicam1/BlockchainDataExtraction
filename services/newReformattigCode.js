@@ -83,7 +83,7 @@ async function optimizedDecodeValues(sstore, contractTree, shaTraces, functionSt
             result.push(resultElement)
             
         })
-
+        result = result.filter(obj => obj !== undefined);
         result=fixOutput(result);
         result.map(function(obj){
             obj['variableName']=obj['name'];
@@ -808,7 +808,7 @@ function getContractVariable(slotIndex, contractTree, functionName, mainContract
                             type:contractTree[contractId].storage[i].type,
                             slot:contractTree[contractId].storage[i].slot,
                             offset:contractTree[contractId].storage[i].offset,
-                            contentSlot:web3.utils.padLeft( web3.utils.numberToHex(slotIndex).slice(2),64)
+                            contentSlot:web3.utils.padLeft( web3.utils.numberToHex(Number(contractTree[contractId].storage[i].slot)).slice(2),64)
                         }
                         contractVariables.push(variable);
                     }
