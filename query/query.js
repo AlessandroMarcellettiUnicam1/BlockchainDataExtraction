@@ -1,5 +1,5 @@
 const mongoose = require('mongoose');
-const {connectDB} = require("../config/db");
+
 const {
     transactionSchema,
 } = require("../schema/data");
@@ -39,13 +39,13 @@ async function searchTransaction(query) {
 
         if (query.contractAddress) {
             const collection = mongoose.connection.db.collection(query.contractAddress);
-            const transactions = await collection.find(query).toArray();
+            const transactions = await collection.find(query, { projection: { _id: 0 }}).toArray();
             results = results.concat(transactions);
         } else {
             const collections = await mongoose.connection.db.listCollections().toArray();
             for (let collectionsDB of collections) {
                 const collection = mongoose.connection.db.collection(collectionsDB.name);
-                const transactions = await collection.find(query).toArray();
+                const transactions = await collection.find(query, { projection: { _id: 0 }}).toArray();
                 results = results.concat(transactions);
             }
         }
