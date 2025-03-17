@@ -27,11 +27,11 @@ const eventSchema = new mongoose.Schema({
 }, { _id : false });
 
 const transactionSchema = new mongoose.Schema({
+    functionName: {type: String},
     transactionHash: {type: String, unique: true},
     contractAddress: {type: String},
     sender: {type: String},
     gasUsed: {type: Number},
-    activity: {type: String},
     blockNumber: {type: Number},
     timestamp: {type: Date},
     inputs: [
@@ -46,7 +46,7 @@ const transactionSchema = new mongoose.Schema({
     events: [
         eventSchema
     ]
-}, {versionKey: false});
+}, { versionKey: false });
 
 const filterExtractionSchema = new mongoose.Schema({
     gasUsed: {type: mongoose.Schema.Types.Mixed},
