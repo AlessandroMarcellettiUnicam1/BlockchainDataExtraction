@@ -1,40 +1,52 @@
 const mongoose = require('mongoose');
 
+const inputSchema = new mongoose.Schema({
+    inputName: {type: String},
+    type: {type: mongoose.Schema.Types.Mixed},
+    inputValue: {type: mongoose.Schema.Types.Mixed}
+}, { _id : false });
+
+const storageStateSchema = new mongoose.Schema({
+    variableName: {type: String},
+    type: {type: String},
+    variableValue: {type: String},
+    variableRawValue: {type: String}
+}, { _id : false });
+
+const internalTxSchema = new mongoose.Schema({
+    callType: {type: String},
+    to: {type: String},
+    inputsCall: [
+        {type: mongoose.Schema.Types.Mixed}
+    ]
+}, { _id : false });
+
+const eventSchema = new mongoose.Schema({
+    eventName: {type: String},
+    eventValues: {type: mongoose.Schema.Types.Mixed}
+}, { _id : false });
+
 const transactionSchema = new mongoose.Schema({
-    txHash: {type: String, unique: true},
+    functionName: {type: String},
+    transactionHash: {type: String, unique: true},
     contractAddress: {type: String},
     sender: {type: String},
     gasUsed: {type: Number},
-    activity: {type: String},
     blockNumber: {type: Number},
     timestamp: {type: Date},
-    inputs: [{
-        inputId: {type: String},
-        inputName: {type: String},
-        type: {type: mongoose.Schema.Types.Mixed},
-        inputValue: {type: mongoose.Schema.Types.Mixed}
-    }],
-    storageState: [{
-        variableId: {type: String},
-        variableName: {type: String},
-        type: {type: String},
-        variableValue: {type: String},
-        variableRawValue: {type: String}
-    }],
-    internalTxs: [{
-        callId: {type: String},
-        callType: {type: String},
-        to: {type: String},
-        inputsCall: [
-            {type: mongoose.Schema.Types.Mixed}
-        ]
-    }],
-    events: [{
-        eventId: {type: String},
-        eventName: {type: String},
-        eventValues: {type: mongoose.Schema.Types.Mixed}
-    }]
-});
+    inputs: [
+        inputSchema
+    ],
+    storageState: [
+        storageStateSchema
+    ],
+    internalTxs: [
+        internalTxSchema
+    ],
+    events: [
+        eventSchema
+    ]
+}, { versionKey: false });
 
 const filterExtractionSchema = new mongoose.Schema({
     gasUsed: {type: mongoose.Schema.Types.Mixed},
@@ -42,7 +54,7 @@ const filterExtractionSchema = new mongoose.Schema({
     timestamp: {type: mongoose.Schema.Types.Mixed},
     senders: {type: Array},
     functions: {type: Array}
-})
+}, { _id : false });
 
 const extractionLogSchema = new mongoose.Schema({
     networkUsed: {type: String},
@@ -52,9 +64,10 @@ const extractionLogSchema = new mongoose.Schema({
     toBlock: {type: String},
     filters: {type: filterExtractionSchema},
     timestampLog: {type: String}
-})
+}, {versionKey: false});
 
 const extractionAbiSchema = new mongoose.Schema({
+    contractName: {type: String},
     contractAddress: {type: String},
     abi: {type: String}
 })

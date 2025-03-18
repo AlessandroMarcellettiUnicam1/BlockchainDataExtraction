@@ -4,7 +4,7 @@ const {extractionLogSchema,extractionAbiSchema} = require("./schema/data");
 const {getModelByContractAddress} = require('./query/query');
 const {searchAbi} =require("./query/query");
 
-async function saveTransaction(data, contractAddress,network) {
+async function saveTransaction(data, contractAddress) {
     try {
         const TransactionModel = getModelByContractAddress(contractAddress);
         
@@ -15,12 +15,13 @@ async function saveTransaction(data, contractAddress,network) {
         console.error('Error saving data: ', err);
     }
 }
-const ExtractionLog = mongoose.model('ExtractionLog', extractionLogSchema, 'ExtractionLog');
-async function saveExtractionLog(userLog) {
+async function saveExtractionLog(userLog,network) {
     try {
+        const ExtractionLog = mongoose.model('ExtractionLog', extractionLogSchema, 'ExtractionLog');
         const newExtractionLog = new ExtractionLog(userLog);
         await newExtractionLog.save();
         console.log('Extraction log successfully saved');
+        await mongoose.disconnect()
     } catch (err) {
         console.error('Extraction log storing error: ', err);
         throw new Error(err.message)

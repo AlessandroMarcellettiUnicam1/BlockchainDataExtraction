@@ -11,7 +11,7 @@ const {getAllTransactions} = require("./services/main");
 const app = express();
 const upload = multer({dest: 'uploads/'})
 const port = 8000;
-
+const { setEventTypes }=require("./ocelMapping/eventTypes");
 app.use(cors());
 
 // Middleware: Logging for every request
@@ -23,10 +23,28 @@ app.use((req, res, next) => {
 // Middleware: Serving static files from the "public" directory
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(bodyParser.urlencoded({extended: true}));
-app.use(bodyParser.json({limit: '1mb'}));
+app.use(bodyParser.json({limit: '10mb'}));
 
 const {searchTransaction} = require('./query/query');
 const {connectDB} = require("./config/db");
+const { setObjectTypes } = require('./ocelMapping/objectTypes/objectTypes');
+
+app.post('/api/ocelMap',(req,res)=>{
+    const ocelMap=req.body;
+    let ocel = {
+        eventTypes: [],
+        objectTypes: [],
+        events: [],
+        objects: []
+    }
+    const eventTypes=setEventTypes(ocelMap.blockchainLog,ocel)
+    ocel.events = eventTypes.events
+    ocel.eventTypes = eventTypes.eventTypes
+    ocelMap.objectsToMap.forEach((obj)=>{
+        ocel=setObjectTypes(obj,ocel,ocelMap.blockchainLog)
+    })
+    res.send(ocel);
+})
 
 app.post('/api/query', async (req, res) => {
     const query = req.body;
@@ -120,13 +138,13 @@ app.post('/csv-download', async (req, res) => {
     const jsonToDownload = req.body.jsonLog;
     const fileName = 'jsonLog.csv';
 
-    const columns = ["BlockNumber", "TxHash", "Activity", "Timestamp", "Sender", "GasFee", "StorageState", "Inputs", "Events", "InternalTxs"]
+    const columns = ["BlockNumber", "transactionHash", "Activity", "Timestamp", "Sender", "GasFee", "StorageState", "Inputs", "Events", "InternalTxs"]
     const logs = jsonToDownload.map(log => {
 
         const customDate = log.timestamp.split(".")[0] + ".000+0100"
 
         const blockNumber = log.blockNumber;
-        const txHash = log.txHash;
+        const tr = log.transactionHash;
         const activity = log.activity;
         const timestamp = customDate;
         const sender = log.sender;
@@ -137,7 +155,7 @@ app.post('/csv-download', async (req, res) => {
         const internalTxs = log.internalTxs.map(tx => tx.callType).toString();
         return {
             BlockNumber: blockNumber,
-            TxHash: txHash,
+            transactionHash: transactionHash,
             Activity: activity,
             Timestamp: timestamp,
             Sender: sender,
@@ -259,3 +277,4 @@ app.get('/user/:id', (req, res) => {
 app.listen(port, () => {
     console.log(`Server running at http://localhost:${port}`);
 });
+

@@ -29,7 +29,7 @@ async function optimizedDecodeValues(sstore, contractTree, shaTraces, functionSt
     let resultOfPreprocessing=[]
     if(functionStorage!={}){
         for( const shatrace of shaTraces){
-            if(shatrace.hasOwnProperty("indexSum")){
+            // if(shatrace.hasOwnProperty("indexSum")){
                 let slotNumber=web3.utils.hexToNumber("0x" + shatrace.hexStorageIndex);
                 if(slotNumber<300 && !shatracesProcessed.includes(shatrace.finalKey)){
                     let variabilePerSlot=getContractVariable(slotNumber,contractTree,functionName,mainContract)[0];
@@ -51,7 +51,7 @@ async function optimizedDecodeValues(sstore, contractTree, shaTraces, functionSt
                 }else {
                     shatracesProcessed.push(shatrace.finalKey);
                 }
-            }
+            // }
         }
     //tiro fuori che cosa ho dentro il function storage in base agli slot di memori che leggo 
         let mainContractCompiled=getMainContractCompiled(mainContract);
@@ -83,14 +83,100 @@ async function optimizedDecodeValues(sstore, contractTree, shaTraces, functionSt
             result.push(resultElement)
             
         })
-
+        
         result=fixOutput(result);
+        result.map(function(obj){
+            obj['variableName']=obj['name'];
+            delete obj['name']
+            obj['variableRawValue']=obj['value'];
+            delete obj['value']
+            obj['variableValue']=obj['decodedValue'];
+            delete obj['decodedValue']
+
+            // TODO: code used to remove unnecessary fields
+            delete obj['slot']
+            delete obj['offset']
+            delete obj['contentSlot']
+        })
+        let expandedResult = [];
+        result.forEach((obj) => {
+            if (Array.isArray(obj.variableValue)) {
+            const maxLength = obj.variableValue.length;
+            for (let i = 0; i < maxLength; i++) {
+                let variableRawValue=obj.variableRawValue[i]?obj.variableRawValue[i]:obj.variableRawValue;
+                expandedResult.push({
+                type: obj.type,
+                variableName: obj.variableName + "_" + i,
+                variableRawValue: variableRawValue,
+                variableValue: obj.variableValue[i]
+                });
+            }
+            } else {
+            expandedResult.push(obj);
+            }
+        });
+        result = expandedResult;
+        result=removeStrunctFormOutput(result);
+        result = result.filter(obj => obj.variableRawValue !== undefined && obj.variableValue !== undefined);
+        result=removeDuplicateV2(result);
         return result;
     }
     
 }
+function removeDuplicateV2(result){
+    let uniqueResults = [];
+    let seen =[];
 
+    result.forEach((element) => {
+        const key =element.type+element.variableName+element.variableRawValue+element.variableValue;
+        if (!seen.includes(key)) {
+            seen.push(key);
+            uniqueResults.push(element);
+        }
+    });
+    return uniqueResults;
+}
+function removeStrunctFormOutput(result){
+    let outputResult=[]
+    result.forEach((element)=>{
+        if(element.type.includes("struct")){
+            extractElementFromStruct(element,outputResult);
+        }else{
+            outputResult.push(element);
+            
+        }
+    })
+    return outputResult;
+}
+function extractElementFromStruct(element,outputResult){
+    element.element.forEach((e)=>{
+        if(e.type.includes("struct")){
+            extractElementFromStruct(e,outputResult);
+        }else if(e.type.includes("array") && Array.isArray(e.decodedValue)){
+            let name=element.name?element.name:"";
+            e.decodedValue.forEach((arrayElement)=>{
+                outputResult.push({
+                    type:e.type,
+                    variableName:name+"_"+e.label,
+                    variableRawValue:e.contentSlot,
+                    variableValue:arrayElement
+                })
+            })
+            
+            
+        }else{
+            let name=element.name?element.name:"";
+            outputResult.push({
+                type:element.type,
+                variableName:name+"_"+e.label,
+                variableRawValue:e.contentSlot,
+                variableValue:e.decodedValue
+            })
+        }
+    })
+}
 function fixOutput(result){
+    removeDuplicate(result);
     let outputResult=[]
     result.forEach((element)=>{
         if(element){
@@ -124,7 +210,7 @@ function fixOutput(result){
                     if(Array.isArray(element.decodedValue) && element.decodedValue.length===0 && flag){
                         flag=false;
                         // outputResult.push(element);
-                    }else if(!Array.isArray(element.decodedValue) && element.decodedValue===undefined && flag){
+                    }else if((!Array.isArray(element.decodedValue)) && element.decodedValue===undefined && flag){
                         // outputResult.push(element);
                         flag=false;
                     }
@@ -137,7 +223,19 @@ function fixOutput(result){
     
     return outputResult;
 }
+function removeDuplicate(result){
+    const uniqueResults = [];
+    const seen = new Set();
 
+    result.forEach((element) => {
+        const key = element.name;
+        if (!seen.has(key)) {
+            seen.add(key);
+            uniqueResults.push(element);
+        }
+    });
+    result = uniqueResults;
+}
 function checkDuplicate(outputResult){
     outputResult.forEach((e)=>{
         if(e.astId===element.astId){
@@ -547,7 +645,9 @@ function readStruct(variable,functionStorage,contractCompiled){
     if(variable.element){
         variable.element.forEach((element)=>{
             if(element.value){
-                element=(decodeValue(element,functionStorage,contractCompiled))
+                element=decodeValue(element,functionStorage,contractCompiled);
+            }else if(element.type.includes("(")){
+                element=decodeValue(element,functionStorage,contractCompiled);
             }
         })
         return variable
@@ -671,7 +771,7 @@ function decodeUintArray(variable,functionStorage){
         let typeSize=parseInt(variable.type.split(")")[0].split("uint")[1]);
         let arrayLength=parseInt(variable.type.split(")")[1].split("_storage")[0]);
         let result=[];
-        variable.decoded=[];
+        variable.decodedValue=[];
         let charsForElement = typeSize / 4;
         const slotLength = 64;
         for (let i=0;i<arrayLength;i++){
@@ -679,7 +779,7 @@ function decodeUintArray(variable,functionStorage){
             let endOfTheElement = startOfTheElement - charsForElement;
             let valueExatracted = variable.value.slice(endOfTheElement,startOfTheElement);
             let valuePadded=web3.utils.padLeft(valueExatracted,64);
-            variable.decoded.push(web3.utils.hexToNumber("0x"+valuePadded));
+            variable.decodedValue.push(web3.utils.hexToNumber("0x"+valuePadded));
         }
         return variable;
     }
@@ -711,7 +811,7 @@ function getContractVariable(slotIndex, contractTree, functionName, mainContract
                         type:contractTree[contractId].storage[i].type,
                         slot:contractTree[contractId].storage[i].slot,
                         offset:contractTree[contractId].storage[i].offset,
-                        contentSlot:web3.utils.padLeft( web3.utils.numberToHex(slotIndex).slice(2),64)
+                        contentSlot:web3.utils.padLeft( web3.utils.numberToHex(Number(contractTree[contractId].storage[i].slot)).slice(2),64)
                     }
                     contractVariables.push(variable);
                 } else if (i < contractTree[contractId].storage.length - 1) {
@@ -722,7 +822,7 @@ function getContractVariable(slotIndex, contractTree, functionName, mainContract
                             type:contractTree[contractId].storage[i].type,
                             slot:contractTree[contractId].storage[i].slot,
                             offset:contractTree[contractId].storage[i].offset,
-                            contentSlot:web3.utils.padLeft( web3.utils.numberToHex(slotIndex).slice(2),64)
+                            contentSlot:web3.utils.padLeft( web3.utils.numberToHex(Number(contractTree[contractId].storage[i].slot)).slice(2),64)
                         }
                         contractVariables.push(variable);
                     }
@@ -753,7 +853,26 @@ function getStructMembersByVariable(variable, mainContractCompiled) {
     }
     let members = [];
     storageLayout.forEach((item) => {
-        if (item.label===variable.name) {
+        let name=variable.name?variable.name:variable.label;
+        if (item.label===name) {
+            const structType = variable.type;
+            const storageTypes = getMainContractCompiled(mainContractName).storageLayout.types;
+            if(structType.includes("mapping")){
+                let temp=structType.split(",")[1];
+                let structInsideMapping=temp.substring(0,temp.length-1);
+                for (type in storageTypes) {
+                    if (type===structInsideMapping) {
+                        members= storageTypes[type].members;
+                    }
+                }
+            }else{
+                for (type in storageTypes) {
+                    if (type===structType) {
+                        members = storageTypes[type].members;
+                    }
+                }
+            }
+        }else if(item.type===variable.type){
             const structType = variable.type;
             const storageTypes = getMainContractCompiled(mainContractName).storageLayout.types;
             if(structType.includes("mapping")){
