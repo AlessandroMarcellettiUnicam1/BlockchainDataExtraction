@@ -23,7 +23,7 @@ app.use((req, res, next) => {
 // Middleware: Serving static files from the "public" directory
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(bodyParser.urlencoded({extended: true}));
-app.use(bodyParser.json({limit: '1mb'}));
+app.use(bodyParser.json({limit: '10mb'}));
 
 const {searchTransaction} = require('./query/query');
 const {connectDB} = require("./config/db");
@@ -31,7 +31,6 @@ const { setObjectTypes } = require('./ocelMapping/objectTypes/objectTypes');
 
 app.post('/api/ocelMap',(req,res)=>{
     const ocelMap=req.body;
-    console.log(req.body);
     let ocel = {
         eventTypes: [],
         objectTypes: [],
