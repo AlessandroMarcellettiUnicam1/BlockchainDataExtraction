@@ -23,7 +23,7 @@ app.use((req, res, next) => {
 // Middleware: Serving static files from the "public" directory
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(bodyParser.urlencoded({extended: true}));
-app.use(bodyParser.json({limit: '10mb'}));
+app.use(bodyParser.json({limit: '1mb'}));
 
 const {searchTransaction} = require('./query/query');
 const {connectDB} = require("./config/db");
@@ -31,6 +31,7 @@ const { setObjectTypes } = require('./ocelMapping/objectTypes/objectTypes');
 
 app.post('/api/ocelMap',(req,res)=>{
     const ocelMap=req.body;
+    console.log(req.body);
     let ocel = {
         eventTypes: [],
         objectTypes: [],
@@ -134,18 +135,17 @@ app.post('/json-download', (req, res) => {
 })
 
 app.post('/csv-download', async (req, res) => {
-
     const jsonToDownload = req.body.jsonLog;
     const fileName = 'jsonLog.csv';
 
-    const columns = ["BlockNumber", "transactionHash", "Activity", "Timestamp", "Sender", "GasFee", "StorageState", "Inputs", "Events", "InternalTxs"]
+    const columns = ["BlockNumber", "transactionHash", "functionName", "Timestamp", "Sender", "GasFee", "StorageState", "Inputs", "Events", "InternalTxs"]
     const logs = jsonToDownload.map(log => {
 
         const customDate = log.timestamp.split(".")[0] + ".000+0100"
 
         const blockNumber = log.blockNumber;
         const tr = log.transactionHash;
-        const activity = log.activity;
+        const activity = log.functionName;
         const timestamp = customDate;
         const sender = log.sender;
         const gasFee = log.gasUsed;
@@ -155,8 +155,8 @@ app.post('/csv-download', async (req, res) => {
         const internalTxs = log.internalTxs.map(tx => tx.callType).toString();
         return {
             BlockNumber: blockNumber,
-            transactionHash: transactionHash,
-            Activity: activity,
+            transactionHash: tr,
+            functionName: activity,
             Timestamp: timestamp,
             Sender: sender,
             GasFee: gasFee,
@@ -209,6 +209,100 @@ app.post('/ocel-download', (req, res) => {
     });
 })
 
+app.post('/xes-translator', (req, res) => {
+    const jsonToTranslate = req.body.jsonLog;
+    const filename = "xesLogs.json"
+    const xesString = jsonToXesString(jsonToTranslate);
+    fs.writeFileSync(filename, xesString);
+
+    const formattedFileName = encodeURIComponent(filename);
+    res.setHeader('Content-Disposition', `attachment; filename="${formattedFileName}"`);
+    res.setHeader('Content-Type', 'application/octet-stream');
+
+    res.sendFile(path.resolve(filename), (err) => {
+        if (err) {
+            console.error(err);
+            res.status(err.status).end();
+        } else {
+            fs.unlinkSync(path.resolve(filename));
+            console.log('File sent successfully');
+        }
+    });
+})
+function jsonToXesString(jsonData) {
+    let xesString = `<?xml version="1.0" encoding="UTF-8"?>\n`;
+    let variableType=["string","int","boolean","float"];
+    jsonData.forEach(transaction => {
+        xesString += `<trace>\n`;
+        xesString += `\t<string key="transactionHash" value="${transaction.transactionHash}"/>\n`;
+        xesString += `\t<event>\n`;
+        xesString += `\t\t<int key="blockNumber" value="${transaction.blockNumber}"/>\n`;
+        xesString += `\t\t<string key="functionName" value="${transaction.functionName}"/>\n`;
+        xesString += `\t\t<date key="timestamp" value="${transaction.timestamp}"/>\n`;
+        xesString += `\t\t<string key="sender" value="${transaction.sender}"/>\n`;
+        xesString += `\t\t<int key="gasUsed" value="${transaction.gasUsed}"/>\n`;
+        xesString += `\t\t<string key="from" value="${transaction.sender}"/>\n`;
+        if(transaction.inputs.length>0){    
+            xesString+=`\t\t<inputs>\n`;
+            transaction.inputs.forEach(input=>{
+                xesString+=`\t\t\t<input>\n`;
+                Object.entries(input).forEach(([key, value]) => {
+                    xesString += `\t\t\t\t<string key="${key}" value="${value}"/>\n`;
+                })
+                xesString+=`\t\t\t</input>\n`;
+            })
+          
+            xesString+=`\t\t</inputs>\n`;
+        }
+
+        if (transaction.storageState.length > 0) {
+            xesString+=`\t\t<storagestate>\n`;
+            transaction.storageState.forEach(variable=>{
+                xesString+=`\t\t\t<variable>\n`;
+                Object.entries(variable).forEach(([key, value]) => {
+                    xesString += `\t\t\t\t<string key="${key}" value="${value}"/>\n`;
+                })
+                xesString+=`\t\t\t</variable>\n`;
+            })
+          
+            xesString+=`\t\t</storagestate>\n`;
+        }
+
+        if (transaction.events.length > 0) {
+            xesString += `\t\t<events>\n`;
+            transaction.events.forEach(event => {
+                
+                xesString += `\t\t\t<string key="eventName" value="${event.eventName}"/>\n`;
+                Object.entries(event.eventValues).forEach(([key, value]) => {
+                    if (key !== "__length__") {
+                        xesString += `\t\t\t\t<string key="${key}" value="${value}"/>\n`;
+                    }
+                });
+
+            });
+            xesString += `\t\t</events>\n`;
+        }
+
+        if (transaction.internalTxs.length > 0) {
+            xesString += `\t\t<internalTxs>\n`;
+            transaction.internalTxs.forEach(element => {
+                
+                xesString += `\t\t\t<string key="callType" value="${element.callType}"/>\n`;
+                Object.entries(element.inputsCall).forEach(([key, value]) => {
+                    xesString += `\t\t\t\t<string key="${key}" value="${value}"/>\n`;
+                });
+                xesString += `\t\t\t<string key="to" value="${element.to}"/>\n`;
+                xesString += `\t\t</internalTxs>\n`;
+            });
+        }
+        xesString+='\t</event>\n';
+
+        xesString += `</trace>\n`;
+    });
+
+    xesString += `</log>`;
+    return xesString;
+}
 app.post('/jsonocel-download', (req, res) => {
 
     const jsonToDownload = req.body.ocel;
