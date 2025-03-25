@@ -15,13 +15,12 @@ async function saveTransaction(data, contractAddress) {
         console.error('Error saving data: ', err);
     }
 }
-async function saveExtractionLog(userLog,network) {
+async function saveExtractionLog(userLog) {
     try {
         const ExtractionLog = mongoose.model('ExtractionLog', extractionLogSchema, 'ExtractionLog');
         const newExtractionLog = new ExtractionLog(userLog);
         await newExtractionLog.save();
         console.log('Extraction log successfully saved');
-        await mongoose.disconnect()
     } catch (err) {
         console.error('Extraction log storing error: ', err);
         throw new Error(err.message)

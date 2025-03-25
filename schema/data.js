@@ -18,6 +18,9 @@ const internalTxSchema = new mongoose.Schema({
     to: {type: String},
     inputsCall: [
         {type: mongoose.Schema.Types.Mixed}
+    ],
+    inputs: [
+        {type:mongoose.Schema.Types.Mixed}
     ]
 }, { _id : false });
 

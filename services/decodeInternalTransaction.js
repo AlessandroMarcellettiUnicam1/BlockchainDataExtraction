@@ -3,10 +3,10 @@ const {searchAbi} =require("../query/query");
 const {saveAbi} = require("../databaseStore");
 const {connectDB}=require("../config/db");
 const InputDataDecoder = require('ethereum-input-data-decoder');
-async function decodeInternalTransaction(internalCalls,apiKey,smartContract,endpoint,web3){
+async function decodeInternalTransaction(internalCalls,apiKey,smartContract,endpoint,web3,networkName){
     if(!smartContract){
         
-        await connectDB(process.env.LOG_DB_NAME);
+        await connectDB(networkName);
         await Promise.all(internalCalls.map(async (element) => {
             let addressTo =element.to;
             let query = {

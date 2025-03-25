@@ -242,60 +242,57 @@ function jsonToXesString(jsonData) {
         xesString += `\t\t<string key="sender" value="${transaction.sender}"/>\n`;
         xesString += `\t\t<int key="gasUsed" value="${transaction.gasUsed}"/>\n`;
         xesString += `\t\t<string key="from" value="${transaction.sender}"/>\n`;
+        let i=0;
         if(transaction.inputs.length>0){    
-            xesString+=`\t\t<inputs>\n`;
             transaction.inputs.forEach(input=>{
-                xesString+=`\t\t\t<input>\n`;
                 Object.entries(input).forEach(([key, value]) => {
-                    xesString += `\t\t\t\t<string key="${key}" value="${value}"/>\n`;
+                    xesString += `\t\t<string key="${key}_${i}" value="${value}"/>\n`;
                 })
-                xesString+=`\t\t\t</input>\n`;
+                i++;
             })
-          
-            xesString+=`\t\t</inputs>\n`;
         }
-
+        i=0;
         if (transaction.storageState.length > 0) {
-            xesString+=`\t\t<storagestate>\n`;
             transaction.storageState.forEach(variable=>{
-                xesString+=`\t\t\t<variable>\n`;
                 Object.entries(variable).forEach(([key, value]) => {
-                    xesString += `\t\t\t\t<string key="${key}" value="${value}"/>\n`;
+                    xesString += `\t\t<string key="stateVar_${i}_${key}" value="${value}"/>\n`;
                 })
-                xesString+=`\t\t\t</variable>\n`;
+                i++;
             })
-          
-            xesString+=`\t\t</storagestate>\n`;
         }
-
+        i=0;
         if (transaction.events.length > 0) {
-            xesString += `\t\t<events>\n`;
             transaction.events.forEach(event => {
-                
-                xesString += `\t\t\t<string key="eventName" value="${event.eventName}"/>\n`;
                 Object.entries(event.eventValues).forEach(([key, value]) => {
-                    if (key !== "__length__") {
-                        xesString += `\t\t\t\t<string key="${key}" value="${value}"/>\n`;
+                    if (key !== "0" && key!== "1" && key!== "2") {
+                        let tempKey=key
+                        if(key=="owner"){
+                            tempKey="From";
+                        }
+                        if(key=="spender"){
+                            tempKey="To";
+                        }
+                        xesString += `\t\t<string key="BCEvent${tempKey}" value="${value}"/>\n`;
                     }
                 });
 
             });
-            xesString += `\t\t</events>\n`;
         }
-
+        i=0;
         if (transaction.internalTxs.length > 0) {
-            xesString += `\t\t<internalTxs>\n`;
             transaction.internalTxs.forEach(element => {
-                
-                xesString += `\t\t\t<string key="callType" value="${element.callType}"/>\n`;
-                Object.entries(element.inputsCall).forEach(([key, value]) => {
-                    xesString += `\t\t\t\t<string key="${key}" value="${value}"/>\n`;
-                });
-                xesString += `\t\t\t<string key="to" value="${element.to}"/>\n`;
-                xesString += `\t\t</internalTxs>\n`;
+                xesString += `\t\t<string key="Int_${i}_${element.callType}" />\n`;
+                xesString += `\t\t<string key="Int_${i}_To" value="${element.to}" />\n`;
+                let j=0;
+                element.inputs.forEach(input=>{
+                    Object.entries(input).forEach(([key, value]) => {
+                        xesString += `\t\t<string key="Int${key}_${i}_${j}" value="${value}"/>\n`;
+                    });
+                    j++;
+                })
+                i++;
             });
         }
-        xesString+='\t</event>\n';
 
         xesString += `</trace>\n`;
     });
