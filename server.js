@@ -231,22 +231,22 @@ app.post('/xes-translator', (req, res) => {
 })
 function jsonToXesString(jsonData) {
     let xesString = `<?xml version="1.0" encoding="UTF-8"?>\n`;
-    let variableType=["string","int","boolean","float"];
+    xesString+=`<log xmlns="http://www.xes-standard.org/">\n`;
     jsonData.forEach(transaction => {
-        xesString += `<trace>\n`;
-        xesString += `\t<string key="transactionHash" value="${transaction.transactionHash}"/>\n`;
-        xesString += `\t<event>\n`;
-        xesString += `\t\t<int key="blockNumber" value="${transaction.blockNumber}"/>\n`;
-        xesString += `\t\t<string key="functionName" value="${transaction.functionName}"/>\n`;
-        xesString += `\t\t<date key="timestamp" value="${transaction.timestamp}"/>\n`;
-        xesString += `\t\t<string key="sender" value="${transaction.sender}"/>\n`;
-        xesString += `\t\t<int key="gasUsed" value="${transaction.gasUsed}"/>\n`;
-        xesString += `\t\t<string key="from" value="${transaction.sender}"/>\n`;
+        xesString += `\t<trace>\n`;
+        xesString += `\t\t<string key="transactionHash" value="${transaction.transactionHash}"/>\n`;
+        xesString += `\t\t<event>\n`;
+        xesString += `\t\t\t<int key="blockNumber" value="${transaction.blockNumber}"/>\n`;
+        xesString += `\t\t\t<string key="functionName" value="${transaction.functionName}"/>\n`;
+        xesString += `\t\t\t<date key="timestamp" value="${transaction.timestamp}"/>\n`;
+        xesString += `\t\t\t<string key="sender" value="${transaction.sender}"/>\n`;
+        xesString += `\t\t\t<int key="gasUsed" value="${transaction.gasUsed}"/>\n`;
+        xesString += `\t\t\t<string key="from" value="${transaction.sender}"/>\n`;
         let i=0;
         if(transaction.inputs.length>0){    
             transaction.inputs.forEach(input=>{
                 Object.entries(input).forEach(([key, value]) => {
-                    xesString += `\t\t<string key="${key}_${i}" value="${value}"/>\n`;
+                    xesString += `\t\t\t<string key="${key}_${i}" value="${value}"/>\n`;
                 })
                 i++;
             })
@@ -255,7 +255,7 @@ function jsonToXesString(jsonData) {
         if (transaction.storageState.length > 0) {
             transaction.storageState.forEach(variable=>{
                 Object.entries(variable).forEach(([key, value]) => {
-                    xesString += `\t\t<string key="stateVar_${i}_${key}" value="${value}"/>\n`;
+                    xesString += `\t\t\t<string key="stateVar_${i}_${key}" value="${value}"/>\n`;
                 })
                 i++;
             })
@@ -272,29 +272,29 @@ function jsonToXesString(jsonData) {
                         if(key=="spender"){
                             tempKey="To";
                         }
-                        xesString += `\t\t<string key="BCEvent${tempKey}" value="${value}"/>\n`;
+                        xesString += `\t\t\t<string key="BCEvent_${i}_${tempKey}" value="${value}"/>\n`;
                     }
                 });
-
+                i++;
             });
         }
         i=0;
         if (transaction.internalTxs.length > 0) {
             transaction.internalTxs.forEach(element => {
-                xesString += `\t\t<string key="Int_${i}_${element.callType}" />\n`;
-                xesString += `\t\t<string key="Int_${i}_To" value="${element.to}" />\n`;
+                xesString += `\t\t\t<string key="Int_${i}_${element.callType}" />\n`;
+                xesString += `\t\t\t<string key="Int_${i}_To" value="${element.to}" />\n`;
                 let j=0;
                 element.inputs.forEach(input=>{
                     Object.entries(input).forEach(([key, value]) => {
-                        xesString += `\t\t<string key="Int${key}_${i}_${j}" value="${value}"/>\n`;
+                        xesString += `\t\t\t<string key="Int${key}_${i}_${j}" value="${value}"/>\n`;
                     });
                     j++;
                 })
                 i++;
             });
         }
-
-        xesString += `</trace>\n`;
+        xesString+=`\t\t</event>\n`;
+        xesString += `\t</trace>\n`;
     });
 
     xesString += `</log>`;

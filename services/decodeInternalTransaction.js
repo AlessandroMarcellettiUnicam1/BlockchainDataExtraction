@@ -35,7 +35,7 @@ async function decodeInternalTransaction(internalCalls,apiKey,smartContract,endp
                                 for(let i=0;i<tempResult.inputs.length;i++){
                                     let numberConverted=tempResult.inputs[i];
                                     if(tempResult.inputs[i]._isBigNumber){
-                                        numberConverted=web3.utils.hexToNumber(tempResult.inputs[i]._hex);
+                                        numberConverted=Number(web3.utils.hexToNumber(tempResult.inputs[i]._hex));
                                     }
                                     element.inputs.push({
                                         name:tempResult.names[i],
@@ -69,7 +69,7 @@ async function decodeInternalTransaction(internalCalls,apiKey,smartContract,endp
                     for(let i=0;i<tempResult.inputs.length;i++){
                         let numberConverted=tempResult.inputs[i];
                         if(tempResult.inputs[i]._isBigNumber){
-                            numberConverted=web3.utils.hexToNumber(tempResult.inputs[i]._hex);
+                            numberConverted=Number(web3.utils.hexToNumber(tempResult.inputs[i]._hex));
                         }
                         element.inputs.push({
                             name:tempResult.names[i],
