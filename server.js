@@ -7,6 +7,7 @@ const {stringify} = require("csv-stringify");
 const multer = require('multer');
 const jsonToCsv = require("json-2-csv")
 
+
 const {getAllTransactions} = require("./services/main");
 const app = express();
 const upload = multer({dest: 'uploads/'})
@@ -31,7 +32,6 @@ const { setObjectTypes } = require('./ocelMapping/objectTypes/objectTypes');
 
 app.post('/api/ocelMap',(req,res)=>{
     const ocelMap=req.body;
-    console.log(req.body);
     let ocel = {
         eventTypes: [],
         objectTypes: [],
@@ -46,7 +46,32 @@ app.post('/api/ocelMap',(req,res)=>{
     })
     res.send(ocel);
 })
+app.post('/api/xes', async (req, res) => {
+    const jsonToTranslate = req.body.jsonToXes;
+    const {caseId, activityKey,timestamp} = req.body.objectsToXes;
+    let xes={
+        xesString:null
+    }
+    xes.xesString=jsonToXes(jsonToTranslate,caseId.value,activityKey.value)
+    res.send(xes);
+    // const filename = "xesLogs.json"
+    // // const xesString = jsonToXesString(jsonToTranslate);
+    // const formattedFileName = encodeURIComponent(filename);
+    // fs.writeFileSync(filename, xesString);
 
+    // res.setHeader('Content-Disposition', `attachment; filename="${formattedFileName}"`);
+    // res.setHeader('Content-Type', 'application/octet-stream');
+
+    // res.sendFile(path.resolve(filename), (err) => {
+    //     if (err) {
+    //         console.error(err);
+    //         res.status(err.status).end();
+    //     } else {
+    //         fs.unlinkSync(path.resolve(filename));
+    //         console.log('File sent successfully');
+    //     }
+    // });
+})
 app.post('/api/query', async (req, res) => {
     const query = req.body;
 
@@ -208,97 +233,160 @@ app.post('/ocel-download', (req, res) => {
         }
     });
 })
-
-app.post('/xes-translator', (req, res) => {
-    const jsonToTranslate = req.body.jsonLog;
-    const filename = "xesLogs.json"
-    const xesString = jsonToXesString(jsonToTranslate);
-    fs.writeFileSync(filename, xesString);
-
+app.post('/xes-translator',(req,res)=>{
+    const filename="xesLogs.xes"
+    fs.writeFileSync(filename, req.body.jsonLog.xesString);
     const formattedFileName = encodeURIComponent(filename);
     res.setHeader('Content-Disposition', `attachment; filename="${formattedFileName}"`);
     res.setHeader('Content-Type', 'application/octet-stream');
-
     res.sendFile(path.resolve(filename), (err) => {
         if (err) {
+            // Handle error if file sending fails
             console.error(err);
             res.status(err.status).end();
         } else {
-            fs.unlinkSync(path.resolve(filename));
+            fs.unlinkSync(path.resolve(filename))
             console.log('File sent successfully');
         }
-    });
+    })
 })
-function jsonToXesString(jsonData) {
-    let xesString = `<?xml version="1.0" encoding="UTF-8"?>\n`;
-    xesString+=`<log xmlns="http://www.xes-standard.org/">\n`;
-    jsonData.forEach(transaction => {
-        xesString += `\t<trace>\n`;
-        xesString += `\t\t<string key="transactionHash" value="${transaction.transactionHash}"/>\n`;
-        xesString += `\t\t<event>\n`;
-        xesString += `\t\t\t<int key="blockNumber" value="${transaction.blockNumber}"/>\n`;
-        xesString += `\t\t\t<string key="functionName" value="${transaction.functionName}"/>\n`;
-        xesString += `\t\t\t<date key="timestamp" value="${transaction.timestamp}"/>\n`;
-        xesString += `\t\t\t<string key="sender" value="${transaction.sender}"/>\n`;
-        xesString += `\t\t\t<int key="gasUsed" value="${transaction.gasUsed}"/>\n`;
-        xesString += `\t\t\t<string key="from" value="${transaction.sender}"/>\n`;
-        let i=0;
-        if(transaction.inputs.length>0){    
-            transaction.inputs.forEach(input=>{
-                Object.entries(input).forEach(([key, value]) => {
-                    xesString += `\t\t\t<string key="${key}_${i}" value="${value}"/>\n`;
-                })
-                i++;
-            })
-        }
-        i=0;
-        if (transaction.storageState.length > 0) {
-            transaction.storageState.forEach(variable=>{
-                Object.entries(variable).forEach(([key, value]) => {
-                    xesString += `\t\t\t<string key="stateVar_${i}_${key}" value="${value}"/>\n`;
-                })
-                i++;
-            })
-        }
-        i=0;
-        if (transaction.events.length > 0) {
-            transaction.events.forEach(event => {
-                Object.entries(event.eventValues).forEach(([key, value]) => {
-                    if (key !== "0" && key!== "1" && key!== "2") {
-                        let tempKey=key
-                        if(key=="owner"){
-                            tempKey="From";
-                        }
-                        if(key=="spender"){
-                            tempKey="To";
-                        }
-                        xesString += `\t\t\t<string key="BCEvent_${i}_${tempKey}" value="${value}"/>\n`;
-                    }
-                });
-                i++;
-            });
-        }
-        i=0;
-        if (transaction.internalTxs.length > 0) {
-            transaction.internalTxs.forEach(element => {
-                xesString += `\t\t\t<string key="Int_${i}_${element.callType}" />\n`;
-                xesString += `\t\t\t<string key="Int_${i}_To" value="${element.to}" />\n`;
-                let j=0;
-                element.inputs.forEach(input=>{
-                    Object.entries(input).forEach(([key, value]) => {
-                        xesString += `\t\t\t<string key="Int${key}_${i}_${j}" value="${value}"/>\n`;
-                    });
-                    j++;
-                })
-                i++;
-            });
-        }
-        xesString+=`\t\t</event>\n`;
-        xesString += `\t</trace>\n`;
-    });
 
-    xesString += `</log>`;
-    return xesString;
+function jsonToXes(jsonToTranslate, caseIdKey, activityKey) {
+    const trace = {};
+    jsonToTranslate.forEach(entry => {
+        let caseIds = findAllValuesByKey(entry, caseIdKey); // Get all case IDs
+        let activities = findAllValuesByKey(entry, activityKey); // Get all activities
+        // Match occurrences one by one
+        for (let i = 0; i < caseIds.length; i++) {
+            let caseId = caseIds[i];
+            let activity = activities[i];
+
+            if (caseId in trace) {
+                trace[caseId].push({ [activityKey]: activity, entry: entry });
+            } else {
+                trace[caseId] = [{ [activityKey]: activity, entry: entry }];
+            }
+        }
+    });
+    let stringResult=[];
+    let index=0
+    for(const key in trace){
+        stringResult.push(`\t<trace>`);
+        stringResult.push(`\t<string key="concept:name" value="${key}"/>`);
+        trace[key].forEach((entry)=>{
+            stringResult.push(`\t\t<event>`);
+            stringResult.push(`\t\t<string key="concept:name" value="${entry[activityKey]}"/>`);
+            generateKeyValueStrings(entry.entry,caseIdKey,activityKey,index,caseIdKey).forEach(elemt=>{
+                stringResult.push(elemt);
+            })
+            stringResult.push(`\t\t</event>`);
+            // stringResult.push(generateKeyValueStrings(entry.entry,caseIdKey,activityKey));
+        })
+        stringResult.push(`\t</trace>`);
+    }
+let finalResult = `<?xml version="1.0" encoding="UTF-8"?>\n<log xmlns="http://www.xes-standard.org/">\n`;
+finalResult += stringResult.join("\n");
+finalResult += `\n</log>`;
+
+    return finalResult;
+}
+
+
+function generateKeyValueStrings(obj, caseId, activityKey, keyToCheck = "") {
+    let result = [];
+
+    if (typeof obj === "object" && obj !== null) {
+        for (let key in obj) {
+            let newKeyToCheck = keyToCheck ? `${keyToCheck}_${key}` : key;
+
+            if (Array.isArray(obj[key])) {
+                obj[key].forEach((item, index) => {
+                    let arrayKey = `${newKeyToCheck}[${index}]`;
+                    result.push(...generateKeyValueStrings(item, caseId, activityKey, arrayKey));
+                });
+            } else if (typeof obj[key] === "object" && obj[key] !== null) {
+                result.push(...generateKeyValueStrings(obj[key], caseId, activityKey, newKeyToCheck));
+            } else if (key !== caseId && key !== activityKey) {
+                let newKeyToCheckCut=newKeyToCheck;
+                if(newKeyToCheck.includes("[")){
+                    newKeyToCheckCut=newKeyToCheck.split("[")[0];
+                }
+                switch (newKeyToCheckCut) {
+                    case "inputs":
+                        result.push(`\t\t\t<string key="${newKeyToCheck}" value="${obj[key]}"/>`);
+                        break;
+                    case "events":
+                        if(!(newKeyToCheck.split("_eventValues")[1]?.includes("1") || newKeyToCheck.split("_eventValues")[1]?.includes("2") 
+                        || newKeyToCheck.split("_eventValues")[1]?.includes("0") || newKeyToCheck.split("_eventValues")[1]?.includes("_length"))){
+                            newKeyToCheck = newKeyToCheck.replace("events","BCEvent");
+                            result.push(`\t\t\t<string key="${newKeyToCheck}" value="${obj[key]}"/>`);
+                        }
+                        break;
+                    case "internalTxs":
+                        newKeyToCheck = newKeyToCheck.replace("internalTxs","Int");
+                        result.push(`\t\t\t<string key="${newKeyToCheck}" value="${obj[key]}"/>`);
+                        break;
+                    case "storageState":
+                        newKeyToCheck = newKeyToCheck.replace("storageState","stateVar");
+                        result.push(`\t\t\t<string key="${newKeyToCheck}" value="${obj[key]}"/>`);
+                        break;
+                    default:
+                        result.push(`\t\t\t<string key="${newKeyToCheck}" value="${obj[key]}"/>`);
+                        break;
+                }
+                
+            }
+        }
+    } else {
+        switch (keyToCheck) {
+            case "inputs":
+                result.push(`\t\t\t<string key="${keyToCheck}" value="${obj}"/>`);
+                break;
+            case "events":
+                keyToCheck = keyToCheck.replace("events","BCEvent");
+                result.push(`\t\t\t<string key="${keyToCheck}" value="${obj}"/>`);
+                break;
+            case "internalTxs":
+                keyToCheck = keyToCheck.replace("internalTxs","Int");
+                result.push(`\t\t\t<string key="${keyToCheck}" value="${obj}"/>`);
+                break;
+            case "storageState":
+                keyToCheck = keyToCheck.replace("storageState","stateVar");
+                result.push(`\t\t\t<string key="${keyToCheck}" value="${obj}"/>`);
+                break;
+            default:
+                result.push(`\t\t\t<string key="${keyToCheck}" value="${obj}"/>`);
+                break;
+        }
+        // result.push(`<string  key="${keyToCheck}" value="${obj}"/>`);
+    }
+
+    return result;
+}
+
+
+
+function findAllValuesByKey(obj, key) {
+    let results = [];
+
+    function recursiveSearch(o) {
+        if (typeof o !== 'object' || o === null) return;
+
+        if (key in o) {
+            results.push(o[key]);
+        }
+
+        for (let k in o) {
+            if (typeof o[k] === 'object') {
+                recursiveSearch(o[k]);
+            } else if (Array.isArray(o[k])) {
+                o[k].forEach(item => recursiveSearch(item));
+            }
+        }
+    }
+
+    recursiveSearch(obj);
+    return results;
 }
 app.post('/jsonocel-download', (req, res) => {
 
