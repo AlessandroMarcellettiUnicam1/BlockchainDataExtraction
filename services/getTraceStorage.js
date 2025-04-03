@@ -78,15 +78,15 @@ async function getTraceStorage(traceDebugged, blockNumber, functionName, transac
                     hexKey: hexKey,
                     hexStorageIndex: hexStorageIndex
                 };
-                console.log("----KECCAK WITH PC:----", trace.pc)
-                console.log("----LEFT:", hexKey)
-                console.log("----RIGHT:", hexStorageIndex)
+                // console.log("----KECCAK WITH PC:----", trace.pc)
+                // console.log("----LEFT:", hexKey)
+                // console.log("----RIGHT:", hexStorageIndex)
                 // end of a function execution -> returns the storage state with the keys and values in the storage
             } else if (trace.op === "STOP") {
                 //retrieve the entire storage after function execution
                 //for each storage key discard the ones of static variables and compare the remaining ones with the re-generated
-                console.log("------STOP OPCODE-------");
-                console.log(trace);
+                // console.log("------STOP OPCODE-------");
+                // console.log(trace);
                 for (const slot in trace.storage) {
                     functionStorage[slot] = trace.storage[slot];
                 }
@@ -96,17 +96,17 @@ async function getTraceStorage(traceDebugged, blockNumber, functionName, transac
                 keccakBeforeAdd = trackBuffer[index];
                 bufferPC = -10;
                 trackBuffer[index].finalKey = trace.stack[trace.stack.length - 1];
-                console.log(trackBuffer[index]);
+                // console.log(trackBuffer[index]);
                 index++;
                 //todo compact with code below
-                console.log('keccakBeforeAdd', keccakBeforeAdd)
-                console.log('trace.stack[trace.stack.length - 1]', trace.stack[trace.stack.length - 1])
-                console.log('trace.stack[trace.stack.length - 2]',trace.stack[trace.stack.length - 2])
+                // console.log('keccakBeforeAdd', keccakBeforeAdd)
+                // console.log('trace.stack[trace.stack.length - 1]', trace.stack[trace.stack.length - 1])
+                // console.log('trace.stack[trace.stack.length - 2]',trace.stack[trace.stack.length - 2])
                 if(trace.op == "ADD" && (trace.stack[trace.stack.length - 1] === keccakBeforeAdd.finalKey ||
                         trace.stack[trace.stack.length - 2] === keccakBeforeAdd.finalKey) &&
                     keccakBeforeAdd.hexStorageIndex === "0000000000000000000000000000000000000000000000000000000000000000") {
-                        console.log('PRIMO ADD ')
-                        console.log('trace stack', trace.stack)
+                        // console.log('PRIMO ADD ')
+                        // console.log('trace stack', trace.stack)
 
                     const keyBuff =  trackBuffer[index-1].hexKey;
                     const slotBuff =  trackBuffer[index-1].hexStorageIndex;
@@ -114,11 +114,11 @@ async function getTraceStorage(traceDebugged, blockNumber, functionName, transac
                     trackBuffer[index-1].hexStorageIndex = keyBuff;
                     const nextTrace=traceDebugged.structLogs[traceDebugged.structLogs.indexOf(trace)+1];
                     const nextTraceStack=nextTrace.stack[nextTrace.stack.length - 1];
-                    console.log( nextTraceStack);
+                    // console.log( nextTraceStack);
                     trackBuffer[index-1].finalKey =nextTraceStack;
-                    console.log("----ADD OPCODE----")
-                    console.log("----first", trace.stack[trace.stack.length - 1]);
-                    console.log("----second", trace.stack[trace.stack.length - 2]);
+                    // console.log("----ADD OPCODE----")
+                    // console.log("----first", trace.stack[trace.stack.length - 1]);
+                    // console.log("----second", trace.stack[trace.stack.length - 2]);
                 }
             }
                 //in case the trace is a SSTORE save the key. CAUTION: not every SSTORE changes the final storage state but every storage state change has an sstore
@@ -130,18 +130,18 @@ async function getTraceStorage(traceDebugged, blockNumber, functionName, transac
                 sstoreOptimization.push(trace.stack)
                 // the last element of the stack is the storage slot in which data is pushed
                 sstoreBuffer.push(trace.stack[trace.stack.length - 1]);
-                console.log("----SSTORE PUSHING:----")
-                console.log("----storage slot:", trace.stack[trace.stack.length - 1])
-                console.log("----value:", trace.stack[trace.stack.length - 2])
+                // console.log("----SSTORE PUSHING:----")
+                // console.log("----storage slot:", trace.stack[trace.stack.length - 1])
+                // console.log("----value:", trace.stack[trace.stack.length - 2])
             } else if(trace.op == "ADD"){
-                console.log('SECONDO ADD')
+                // console.log('SECONDO ADD')
                 /*ADD is the opcode that in case of arrays adds the next position to start to the computed keccak
                 if this is found and one of the inputs is the keccak and the previous keccak has 0 as slot then manage
                 this means that the keccak found is related to an array and we need to swap the slot with the key
                 this because for mappings we have K(h(k) . slot) while in arrays K(slot . 0x0...)*/
-                console.log("----ADD OPCODE----")
-                console.log("----first", trace.stack[trace.stack.length - 1]);
-                console.log("----second", trace.stack[trace.stack.length - 2]);
+                // console.log("----ADD OPCODE----")
+                // console.log("----first", trace.stack[trace.stack.length - 1]);
+                // console.log("----second", trace.stack[trace.stack.length - 2]);
                 /*console.log(keccakBeforeAdd.finalKey);
                 console.log(keccakBeforeAdd.hexStorageIndex);*/
 
@@ -202,33 +202,33 @@ async function getTraceStorage(traceDebugged, blockNumber, functionName, transac
     // fs.writeFileSync("./temporaryTrials/sstoreToPrint.json", JSON.stringify(sstoreToPrint))
     fs.writeFileSync("./temporaryTrials/storeBuffer.json", JSON.stringify(sstoreBuffer));
     let finalShaTraces = [];
-    console.log('SSTOREBUFER',sstoreBuffer);
-    console.log('TRACK BUFFER', trackBuffer);
-    console.log('Track buffer length', trackBuffer.length);
+    // console.log('SSTOREBUFER',sstoreBuffer);
+    // console.log('TRACK BUFFER', trackBuffer);
+    // console.log('Track buffer length', trackBuffer.length);
     for (let i = 0; i < trackBuffer.length; i++) {
-        console.log("---sto iterando con indice i ---", i)
-        console.log('trackBuffer[i].finalKey', trackBuffer[i].finalKey)
+        // console.log("---sto iterando con indice i ---", i)
+        // console.log('trackBuffer[i].finalKey', trackBuffer[i].finalKey)
         //check if the SHA3 key is contained in a SSTORE
         if (sstoreBuffer.includes(trackBuffer[i].finalKey)) {
-            console.log("---sstore contiene finalKey---")
+            // console.log("---sstore contiene finalKey---")
             //create a final trace for that key
             const trace = {
                 finalKey: trackBuffer[i].finalKey
             }
-            console.log(trace)
+            // console.log(trace)
             let flag = false;
             let test = i;
-            console.log("testtttttttt", test);
+            // console.log("testtttttttt", test);
             //Iterate previous SHA3 looking for a simple integer slot index
             while (flag === false) {
-                console.log("---sono nel while cercando cose---")
+                // console.log("---sono nel while cercando cose---")
                 //if the storage key is not a standard number then check for the previous one
                 if (!(web3.utils.hexToNumber("0x" + trackBuffer[test].hexStorageIndex) < 300)) {
                     test--;
-                    console.log("non ho trovato uno slot semplice e vado indietro")
+                    // console.log("non ho trovato uno slot semplice e vado indietro")
                 } else {
                     //if the storage location is a simple one then save it in the final trace with the correct key
-                    console.log("storage è semplice quindi lo salvo", trackBuffer[test].hexStorageIndex)
+                    // console.log("storage è semplice quindi lo salvo", trackBuffer[test].hexStorageIndex)
                     trace.hexStorageIndex = trackBuffer[test].hexStorageIndex;
                     flag = true;
                     finalShaTraces.push(trace);

@@ -10,7 +10,7 @@ async function saveTransaction(data, contractAddress) {
         
         const newTransaction = new TransactionModel(data);
         await newTransaction.save()
-        console.log('Transaction logs successfully saved');
+
     } catch (err) {
         console.error('Error saving data: ', err);
     }
@@ -20,7 +20,7 @@ async function saveExtractionLog(userLog) {
         const ExtractionLog = mongoose.model('ExtractionLog', extractionLogSchema, 'ExtractionLog');
         const newExtractionLog = new ExtractionLog(userLog);
         await newExtractionLog.save();
-        console.log('Extraction log successfully saved');
+
     } catch (err) {
         console.error('Extraction log storing error: ', err);
         throw new Error(err.message)
@@ -39,7 +39,7 @@ async function saveAbi(storeAbi) {
             const ExtractionAbi = mongoose.model('ExtractionAbi', extractionAbiSchema, 'ExtractionAbi');
             const newExtractionAbi = new ExtractionAbi(storeAbi);
             await newExtractionAbi.save();
-            console.log('ABI log successfully saved');
+
         } catch (err) {
             if (err.code === 11000) {
             console.log('Duplicate ABI detected');

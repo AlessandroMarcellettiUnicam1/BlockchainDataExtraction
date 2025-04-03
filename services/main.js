@@ -384,7 +384,7 @@ async function removeCollectionFromDB(network){
         await connectDB(network);
         await mongoose.connection.db.dropCollection('ExtractionLog');
         await mongoose.connection.db.dropCollection('ExtractionAbi');
-        console.log(`Collection ExtractionLog deleted successfully.`);
+
     } catch (err) {
         if (err.code === 26) {
             console.log(`Collection ExtractionLog does not exist.`);
@@ -397,7 +397,7 @@ async function removeAddressCollection(contractAddress,network){
     try {
         await connectDB(network);
         await mongoose.connection.db.dropCollection(contractAddress);
-        console.log(`Collection  deleted successfully.`);
+
     } catch (err) {
         if (err.code === 26) {
             console.log(`Collection  does not exist.`);

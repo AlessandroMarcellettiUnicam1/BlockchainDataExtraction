@@ -21,10 +21,10 @@ async function optimizedDecodeValues(sstore, contractTree, shaTraces, functionSt
     let decodedValues = [];
     let flag = true;
     let flagString32=true;
-    console.log("------SHAT TRACES------")
-    console.log(shaTraces)
-    console.log("------FUNCTION STORAGE------")
-    console.log(functionStorage)
+    // ("------SHAT TRACES------")
+    // console.log(shaTraces)
+    // console.log("------FUNCTION STORAGE------")
+    // console.log(functionStorageconsole.log)
     
     for (const storageVar in functionStorage) {
         for (const shaTrace of shaTraces) {

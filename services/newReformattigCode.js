@@ -19,10 +19,10 @@ let mainContractName;
 async function optimizedDecodeValues(sstore, contractTree, shaTraces, functionStorage, functionName, mainContract, web3Variable, contractCompiledPassed) {
     web3 = web3Variable;
     contractCompiled = contractCompiledPassed;
-    console.log("------SHAT TRACES------")
-    console.log(shaTraces)
-    console.log("------FUNCTION STORAGE------")
-    console.log(functionStorage)
+    // console.log("------SHAT TRACES------")
+    // console.log(shaTraces)
+    // console.log("------FUNCTION STORAGE------")
+    // console.log(functionStorage)
     const emptyVariable="0000000000000000000000000000000000000000000000000000000000000000";
     mainContractName=mainContract
     let shatracesProcessed=[];
