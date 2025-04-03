@@ -19,10 +19,10 @@ let mainContractName;
 async function optimizedDecodeValues(sstore, contractTree, shaTraces, functionStorage, functionName, mainContract, web3Variable, contractCompiledPassed) {
     web3 = web3Variable;
     contractCompiled = contractCompiledPassed;
-    console.log("------SHAT TRACES------")
-    console.log(shaTraces)
-    console.log("------FUNCTION STORAGE------")
-    console.log(functionStorage)
+    // console.log("------SHAT TRACES------")
+    // console.log(shaTraces)
+    // console.log("------FUNCTION STORAGE------")
+    // console.log(functionStorage)
     const emptyVariable="0000000000000000000000000000000000000000000000000000000000000000";
     mainContractName=mainContract
     let shatracesProcessed=[];
@@ -57,7 +57,7 @@ async function optimizedDecodeValues(sstore, contractTree, shaTraces, functionSt
         let mainContractCompiled=getMainContractCompiled(mainContract);
         for(const storageKey in functionStorage){
             if(!shatracesProcessed.includes(storageKey) && web3.utils.hexToNumber("0x" + storageKey)<9999999){
-                let slotNumber=web3.utils.hexToNumber("0x" + storageKey);
+                let slotNumber= web3.utils.hexToNumber("0x" + storageKey);
                 let variablePerSlot=getContractVariable(slotNumber,contractTree,functionName,mainContract);
                 let temp=[];
                 //Se ho più variabili per slot le tiro fuori una ad una e assegno il valore alla variabile
@@ -116,7 +116,7 @@ async function optimizedDecodeValues(sstore, contractTree, shaTraces, functionSt
             }
         });
         result = expandedResult;
-        result=removeStrunctFormOutput(result);
+        result=removeStructFormOutput(result);
         result = result.filter(obj => obj.variableRawValue !== undefined && obj.variableValue !== undefined);
         result=removeDuplicateV2(result);
         return result;
@@ -136,7 +136,7 @@ function removeDuplicateV2(result){
     });
     return uniqueResults;
 }
-function removeStrunctFormOutput(result){
+function removeStructFormOutput(result){
     let outputResult=[]
     result.forEach((element)=>{
         if(element.type.includes("struct")){
@@ -589,7 +589,7 @@ function readUintArray(variable,shaTraces,functionStorage,shatracesProcessed){
 
 function decodeValue(variable,functionStorage,contractCompiled){
     //take the first type 
-    if(!variable.type.includes("(")){
+    if(!variable.type.includes("(") || variable.type.includes("t_contract")){
         variable.decodedValue=decodePrimitive(variable,functionStorage);
         return variable;
     }else{
@@ -635,7 +635,6 @@ function decodePartialPrimitive(variable,functionStorage,contractCompiled){
         return decodeArray(variable,functionStorage);
     }else if(type.includes("struct")){
         return readStruct(variable,functionStorage,contractCompiled);
-        
     }
 }
 function readStruct(variable,functionStorage,contractCompiled){
@@ -904,6 +903,7 @@ function getMainContractCompiled(mainContract) {
         }
     }
 }
+
 function newReadVarFormOffset(variables, functionStorage) {
     const storageStringLength = 64;
     for (let i=0;i<variables.length;i++){

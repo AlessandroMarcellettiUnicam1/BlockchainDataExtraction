@@ -7,6 +7,7 @@ const {stringify} = require("csv-stringify");
 const multer = require('multer');
 const jsonToCsv = require("json-2-csv")
 
+
 const {getAllTransactions} = require("./services/main");
 const app = express();
 const upload = multer({dest: 'uploads/'})
@@ -23,7 +24,7 @@ app.use((req, res, next) => {
 // Middleware: Serving static files from the "public" directory
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(bodyParser.urlencoded({extended: true}));
-app.use(bodyParser.json({limit: '10mb'}));
+app.use(bodyParser.json({limit: '1mb'}));
 
 const {searchTransaction} = require('./query/query');
 const {connectDB} = require("./config/db");
@@ -45,7 +46,32 @@ app.post('/api/ocelMap',(req,res)=>{
     })
     res.send(ocel);
 })
+app.post('/api/xes', async (req, res) => {
+    const jsonToTranslate = req.body.jsonToXes;
+    const {caseId, activityKey,timestamp} = req.body.objectsToXes;
+    let xes={
+        xesString:null
+    }
+    xes.xesString=jsonToXes(jsonToTranslate,caseId.value,activityKey.value)
+    res.send(xes);
+    // const filename = "xesLogs.json"
+    // // const xesString = jsonToXesString(jsonToTranslate);
+    // const formattedFileName = encodeURIComponent(filename);
+    // fs.writeFileSync(filename, xesString);
 
+    // res.setHeader('Content-Disposition', `attachment; filename="${formattedFileName}"`);
+    // res.setHeader('Content-Type', 'application/octet-stream');
+
+    // res.sendFile(path.resolve(filename), (err) => {
+    //     if (err) {
+    //         console.error(err);
+    //         res.status(err.status).end();
+    //     } else {
+    //         fs.unlinkSync(path.resolve(filename));
+    //         console.log('File sent successfully');
+    //     }
+    // });
+})
 app.post('/api/query', async (req, res) => {
     const query = req.body;
 
@@ -134,18 +160,17 @@ app.post('/json-download', (req, res) => {
 })
 
 app.post('/csv-download', async (req, res) => {
-
     const jsonToDownload = req.body.jsonLog;
     const fileName = 'jsonLog.csv';
 
-    const columns = ["BlockNumber", "transactionHash", "Activity", "Timestamp", "Sender", "GasFee", "StorageState", "Inputs", "Events", "InternalTxs"]
+    const columns = ["BlockNumber", "transactionHash", "functionName", "Timestamp", "Sender", "GasFee", "StorageState", "Inputs", "Events", "InternalTxs"]
     const logs = jsonToDownload.map(log => {
 
         const customDate = log.timestamp.split(".")[0] + ".000+0100"
 
         const blockNumber = log.blockNumber;
         const tr = log.transactionHash;
-        const activity = log.activity;
+        const activity = log.functionName;
         const timestamp = customDate;
         const sender = log.sender;
         const gasFee = log.gasUsed;
@@ -155,8 +180,8 @@ app.post('/csv-download', async (req, res) => {
         const internalTxs = log.internalTxs.map(tx => tx.callType).toString();
         return {
             BlockNumber: blockNumber,
-            transactionHash: transactionHash,
-            Activity: activity,
+            transactionHash: tr,
+            functionName: activity,
             Timestamp: timestamp,
             Sender: sender,
             GasFee: gasFee,
@@ -208,7 +233,161 @@ app.post('/ocel-download', (req, res) => {
         }
     });
 })
+app.post('/xes-translator',(req,res)=>{
+    const filename="xesLogs.xes"
+    fs.writeFileSync(filename, req.body.jsonLog.xesString);
+    const formattedFileName = encodeURIComponent(filename);
+    res.setHeader('Content-Disposition', `attachment; filename="${formattedFileName}"`);
+    res.setHeader('Content-Type', 'application/octet-stream');
+    res.sendFile(path.resolve(filename), (err) => {
+        if (err) {
+            // Handle error if file sending fails
+            console.error(err);
+            res.status(err.status).end();
+        } else {
+            fs.unlinkSync(path.resolve(filename))
+            console.log('File sent successfully');
+        }
+    })
+})
 
+function jsonToXes(jsonToTranslate, caseIdKey, activityKey) {
+    const trace = {};
+    jsonToTranslate.forEach(entry => {
+        let caseIds = findAllValuesByKey(entry, caseIdKey); // Get all case IDs
+        let activities = findAllValuesByKey(entry, activityKey); // Get all activities
+        // Match occurrences one by one
+        for (let i = 0; i < caseIds.length; i++) {
+            let caseId = caseIds[i];
+            let activity = activities[i];
+
+            if (caseId in trace) {
+                trace[caseId].push({ [activityKey]: activity, entry: entry });
+            } else {
+                trace[caseId] = [{ [activityKey]: activity, entry: entry }];
+            }
+        }
+    });
+    let stringResult=[];
+    let index=0
+    for(const key in trace){
+        stringResult.push(`\t<trace>`);
+        stringResult.push(`\t<string key="concept:name" value="${key}"/>`);
+        trace[key].forEach((entry)=>{
+            stringResult.push(`\t\t<event>`);
+            stringResult.push(`\t\t<string key="concept:name" value="${entry[activityKey]}"/>`);
+            generateKeyValueStrings(entry.entry,caseIdKey,activityKey,index,caseIdKey).forEach(elemt=>{
+                stringResult.push(elemt);
+            })
+            stringResult.push(`\t\t</event>`);
+            // stringResult.push(generateKeyValueStrings(entry.entry,caseIdKey,activityKey));
+        })
+        stringResult.push(`\t</trace>`);
+    }
+let finalResult = `<?xml version="1.0" encoding="UTF-8"?>\n<log xmlns="http://www.xes-standard.org/">\n`;
+finalResult += stringResult.join("\n");
+finalResult += `\n</log>`;
+
+    return finalResult;
+}
+
+
+function generateKeyValueStrings(obj, caseId, activityKey, keyToCheck = "") {
+    let result = [];
+
+    if (typeof obj === "object" && obj !== null) {
+        for (let key in obj) {
+            let newKeyToCheck = keyToCheck ? `${keyToCheck}_${key}` : key;
+
+            if (Array.isArray(obj[key])) {
+                obj[key].forEach((item, index) => {
+                    let arrayKey = `${newKeyToCheck}[${index}]`;
+                    result.push(...generateKeyValueStrings(item, caseId, activityKey, arrayKey));
+                });
+            } else if (typeof obj[key] === "object" && obj[key] !== null) {
+                result.push(...generateKeyValueStrings(obj[key], caseId, activityKey, newKeyToCheck));
+            } else if (key !== caseId && key !== activityKey) {
+                let newKeyToCheckCut=newKeyToCheck;
+                if(newKeyToCheck.includes("[")){
+                    newKeyToCheckCut=newKeyToCheck.split("[")[0];
+                }
+                switch (newKeyToCheckCut) {
+                    case "inputs":
+                        result.push(`\t\t\t<string key="${newKeyToCheck}" value="${obj[key]}"/>`);
+                        break;
+                    case "events":
+                        if(!(newKeyToCheck.split("_eventValues")[1]?.includes("1") || newKeyToCheck.split("_eventValues")[1]?.includes("2") 
+                        || newKeyToCheck.split("_eventValues")[1]?.includes("0") || newKeyToCheck.split("_eventValues")[1]?.includes("_length"))){
+                            newKeyToCheck = newKeyToCheck.replace("events","BCEvent");
+                            result.push(`\t\t\t<string key="${newKeyToCheck}" value="${obj[key]}"/>`);
+                        }
+                        break;
+                    case "internalTxs":
+                        newKeyToCheck = newKeyToCheck.replace("internalTxs","Int");
+                        result.push(`\t\t\t<string key="${newKeyToCheck}" value="${obj[key]}"/>`);
+                        break;
+                    case "storageState":
+                        newKeyToCheck = newKeyToCheck.replace("storageState","stateVar");
+                        result.push(`\t\t\t<string key="${newKeyToCheck}" value="${obj[key]}"/>`);
+                        break;
+                    default:
+                        result.push(`\t\t\t<string key="${newKeyToCheck}" value="${obj[key]}"/>`);
+                        break;
+                }
+                
+            }
+        }
+    } else {
+        switch (keyToCheck) {
+            case "inputs":
+                result.push(`\t\t\t<string key="${keyToCheck}" value="${obj}"/>`);
+                break;
+            case "events":
+                keyToCheck = keyToCheck.replace("events","BCEvent");
+                result.push(`\t\t\t<string key="${keyToCheck}" value="${obj}"/>`);
+                break;
+            case "internalTxs":
+                keyToCheck = keyToCheck.replace("internalTxs","Int");
+                result.push(`\t\t\t<string key="${keyToCheck}" value="${obj}"/>`);
+                break;
+            case "storageState":
+                keyToCheck = keyToCheck.replace("storageState","stateVar");
+                result.push(`\t\t\t<string key="${keyToCheck}" value="${obj}"/>`);
+                break;
+            default:
+                result.push(`\t\t\t<string key="${keyToCheck}" value="${obj}"/>`);
+                break;
+        }
+        // result.push(`<string  key="${keyToCheck}" value="${obj}"/>`);
+    }
+
+    return result;
+}
+
+
+
+function findAllValuesByKey(obj, key) {
+    let results = [];
+
+    function recursiveSearch(o) {
+        if (typeof o !== 'object' || o === null) return;
+
+        if (key in o) {
+            results.push(o[key]);
+        }
+
+        for (let k in o) {
+            if (typeof o[k] === 'object') {
+                recursiveSearch(o[k]);
+            } else if (Array.isArray(o[k])) {
+                o[k].forEach(item => recursiveSearch(item));
+            }
+        }
+    }
+
+    recursiveSearch(obj);
+    return results;
+}
 app.post('/jsonocel-download', (req, res) => {
 
     const jsonToDownload = req.body.ocel;

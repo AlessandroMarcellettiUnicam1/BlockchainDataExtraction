@@ -100,28 +100,28 @@ function mergeAndSortDecodedValues(decodedValues) {
 async function newDecodeValues(sstore, contractTree, shaTraces, functionStorage, functionName, mainContract,web3Variable,contractCompiledPassed) {
     web3=web3Variable;
     contractCompiled = contractCompiledPassed;
-console.log("SSTORE");
-    console.log(sstore);
-    console.log("-------NEW DECODE VALUES---------");
-    let decodedValues = [];
-    console.log("-------SHA TRACES---------")
-    console.log(shaTraces);
-    console.log("-------FUNCTION STORAGE---------")
-    console.log(functionStorage);
+// console.log("SSTORE");
+//     console.log(sstore);
+//     console.log("-------NEW DECODE VALUES---------");
+//     let decodedValues = [];
+//     console.log("-------SHA TRACES---------")
+//     console.log(shaTraces);
+//     console.log("-------FUNCTION STORAGE---------")
+//     console.log(functionStorage);
     let flag= true;
     //iterate storage keys looking for complex keys coming from SHA3
     for (const storageVar in functionStorage) {
         for (const shaTrace of shaTraces) {
-            console.log('StorageVar=== shaTrace.finalKey', storageVar,shaTrace.finalKey)
+            // console.log('StorageVar=== shaTrace.finalKey', storageVar,shaTrace.finalKey)
             if (storageVar === shaTrace.finalKey) {
-                console.log("SONO NEL CASO 1")
-                console.log(shaTrace)
-                console.log(storageVar)
+                // console.log("SONO NEL CASO 1")
+                // console.log(shaTrace)
+                // console.log(storageVar)
                 const slotIndex = web3.utils.hexToNumber("0x" + shaTrace.hexStorageIndex);
-                console.log("slot indexxxx", slotIndex);
+                // console.log("slot indexxxx", slotIndex);
                 const contractVar = getContractVariable(slotIndex, contractTree, functionName, mainContract);
-                console.log("contract var", contractVar);
-                console.log("E string ",!contractVar[0].type.includes("string"))
+                // console.log("contract var", contractVar);
+                // console.log("E string ",!contractVar[0].type.includes("string"))
                 //Se è una struttura vado al caso primitive 
                 if(!contractVar[0].type.includes("string")){
                     flag=false;

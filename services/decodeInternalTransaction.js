@@ -3,10 +3,10 @@ const {searchAbi} =require("../query/query");
 const {saveAbi} = require("../databaseStore");
 const {connectDB}=require("../config/db");
 const InputDataDecoder = require('ethereum-input-data-decoder');
-async function decodeInternalTransaction(internalCalls,apiKey,smartContract,endpoint,web3){
+async function decodeInternalTransaction(internalCalls,apiKey,smartContract,endpoint,web3,networkName){
     if(!smartContract){
         
-        await connectDB(process.env.LOG_DB_NAME);
+        await connectDB(networkName);
         await Promise.all(internalCalls.map(async (element) => {
             let addressTo =element.to;
             let query = {
@@ -35,7 +35,7 @@ async function decodeInternalTransaction(internalCalls,apiKey,smartContract,endp
                                 for(let i=0;i<tempResult.inputs.length;i++){
                                     let numberConverted=tempResult.inputs[i];
                                     if(tempResult.inputs[i]._isBigNumber){
-                                        numberConverted=web3.utils.hexToNumber(tempResult.inputs[i]._hex);
+                                        numberConverted=Number(web3.utils.hexToNumber(tempResult.inputs[i]._hex));
                                     }
                                     element.inputs.push({
                                         name:tempResult.names[i],
@@ -69,7 +69,7 @@ async function decodeInternalTransaction(internalCalls,apiKey,smartContract,endp
                     for(let i=0;i<tempResult.inputs.length;i++){
                         let numberConverted=tempResult.inputs[i];
                         if(tempResult.inputs[i]._isBigNumber){
-                            numberConverted=web3.utils.hexToNumber(tempResult.inputs[i]._hex);
+                            numberConverted=Number(web3.utils.hexToNumber(tempResult.inputs[i]._hex));
                         }
                         element.inputs.push({
                             name:tempResult.names[i],

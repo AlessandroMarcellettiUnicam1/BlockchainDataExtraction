@@ -8,7 +8,7 @@ let contractAbi = {};
 // const { newDecodeValues } = require('./newDecodedValue');
 // const { optimizedDecodeValues }= require('./reformatting')
 // const { optimizedDecodeValues }= require('./reformatting')
-const { decodeInternalTransaction } = require('./DecodeInternalTransaction');
+const { decodeInternalTransaction } = require('./decodeInternalTransaction');
 const { optimizedDecodeValues }= require('./newReformattigCode')
 // const { getTraceStorage } = require('./getTraceStorage');
 
@@ -115,8 +115,8 @@ async function getAllTransactions(mainContract, contractAddress, impl_contract, 
             },
             timestampLog: new Date().toISOString()
         }
-        await connectDB(process.env.LOG_DB_NAME);
-        await saveExtractionLog(userLog)
+        await connectDB(networkName);
+        await saveExtractionLog(userLog,networkName)
 
         // return await getStorageData(contractTransactions, mainContract, contractTree, contractAddress, filters).then(async ()=>{
         //     await removeCollectionFromDB(networkName);
@@ -124,6 +124,7 @@ async function getAllTransactions(mainContract, contractAddress, impl_contract, 
 
         const result = await getStorageData(contractTransactions, mainContract, contractTree, contractAddress, filters);
         // await removeCollectionsInOrder(contractAddress,networkName,process.env.LOG_DB_NAME);
+        await mongoose.disconnect();
         // await removeCollectionFromDB(networkName).then(removeAddressCollection(contractAddress,process.env.LOG_DB_NAME));
         return result;
         //changed contratAddress to impl since it contains the storage to evaluate
@@ -356,7 +357,6 @@ async function getStorageData(contractTransactions, mainContract, contractTree, 
             // })
             blockchainLog.push(newLog)
             //TODO: remember to remove the comment
-            await connectDB(networkName)
             await saveTransaction(newLog, tx.to)
             console.log("-----------------------------------------------------------------------");
 
@@ -364,7 +364,6 @@ async function getStorageData(contractTransactions, mainContract, contractTree, 
         partialInt++;
     }
     console.log("Extraction finished")
-    await mongoose.disconnect()
     // await removeCollectionFromDB(networkName);
     // await mongoose.disconnect()
     fs.writeFileSync('abitest.json', JSON.stringify(blockchainLog));
@@ -385,7 +384,7 @@ async function removeCollectionFromDB(network){
         await connectDB(network);
         await mongoose.connection.db.dropCollection('ExtractionLog');
         await mongoose.connection.db.dropCollection('ExtractionAbi');
-        console.log(`Collection ExtractionLog deleted successfully.`);
+
     } catch (err) {
         if (err.code === 26) {
             console.log(`Collection ExtractionLog does not exist.`);
@@ -398,7 +397,7 @@ async function removeAddressCollection(contractAddress,network){
     try {
         await connectDB(network);
         await mongoose.connection.db.dropCollection(contractAddress);
-        console.log(`Collection  deleted successfully.`);
+
     } catch (err) {
         if (err.code === 26) {
             console.log(`Collection  does not exist.`);
@@ -585,7 +584,14 @@ async function getTraceStorage(traceDebugged, blockNumber, functionName, transac
                 //convert the length to number
                 let lengthNumber =Math.trunc( web3.utils.hexToNumber("0x" + lengthBytes) / 32);
                 //create the call object
+                let stringDepthConstruction="";
+                for(let i=0;i<trace.depth-1;i++){
+                    stringDepthConstruction+="_1";
+                }
+                // internalTxId + "_" + transactionHash,
+
                 let call = {
+                    callId: "call_0" + stringDepthConstruction,
                     callType: trace.op,
                     callDepth: trace.depth,
                     gasUsed: web3.utils.hexToNumber("0x"+trace.stack[trace.stack.length - 1]),
@@ -615,7 +621,12 @@ async function getTraceStorage(traceDebugged, blockNumber, functionName, transac
                 let offsetNumber = await web3.utils.hexToNumber("0x" + offsetBytes) / 32;
                 const lengthBytes = trace.stack[trace.stack.length - 4];
                 let lengthNumber = await web3.utils.hexToNumber("0x" + lengthBytes) / 32;
+                let stringDepthConstruction="";
+                for(let i=0;i<trace.depth-1;i++){
+                    stringDepthConstruction+="_1";
+                }
                 let call = {
+                    callId: "call_0" + stringDepthConstruction,
                     callType: trace.op,
                     callDepth: trace.depth,
                     gas: web3.utils.hexToNumber("0x"+trace.stack[trace.stack.length - 1]),
@@ -750,7 +761,12 @@ async function getTraceStorage(traceDebugged, blockNumber, functionName, transac
                 //convert the length to number
                 let lengthNumber = web3.utils.hexToNumber("0x" + lengthBytes) / 32;
                 //create the call object
+                let stringDepthConstruction="";
+                for(let i=0;i<trace.depth-1;i++){
+                    stringDepthConstruction+="_1";
+                }
                 let call = {
+                    callId: "call_0" + stringDepthConstruction,
                     callType: trace.op,
                     callDepth: trace.depth,
                     gasUsed: web3.utils.hexToNumber("0x"+trace.stack[trace.stack.length - 1]),
@@ -776,7 +792,12 @@ async function getTraceStorage(traceDebugged, blockNumber, functionName, transac
                 let offsetNumber = await web3.utils.hexToNumber("0x" + offsetBytes) / 32;
                 const lengthBytes = trace.stack[trace.stack.length - 4];
                 let lengthNumber = await web3.utils.hexToNumber("0x" + lengthBytes) / 32;
+                let stringDepthConstruction="";
+                for(let i=0;i<trace.depth-1;i++){
+                    stringDepthConstruction+="_1";
+                }
                 let call = {
+                    callId: "call_0" + stringDepthConstruction,
                     callType: trace.op,
                     callDepth: trace.depth,
                     gas: web3.utils.hexToNumber("0x"+trace.stack[trace.stack.length - 1]),
@@ -870,7 +891,7 @@ async function getTraceStorage(traceDebugged, blockNumber, functionName, transac
     finalShaTraces=regroupShatrace(finalShaTraces);
     const decodedValues = await optimizedDecodeValues(sstoreObject, contractTree, finalShaTraces, functionStorage, functionName, mainContract,web3,contractCompiled);
     // const decodedValues = await decodeValues(sstoreObject, contractTree, finalShaTraces, functionStorage, functionName, mainContract);
-    const internalTxs= await decodeInternalTransaction(internalCalls,apiKey,smartContract,endpoint,web3)
+    const internalTxs= await decodeInternalTransaction(internalCalls,apiKey,smartContract,endpoint,web3,networkName)
     return {decodedValues, internalTxs};
 }
 function regroupShatrace(finalShaTraces){
@@ -1568,7 +1589,7 @@ async function getCompiledData(contracts, contractName) {
     //v0.8.4+commit.c7e474f2
     // v0.5.15+commit.6a57276f
 //v0.8.28+commit.7893614a
-    solidityVersion = "v0.8.28+commit.7893614a";
+    // solidityVersion = "v0.8.28+commit.7893614a";
     const solcSnapshot = await getRemoteVersion(solidityVersion.replace("soljson-", "").replace(".js", ""))
 
     const output = solcSnapshot.compile(JSON.stringify(input));
