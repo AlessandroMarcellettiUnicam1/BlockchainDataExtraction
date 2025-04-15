@@ -1,0 +1,8 @@
+WEB3_ALCHEMY_MAINNET_URL=https://eth-mainnet.g.alchemy.com/v2/WFTt-eErPQYNZDeon3mE-FJXzThqDFpX
+WEB3_ALCHEMY_SEPOLIA_URL=https://eth-sepolia.g.alchemy.com/v2/WFTt-eErPQYNZDeon3mE-FJXzThqDFpX
+API_KEY_ETHERSCAN=9BW22R458ZHEBJKE1KV2UZAS1KNJPW2ZHE
+ETHERSCAN_MAINNET_ENDPOINT=https://api.etherscan.io/api
+ETHERSCAN_SEPOLIA_ENDPOINT=https://api-sepolia.etherscan.io/api
+
+MONGODB_URL=mongodb://localhost:27017
+LOG_DB_NAME=backlog
