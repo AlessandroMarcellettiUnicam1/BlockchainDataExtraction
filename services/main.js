@@ -355,7 +355,7 @@ async function getStorageData(contractTransactions, mainContract, contractTree, 
             // stringify(csvRow, (err, output) => {
             //     fs.appendFileSync('csvLogs.csv', output)
             // })
-            blockchainLog.push(newLog)
+            blockchainLog=newLog
             //TODO: remember to remove the comment
             await saveTransaction(newLog, tx.to)
             console.log("-----------------------------------------------------------------------");
