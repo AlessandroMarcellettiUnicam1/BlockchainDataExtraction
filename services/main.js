@@ -192,22 +192,22 @@ function applyFilters(contractTransactions, filters) {
  */
 async function debugTransaction(transactionHash, blockNumber) {
     try {
+        await hre.run('clean');
         await hre.changeNetwork(networkName, blockNumber)
         const start = new Date()
-
-       
+        
+        
         const response = await hre.network.provider.send("debug_traceTransaction", [
             transactionHash
         ]);
-
         
-       
+        
     
-        fs.writeFileSync("./temporaryTrials/trace.json", JSON.stringify(response));
-        const internalCalls = response.structLogs
-        .filter(log => log.op === "CALL" || log.op === "DELEGATECALL" || log.op === "STATICCALL");
+        // fs.writeFileSync("./temporaryTrials/trace.json", JSON.stringify(response));
+        // const internalCalls = response.structLogs
+        // .filter(log => log.op === "CALL" || log.op === "DELEGATECALL" || log.op === "STATICCALL");
 
-        const indiceTemp=response.structLogs.indexOf(internalCalls[0]);
+        // const indiceTemp=response.structLogs.indexOf(internalCalls[0]);
 
         const end = new Date()
         const requiredTime = parseFloat(((end - start) / 1000).toFixed(2))
@@ -250,123 +250,137 @@ async function getStorageData(contractTransactions, mainContract, contractTree, 
 
     // before to start the extraction, the connection to the database is established to check if the transaction has already been processed
     await connectDB(networkName)
-    
-    for (const tx of transactionsFiltered) {
-        let query = {
-            transactionHash: tx.hash.toLowerCase(),
-            contractAddress: contractAddress.toLowerCase()
-        }
-
-        const response = await searchTransaction(query,networkName)
-        console.log("Transactions found -> ", response);
-
-
-        if (response) {
-            console.log("transaction already processed: ", tx.hash)
-            const {_id, __v, ...transactionData} = response[0]
-            blockchainLog.push(transactionData);
-            console.log("-----------------------------------------------------------------------");
-        } else {
-            console.log("Processing transaction " + partialInt)
-            console.log(tx.hash);
-            const {response, requiredTime} = await debugTransaction(tx.hash, tx.blockNumber)
-
-            //if(partialInt < 10){
-            const start = new Date()
-            const pastEvents = await getEvents(tx.hash, Number(tx.blockNumber), contractAddress);
-            let newLog = {
-                functionName: tx.inputDecoded.method,
-                transactionHash: tx.hash,
-                blockNumber: parseInt(tx.blockNumber),
-                contractAddress: tx.to,
-                sender: tx.from,
-                gasUsed: parseInt(tx.gasUsed),
-                timestamp: '',
-                inputs: [],
-                storageState: [],
-                internalTxs: [],
-                events: pastEvents
-            };
-
-            // const decoder = new InputDataDecoder(contractAbi);
-            // const result = decoder.decodeData(tx.input);
-
-            // newLog.activity = tx.method;
-            newLog.timestamp = new Date(tx.timeStamp * 1000).toISOString()
-
-            let inputId = 0 
-            for (let i = 0; i < tx.inputDecoded.inputs.length; i++) { 
-                //check if the input value is an array or a struct
-                // TODO -> check how a Struct array is represented
-                // Deploy a SC in a Test Net and send a tx with input data to decode its structure
-                let inputName = ""
-                if (Array.isArray(tx.inputDecoded.names[i])) {
-                    inputName = tx.inputDecoded.names[i].toString()
-                } else {
-                    inputName = tx.inputDecoded.names[i]
-                }
-
-                if (Array.isArray(tx.inputDecoded.inputs[i])) {
-                    let bufferTuple = [];
-                    //if it is a struct split the sub-attributes
-                    if (tx.inputDecoded.types[i].includes(",")) {
-                        const bufferTypes = tx.inputDecoded.types[i].split(",");
-                        for (let z = 0; z < tx.inputDecoded.inputs[i].length; z++) {
-                            bufferTuple.push(decodeInput(bufferTypes[z], tx.inputDecoded.inputs[i][z]));
-                        }
+    const batchSize = 5
+        for (let i = 0; i < transactionsFiltered.length; i += batchSize) {
+            const batch = transactionsFiltered.slice(i, i + batchSize);
+            for (const tx of batch) {
+                try {
+                    let query = {
+                        transactionHash: tx.hash.toLowerCase(),
+                        contractAddress: contractAddress.toLowerCase()
+                    }
+            
+                    const response = await searchTransaction(query,networkName)
+                    console.log("Transactions found -> ", response);
+            
+            
+                    if (response) {
+                        console.log("transaction already processed: ", tx.hash)
+                        const {_id, __v, ...transactionData} = response[0]
+                        blockchainLog.push(transactionData);
+                        console.log("-----------------------------------------------------------------------");
                     } else {
-                        for (let z = 0; z < tx.inputDecoded.inputs[i].length; z++) {
-                            bufferTuple.push(decodeInput(tx.inputDecoded.types[i], tx.inputDecoded.inputs[i][z]));
+                        console.log("Processing transaction " + partialInt)
+                        console.log(tx.hash);
+                        let {response, requiredTime} = await debugTransaction(tx.hash, tx.blockNumber)
+            
+                        //if(partialInt < 10){
+                        const start = new Date()
+                        const pastEvents = await getEvents(tx.hash, Number(tx.blockNumber), contractAddress);
+                        let newLog = {
+                            functionName: tx.inputDecoded.method,
+                            transactionHash: tx.hash,
+                            blockNumber: parseInt(tx.blockNumber),
+                            contractAddress: tx.to,
+                            sender: tx.from,
+                            gasUsed: parseInt(tx.gasUsed),
+                            timestamp: '',
+                            inputs: [],
+                            storageState: [],
+                            internalTxs: [],
+                            events: pastEvents
+                        };
+            
+                        // const decoder = new InputDataDecoder(contractAbi);
+                        // const result = decoder.decodeData(tx.input);
+            
+                        // newLog.activity = tx.method;
+                        newLog.timestamp = new Date(tx.timeStamp * 1000).toISOString()
+            
+                        let inputId = 0 
+                        for (let i = 0; i < tx.inputDecoded.inputs.length; i++) { 
+                            //check if the input value is an array or a struct
+                            // TODO -> check how a Struct array is represented
+                            // Deploy a SC in a Test Net and send a tx with input data to decode its structure
+                            let inputName = ""
+                            if (Array.isArray(tx.inputDecoded.names[i])) {
+                                inputName = tx.inputDecoded.names[i].toString()
+                            } else {
+                                inputName = tx.inputDecoded.names[i]
+                            }
+            
+                            if (Array.isArray(tx.inputDecoded.inputs[i])) {
+                                let bufferTuple = [];
+                                //if it is a struct split the sub-attributes
+                                if (tx.inputDecoded.types[i].includes(",")) {
+                                    const bufferTypes = tx.inputDecoded.types[i].split(",");
+                                    for (let z = 0; z < tx.inputDecoded.inputs[i].length; z++) {
+                                        bufferTuple.push(decodeInput(bufferTypes[z], tx.inputDecoded.inputs[i][z]));
+                                    }
+                                } else {
+                                    for (let z = 0; z < tx.inputDecoded.inputs[i].length; z++) {
+                                        bufferTuple.push(decodeInput(tx.inputDecoded.types[i], tx.inputDecoded.inputs[i][z]));
+                                    }
+                                }
+            
+                                newLog.inputs[i] = {
+                                    // inputId: "inputName_" + inputId + "_" + tx.hash,
+                                    inputName: inputName,
+                                    type: tx.inputDecoded.types[i],
+                                    inputValue: bufferTuple.toString()
+                                }
+                            } else {
+                                newLog.inputs[i] = {
+                                    // inputId: "inputName_" + inputId + "_" + tx.hash,
+                                    inputName: inputName,
+                                    type: tx.inputDecoded.types[i],
+                                    inputValue: decodeInput(tx.inputDecoded.types[i], tx.inputDecoded.inputs[i])
+                                }
+                            }
+                            inputId++
                         }
+            
+                        const storageVal = await getTraceStorage(response, tx.blockNumber, tx.inputDecoded.method, tx.hash,
+                            mainContract, contractTree,smartContract);
+                        newLog.storageState = storageVal.decodedValues;
+                        newLog.internalTxs = storageVal.internalTxs;
+                        const end = new Date()
+                        const requiredDecodeTime = parseFloat(((end - start) / 1000).toFixed(2))
+                        decodeTime += requiredDecodeTime
+            
+                        // let csvRow = []
+                        // csvRow.push({
+                        //     transactionHash: tx.hash,
+                        //     debugTime: requiredTime,
+                        //     decodeTime: requiredDecodeTime,
+                        //     totalTime: parseFloat((requiredTime + requiredDecodeTime).toFixed(2))
+                        // })
+                        // stringify(csvRow, (err, output) => {
+                        //     fs.appendFileSync('csvLogs.csv', output)
+                        // })
+                        blockchainLog=newLog
+                        //TODO: remember to remove the comment
+                        await saveTransaction(newLog, tx.to)
+                        response = null
+                        // fs.rmSync("../BlockchainDataExtraction/cache/hardhat-network-fork/rpc_cache/eth-mainnet.g.alchemy.com",{recursive: true, force: true});
+            
+                        
+                        
+                        console.log("-----------------------------------------------------------------------");
+            
                     }
-
-                    newLog.inputs[i] = {
-                        // inputId: "inputName_" + inputId + "_" + tx.hash,
-                        inputName: inputName,
-                        type: tx.inputDecoded.types[i],
-                        inputValue: bufferTuple.toString()
-                    }
-                } else {
-                    newLog.inputs[i] = {
-                        // inputId: "inputName_" + inputId + "_" + tx.hash,
-                        inputName: inputName,
-                        type: tx.inputDecoded.types[i],
-                        inputValue: decodeInput(tx.inputDecoded.types[i], tx.inputDecoded.inputs[i])
-                    }
+                } catch (err) {
+                  console.error(`Error processing tx ${tx.hash}:`, err);
                 }
-                inputId++
+                partialInt++;
+                // 🧹 Clear memory manually
+                if (global.gc) global.gc();
             }
-
-            const storageVal = await getTraceStorage(response, tx.blockNumber, tx.inputDecoded.method, tx.hash,
-                mainContract, contractTree,smartContract);
-            newLog.storageState = storageVal.decodedValues;
-            newLog.internalTxs = storageVal.internalTxs;
-            const end = new Date()
-            const requiredDecodeTime = parseFloat(((end - start) / 1000).toFixed(2))
-            decodeTime += requiredDecodeTime
-
-            // let csvRow = []
-            // csvRow.push({
-            //     transactionHash: tx.hash,
-            //     debugTime: requiredTime,
-            //     decodeTime: requiredDecodeTime,
-            //     totalTime: parseFloat((requiredTime + requiredDecodeTime).toFixed(2))
-            // })
-            // stringify(csvRow, (err, output) => {
-            //     fs.appendFileSync('csvLogs.csv', output)
-            // })
-            blockchainLog=newLog
-            //TODO: remember to remove the comment
-            await saveTransaction(newLog, tx.to)
-            console.log("-----------------------------------------------------------------------");
-
         }
-        partialInt++;
-    }
     console.log("Extraction finished")
     // await removeCollectionFromDB(networkName);
     // await mongoose.disconnect()
-    fs.writeFileSync('abitest.json', JSON.stringify(blockchainLog));
+    // fs.writeFileSync('abitest.json', JSON.stringify(blockchainLog));
     return blockchainLog;
 }
 
@@ -476,7 +490,8 @@ async function getTraceStorage(traceDebugged, blockNumber, functionName, transac
     let keccakBeforeAdd = {};
 
     const sstoreToPrint = []
-    fs.writeFileSync("./temporaryTrials/trace.json", JSON.stringify(traceDebugged.structLogs), {flag: "a+"});
+    if(global.gc) global.gc();
+    // fs.writeFileSync("./temporaryTrials/trace.json", JSON.stringify(traceDebugged.structLogs), {flag: "a+"});
     if (traceDebugged.structLogs) {
         for (const trace of traceDebugged.structLogs) {
             //if SHA3 is found then read all keys before being hashed
@@ -824,7 +839,7 @@ async function getTraceStorage(traceDebugged, blockNumber, functionName, transac
     }
     
     // fs.writeFileSync("./temporaryTrials/sstoreToPrint.json", JSON.stringify(sstoreToPrint))
-    fs.writeFileSync("./temporaryTrials/storeBuffer.json", JSON.stringify(sstoreBuffer));
+    // fs.writeFileSync("./temporaryTrials/storeBuffer.json", JSON.stringify(sstoreBuffer));
     let finalShaTraces = [];
     finalShaTraces=trackBuffer
     // console.log('SSTOREBUFER',sstoreBuffer);
@@ -878,10 +893,10 @@ async function getTraceStorage(traceDebugged, blockNumber, functionName, transac
     //removes duplicate storing keys, it will catch only the last update done on a variable
     const uniqueSStore = Array.from(new Set(sstoreBuffer.map(JSON.stringify))).map(JSON.parse);
     // const uniqueStorage = Array.from(new Set(functionStorage.map(JSON.stringify))).map(JSON.parse);
-    fs.writeFileSync('./temporaryTrials/uniqueSStore.json', JSON.stringify(uniqueSStore));
+    // fs.writeFileSync('./temporaryTrials/uniqueSStore.json', JSON.stringify(uniqueSStore));
     if (Object.keys(functionStorage).length !== 0) {
         // fs.writeFileSync(`./temporaryTrials/functionStorage_${transactionHash}.json`, JSON.stringify(functionStorage));
-        fs.writeFileSync('./temporaryTrials/finalShaTraces.json', JSON.stringify(finalShaTraces));
+        // fs.writeFileSync('./temporaryTrials/finalShaTraces.json', JSON.stringify(finalShaTraces));
     }
 
     const sstoreObject = {sstoreOptimization, sstoreBuffer}
@@ -955,7 +970,7 @@ function getContractVariable(slotIndex, contractTree, functionName, mainContract
 function mergeVariableValues(arr) {
     console.log("merge variable values ");
     console.log(arr);
-    fs.writeFileSync('formattest.json', JSON.stringify(arr));
+    // fs.writeFileSync('formattest.json', JSON.stringify(arr));
 
     return Object.values(arr.reduce((acc, item) => {
 
@@ -1594,7 +1609,7 @@ async function getCompiledData(contracts, contractName) {
 
     const output = solcSnapshot.compile(JSON.stringify(input));
     contractCompiled = output
-    fs.writeFileSync('testContract.json', output);
+    // fs.writeFileSync('testContract.json', output);
     if (!JSON.parse(output).contracts) {
         throw new Error(JSON.parse(output).errors[0].message);
     }
@@ -1754,7 +1769,7 @@ async function getContractCodeEtherscan(contractAddress) {
         throw new Error("No contract found");
     }
     let i = 0;
-    fs.writeFileSync('./temporaryTrials/dataResult.json', JSON.stringify(data.result[0]))
+    // fs.writeFileSync('./temporaryTrials/dataResult.json', JSON.stringify(data.result[0]))
     let jsonCode = data.result[0].SourceCode;
     //console.log(jsonCode);
     fs.writeFileSync('sourceCode', JSON.stringify(data.result[0]));
@@ -1821,7 +1836,7 @@ async function getContractVariableTree(compiled) {
                     slot: storageVar.slot, offset: storageVar.offset
                 });
 
-                fs.writeFileSync('./temporaryTrials/contractStorageTree.json', JSON.stringify(contractStorageTree[firstKey]), {flag: "a+"})
+                // fs.writeFileSync('./temporaryTrials/contractStorageTree.json', JSON.stringify(contractStorageTree[firstKey]), {flag: "a+"})
             }
         }else{
             for(const keyNumber in Object.keys(compiled.contracts[contract])){
@@ -1841,7 +1856,7 @@ async function getContractVariableTree(compiled) {
                             slot: storageVar.slot, offset: storageVar.offset
                         });
 
-                        fs.writeFileSync('./temporaryTrials/contractStorageTree.json', JSON.stringify(contractStorageTree[otherKey]), {flag: "a+"})
+                        // fs.writeFileSync('./temporaryTrials/contractStorageTree.json', JSON.stringify(contractStorageTree[otherKey]), {flag: "a+"})
                     }
                 }
             }
