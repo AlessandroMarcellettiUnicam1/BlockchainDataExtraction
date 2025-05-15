@@ -115,18 +115,18 @@ async function getAllTransactions(mainContract, contractAddress, impl_contract, 
             },
             timestampLog: new Date().toISOString()
         }
+       
+
+        
+       
         await connectDB(networkName);
         await saveExtractionLog(userLog,networkName)
-
-        // return await getStorageData(contractTransactions, mainContract, contractTree, contractAddress, filters).then(async ()=>{
-        //     await removeCollectionFromDB(networkName);
-        // });
-
         const result = await getStorageData(contractTransactions, mainContract, contractTree, contractAddress, filters);
-        // await removeCollectionsInOrder(contractAddress,networkName,process.env.LOG_DB_NAME);
         await mongoose.disconnect();
+
+       
         // await removeCollectionFromDB(networkName).then(removeAddressCollection(contractAddress,process.env.LOG_DB_NAME));
-        return result;
+        // return result;
         //changed contratAddress to impl since it contains the storage to evaluate
         // return await getStorageData(contractTransactions, mainContract, contractTree, impl_contract, filters,smartContract);
         // let csvRow = []
@@ -139,6 +139,7 @@ async function getAllTransactions(mainContract, contractAddress, impl_contract, 
         // stringify(csvRow, (err, output) => {
         //     fs.appendFileSync('csvLogs.csv', output)
         // })
+        return result;
     } catch (err) {
         console.error(err)
         return err
@@ -250,10 +251,7 @@ async function getStorageData(contractTransactions, mainContract, contractTree, 
 
     // before to start the extraction, the connection to the database is established to check if the transaction has already been processed
     await connectDB(networkName)
-    const batchSize = 5
-        for (let i = 0; i < transactionsFiltered.length; i += batchSize) {
-            const batch = transactionsFiltered.slice(i, i + batchSize);
-            for (const tx of batch) {
+            for (const tx of transactionsFiltered) {
                 try {
                     let query = {
                         transactionHash: tx.hash.toLowerCase(),
@@ -358,7 +356,7 @@ async function getStorageData(contractTransactions, mainContract, contractTree, 
                         // stringify(csvRow, (err, output) => {
                         //     fs.appendFileSync('csvLogs.csv', output)
                         // })
-                        blockchainLog=newLog
+                        blockchainLog.push(newLog)
                         //TODO: remember to remove the comment
                         await saveTransaction(newLog, tx.to)
                         response = null
@@ -376,7 +374,6 @@ async function getStorageData(contractTransactions, mainContract, contractTree, 
                 // 🧹 Clear memory manually
                 if (global.gc) global.gc();
             }
-        }
     console.log("Extraction finished")
     // await removeCollectionFromDB(networkName);
     // await mongoose.disconnect()
@@ -494,347 +491,65 @@ async function getTraceStorage(traceDebugged, blockNumber, functionName, transac
     // fs.writeFileSync("./temporaryTrials/trace.json", JSON.stringify(traceDebugged.structLogs), {flag: "a+"});
     if (traceDebugged.structLogs) {
         for (const trace of traceDebugged.structLogs) {
-            //if SHA3 is found then read all keys before being hashed
-            // computation of the memory location and the storage index of a complex variable (mapping or struct)
-            // in the stack we have the offset and the lenght of the memory
             if (trace.op === "KECCAK256") {
-
                 bufferPC = trace.pc;
                 const stackLength = trace.stack.length;
                 const memoryLocation = trace.stack[stackLength - 1];
-                //the memory contains 32 byte words so the hex index is converted to number and divided by 32
-                //in this way the index in the memory arrays is calculated
                 let numberLocation = web3.utils.hexToNumber("0x" + memoryLocation) / 32;
                 let storageIndexLocation = numberLocation + 1;
-                //take the key from the memory
                 const hexKey = trace.memory[numberLocation];
-                //take the storage slot from the memory
                 const hexStorageIndex = trace.memory[storageIndexLocation];
-                trackBuffer[index] = {
-                    hexKey: hexKey,
-                    hexStorageIndex: hexStorageIndex
-                };
-                // console.log("----KECCAK WITH PC:----", trace.pc)
-                // console.log("----LEFT:", hexKey)
-                // console.log("----RIGHT:", hexStorageIndex)
-                // end of a function execution -> returns the storage state with the keys and values in the storage
+                trackBuffer[index] = { hexKey, hexStorageIndex };
             } else if (trace.op === "STOP") {
-
-                //retrieve the entire storage after function execution
-                //for each storage key discard the ones of static variables and compare the remaining ones with the re-generated
-                // console.log("------STOP OPCODE-------");
-                //console.log(trace);
                 for (const slot in trace.storage) {
                     functionStorage[slot] = trace.storage[slot];
                 }
             } else if (trace.pc === (bufferPC + 1)) {
-                /*console.log("----AFTER KECCAK:----", trace.pc)
-                console.log("----RIGHT:", trace.stack[trace.stack.length - 1])*/
                 keccakBeforeAdd = trackBuffer[index];
                 bufferPC = -10;
                 trackBuffer[index].finalKey = trace.stack[trace.stack.length - 1];
                 keccakBeforeAdd = trackBuffer[index];
                 index++;
-                //todo compact with code below
-                if(trace.op == "ADD" && (trace.stack[trace.stack.length - 1] === keccakBeforeAdd.finalKey ||
+                if (trace.op === "ADD" && (trace.stack[trace.stack.length - 1] === keccakBeforeAdd.finalKey ||
                         trace.stack[trace.stack.length - 2] === keccakBeforeAdd.finalKey) &&
-
                     keccakBeforeAdd.hexStorageIndex === "0000000000000000000000000000000000000000000000000000000000000000") {
-
-                    const keyBuff =  trackBuffer[index-1].hexKey;
-                    const slotBuff =  trackBuffer[index-1].hexStorageIndex;
-                    trackBuffer[index-1].hexKey = slotBuff;
-                    trackBuffer[index-1].hexStorageIndex = keyBuff;
-
-                    // console.log("----ADD OPCODE----")
-                    // console.log("----first", trace.stack[trace.stack.length - 1]);
-                    // console.log("----second", trace.stack[trace.stack.length - 2]);
-                    
-
+                    const keyBuff = trackBuffer[index - 1].hexKey;
+                    const slotBuff = trackBuffer[index - 1].hexStorageIndex;
+                    trackBuffer[index - 1].hexKey = slotBuff;
+                    trackBuffer[index - 1].hexStorageIndex = keyBuff;
+                    const nextTrace = traceDebugged.structLogs[traceDebugged.structLogs.indexOf(trace) + 1];
+                    if (nextTrace) {
+                        trackBuffer[index - 1].finalKey = nextTrace.stack[nextTrace.stack.length - 1];
+                    }
+                    trackBuffer[index - 1].indexSum = trace.stack[trace.stack.length - 2];
                 }
-            }
-                //in case the trace is a SSTORE save the key. CAUTION: not every SSTORE changes the final storage state but every storage state change has an sstore
-                // SSTORE -> updates the storage state
-            // in the code we save the stack updated with the new value (the last element of the stack is the value to store in the storage slot)
-            else if (trace.op === "SSTORE") {
-                sstoreToPrint.push(trace)
-                // used to store the entire stack of the SSTORE for the optimization
-                sstoreOptimization.push(trace.stack)
-                // the last element of the stack is the storage slot in which data is pushed
+            } else if (trace.op === "SSTORE") {
+                sstoreToPrint.push(trace);
+                sstoreOptimization.push(trace.stack);
                 sstoreBuffer.push(trace.stack[trace.stack.length - 1]);
-
-                // console.log("----SSTORE PUSHING:----")
-                // console.log("----storage slot:", trace.stack[trace.stack.length - 1])
-                // console.log("----value:", trace.stack[trace.stack.length - 2])
-
-            } else if(trace.op == "ADD"){
-                /*ADD is the opcode that in case of arrays adds the next position to start to the computed keccak
-                if this is found and one of the inputs is the keccak and the previous keccak has 0 as slot then manage
-                this means that the keccak found is related to an array and we need to swap the slot with the key
-                this because for mappings we have K(h(k) . slot) while in arrays K(slot . 0x0...)*/
-
-                // console.log("----ADD OPCODE----")
-                // console.log("----first", trace.stack[trace.stack.length - 1]);
-                // console.log("----second", trace.stack[trace.stack.length - 2]);
-                /*console.log(keccakBeforeAdd.finalKey);
-                console.log(keccakBeforeAdd.hexStorageIndex);*/
-
-                if ((trace.stack[trace.stack.length - 1] === keccakBeforeAdd.finalKey ||
-                        trace.stack[trace.stack.length - 2] === keccakBeforeAdd.finalKey) &&
-
-                    keccakBeforeAdd.hexStorageIndex === "0000000000000000000000000000000000000000000000000000000000000000"){
-                    const keyBuff =  trackBuffer[index-1].hexKey;
-                    const slotBuff =  trackBuffer[index-1].hexStorageIndex;
-                    trackBuffer[index-1].hexKey = slotBuff;
-                    trackBuffer[index-1].hexStorageIndex = keyBuff;
-                    
-                }
-            } else if (trace.op === "CALL") {
-                //read the offset from the stack
-                const offsetBytes = trace.stack[trace.stack.length - 4];
-                //convert the offset to number 896
-                let offsetNumber =Math.trunc( web3.utils.hexToNumber("0x" + offsetBytes) / 32);
-                //read the length of the memory to read 914
-                const lengthBytes = trace.stack[trace.stack.length - 5];
-                //convert the length to number
-                let lengthNumber =Math.trunc( web3.utils.hexToNumber("0x" + lengthBytes) / 32);
-                //create the call object
-                let stringDepthConstruction="";
-                for(let i=0;i<trace.depth-1;i++){
-                    stringDepthConstruction+="_1";
-                }
-                // internalTxId + "_" + transactionHash,
-
-                let call = {
-                    callId: "call_0" + stringDepthConstruction,
-                    callType: trace.op,
-                    callDepth: trace.depth,
-                    gasUsed: web3.utils.hexToNumber("0x"+trace.stack[trace.stack.length - 1]),
-                    value: trace.stack[trace.stack.length - 3],
-                    to: "0x"+trace.stack[trace.stack.length - 2].slice(-40),
-                    inputsCall: ""
-                }
-                let stringMemory="";
-                trace.memory.forEach((element)=>{
-                    stringMemory+=element;
-                })
-                //taglio i valori che mi interessano 
-                stringMemory=stringMemory.slice(web3.utils.hexToNumber("0x" + offsetBytes)*2, (web3.utils.hexToNumber("0x" + offsetBytes)*2)+web3.utils.hexToNumber("0x" + lengthBytes)*2);
-                call.inputsCall=stringMemory;
-
-                //read all the inputs from the memory and insert it in the call object
-                // let stringTemp="";
-                // for (let i = offsetNumber; i <= offsetNumber + lengthNumber; i++) {
-                //     call.inputsCall.push(trace.memory[i]);
-                //     stringTemp+=trace.memory[i];
-                // }
-                // console.log("string Temp", stringTemp);
-                internalCalls.push(call);
-            } else if (trace.op === "DELEGATECALL" || trace.op === "STATICCALL") {
-                // internalCalls.push(trace.stack[trace.stack.length - 2]);
-                const offsetBytes = trace.stack[trace.stack.length - 3];
-                let offsetNumber = await web3.utils.hexToNumber("0x" + offsetBytes) / 32;
-                const lengthBytes = trace.stack[trace.stack.length - 4];
-                let lengthNumber = await web3.utils.hexToNumber("0x" + lengthBytes) / 32;
-                let stringDepthConstruction="";
-                for(let i=0;i<trace.depth-1;i++){
-                    stringDepthConstruction+="_1";
+            } else if (trace.op === "CALL" || trace.op === "DELEGATECALL" || trace.op === "STATICCALL") {
+                const offsetBytes = trace.stack[trace.op === "CALL" ? trace.stack.length - 4 : trace.stack.length - 3];
+                const lengthBytes = trace.stack[trace.op === "CALL" ? trace.stack.length - 5 : trace.stack.length - 4];
+                let stringDepthConstruction = "";
+                for (let i = 0; i < trace.depth - 1; i++) {
+                    stringDepthConstruction += "_1";
                 }
                 let call = {
                     callId: "call_0" + stringDepthConstruction,
                     callType: trace.op,
                     callDepth: trace.depth,
-                    gas: web3.utils.hexToNumber("0x"+trace.stack[trace.stack.length - 1]),
-                    to: "0x"+trace.stack[trace.stack.length - 2].slice(-40),
+                    gas: web3.utils.hexToNumber("0x" + trace.stack[trace.stack.length - 1]),
+                    to: "0x" + trace.stack[trace.stack.length - 2].slice(-40),
                     inputsCall: ""
-                }
-                let stringMemory="";
-                trace.memory.forEach((element)=>{
-                    stringMemory+=element;
-                })
-                 //taglio i valori che mi interessano 
-                 stringMemory=stringMemory.slice(web3.utils.hexToNumber("0x" + offsetBytes)*2, (web3.utils.hexToNumber("0x" + offsetBytes)*2)+web3.utils.hexToNumber("0x" + lengthBytes)*2);
-                 call.inputsCall=stringMemory;
- 
-                // for (let i = offsetNumber; i <= offsetNumber + lengthNumber; i++) {
-                //     call.inputsCall.push(trace.memory[i]);
-                // }
-                internalCalls.push(call);
-            } else if (trace.op === "RETURN") {
-                //console.log("---------RETURN---------")
-                //console.log(trace);
-            }
-//             fs.writeFileSync("./temporaryTrials/trace.json", JSON.stringify(trace), {flag: "a+"});
-        }
-    }
-    if (traceDebugged.structLogs) {
-        for (const trace of traceDebugged.structLogs) {
-
-            //if SHA3 is found then read all keys before being hashed
-            // computation of the memory location and the storage index of a complex variable (mapping or struct)
-            // in the stack we have the offset and the lenght of the memory
-            if (trace.op === "KECCAK256") {
-
-                bufferPC = trace.pc;
-                const stackLength = trace.stack.length;
-                const memoryLocation = trace.stack[stackLength - 1];
-                //the memory contains 32 byte words so the hex index is converted to number and divided by 32
-                //in this way the index in the memory arrays is calculated
-                let numberLocation = web3.utils.hexToNumber("0x" + memoryLocation) / 32;
-                let storageIndexLocation = numberLocation + 1;
-                //take the key from the memory
-                const hexKey = trace.memory[numberLocation];
-                //take the storage slot from the memory
-                const hexStorageIndex = trace.memory[storageIndexLocation];
-                trackBuffer[index] = {
-                    hexKey: hexKey,
-                    hexStorageIndex: hexStorageIndex
                 };
-                // console.log("----KECCAK WITH PC:----", trace.pc)
-                // console.log("----LEFT:", hexKey)
-                // console.log("----RIGHT:", hexStorageIndex)
-                // end of a function execution -> returns the storage state with the keys and values in the storage
-            } else if (trace.op === "STOP") {
-                //retrieve the entire storage after function execution
-                //for each storage key discard the ones of static variables and compare the remaining ones with the re-generated
-                // console.log("------STOP OPCODE-------");
-                //console.log(trace);
-                for (const slot in trace.storage) {
-                    functionStorage[slot] = trace.storage[slot];
-                }
-            } else if (trace.pc === (bufferPC + 1)) {
-                /*console.log("----AFTER KECCAK:----", trace.pc)
-                console.log("----RIGHT:", trace.stack[trace.stack.length - 1])*/
-                keccakBeforeAdd = trackBuffer[index];
-                bufferPC = -10;
-                trackBuffer[index].finalKey = trace.stack[trace.stack.length - 1];
-                // console.log(trackBuffer[index]);
-                index++;
-                //todo compact with code below
-                // console.log('keccakBeforeAdd', keccakBeforeAdd)
-                // console.log('trace.stack[trace.stack.length - 1]', trace.stack[trace.stack.length - 1])
-                // console.log('trace.stack[trace.stack.length - 2]',trace.stack[trace.stack.length - 2])
-                if(trace.op == "ADD" && (trace.stack[trace.stack.length - 1] === keccakBeforeAdd.finalKey ||
-                        trace.stack[trace.stack.length - 2] === keccakBeforeAdd.finalKey) &&
-                    keccakBeforeAdd.hexStorageIndex === "0000000000000000000000000000000000000000000000000000000000000000") {
-                        // console.log('PRIMO ADD ')
-                        // console.log('trace stack', trace.stack)
-
-                    const keyBuff =  trackBuffer[index-1].hexKey;
-                    const slotBuff =  trackBuffer[index-1].hexStorageIndex;
-                    trackBuffer[index-1].hexKey = slotBuff;
-                    trackBuffer[index-1].hexStorageIndex = keyBuff;
-                    const nextTrace=traceDebugged.structLogs[traceDebugged.structLogs.indexOf(trace)+1];
-                    const nextTraceStack=nextTrace.stack[nextTrace.stack.length - 1];
-                    // console.log( nextTraceStack);
-                    trackBuffer[index-1].finalKey =nextTraceStack;
-                    // console.log("----ADD OPCODE----")
-                    // console.log("----first", trace.stack[trace.stack.length - 1]);
-                    // console.log("----second", trace.stack[trace.stack.length - 2]);
-                    trackBuffer[index-1].indexSum= trace.stack[trace.stack.length - 2];
-                }
-            }
-                //in case the trace is a SSTORE save the key. CAUTION: not every SSTORE changes the final storage state but every storage state change has an sstore
-                // SSTORE -> updates the storage state
-            // in the code we save the stack updated with the new value (the last element of the stack is the value to store in the storage slot)
-            else if (trace.op === "SSTORE") {
-                sstoreToPrint.push(trace)
-                // used to store the entire stack of the SSTORE for the optimization
-                sstoreOptimization.push(trace.stack)
-                // the last element of the stack is the storage slot in which data is pushed
-                sstoreBuffer.push(trace.stack[trace.stack.length - 1]);
-                // console.log("----SSTORE PUSHING:----")
-                // console.log("----storage slot:", trace.stack[trace.stack.length - 1])
-                // console.log("----value:", trace.stack[trace.stack.length - 2])
-            } else if(trace.op == "ADD"){
-                // console.log('SECONDO ADD')
-                /*ADD is the opcode that in case of arrays adds the next position to start to the computed keccak
-                if this is found and one of the inputs is the keccak and the previous keccak has 0 as slot then manage
-                this means that the keccak found is related to an array and we need to swap the slot with the key
-                this because for mappings we have K(h(k) . slot) while in arrays K(slot . 0x0...)*/
-                // console.log("----ADD OPCODE----")
-                // console.log("----first", trace.stack[trace.stack.length - 1]);
-                // console.log("----second", trace.stack[trace.stack.length - 2]);
-                /*console.log(keccakBeforeAdd.finalKey);
-                console.log(keccakBeforeAdd.hexStorageIndex);*/
-
-                if ((trace.stack[trace.stack.length - 1] === keccakBeforeAdd.finalKey ||
-                        trace.stack[trace.stack.length - 2] === keccakBeforeAdd.finalKey) &&
-                    keccakBeforeAdd.hexStorageIndex === "0000000000000000000000000000000000000000000000000000000000000000"){
-                    const keyBuff =  trackBuffer[index-1].hexKey;
-                    const slotBuff =  trackBuffer[index-1].hexStorageIndex;
-                    trackBuffer[index-1].hexKey = slotBuff;
-                    trackBuffer[index-1].hexStorageIndex = keyBuff;
-                }
-            } else if (trace.op === "CALL") {
-                //read the offset from the stack
-                const offsetBytes = trace.stack[trace.stack.length - 4];
-                //convert the offset to number
-                let offsetNumber = web3.utils.hexToNumber("0x" + offsetBytes) / 32;
-                //read the length of the memory to read
-                const lengthBytes = trace.stack[trace.stack.length - 5];
-                //convert the length to number
-                let lengthNumber = web3.utils.hexToNumber("0x" + lengthBytes) / 32;
-                //create the call object
-                let stringDepthConstruction="";
-                for(let i=0;i<trace.depth-1;i++){
-                    stringDepthConstruction+="_1";
-                }
-                let call = {
-                    callId: "call_0" + stringDepthConstruction,
-                    callType: trace.op,
-                    callDepth: trace.depth,
-                    gasUsed: web3.utils.hexToNumber("0x"+trace.stack[trace.stack.length - 1]),
-                    value: trace.stack[trace.stack.length - 3],
-                    to: "0x"+trace.stack[trace.stack.length - 2].slice(-40),
-                    inputsCall: ""
-                }
-                let stringMemory="";
-                trace.memory.forEach((element)=>{
-                    stringMemory+=element;
-                })
-                 //taglio i valori che mi interessano 
-                 stringMemory=stringMemory.slice(web3.utils.hexToNumber("0x" + offsetBytes)*2, (web3.utils.hexToNumber("0x" + offsetBytes)*2)+web3.utils.hexToNumber("0x" + lengthBytes)*2);
-                 call.inputsCall=stringMemory;
-                //read all the inputs from the memory and insert it in the call object
-                // for (let i = offsetNumber; i <= offsetNumber + lengthNumber; i++) {
-                //     call.inputsCall.push(trace.memory[i]);
-                // }
+                let stringMemory = trace.memory.join("");
+                stringMemory = stringMemory.slice(
+                    web3.utils.hexToNumber("0x" + offsetBytes) * 2,
+                    web3.utils.hexToNumber("0x" + offsetBytes) * 2 + web3.utils.hexToNumber("0x" + lengthBytes) * 2
+                );
+                call.inputsCall = stringMemory;
                 internalCalls.push(call);
-            } else if (trace.op === "DELEGATECALL" || trace.op === "STATICCALL") {
-                // internalCalls.push(trace.stack[trace.stack.length - 2]);
-                const offsetBytes = trace.stack[trace.stack.length - 3];
-                let offsetNumber = await web3.utils.hexToNumber("0x" + offsetBytes) / 32;
-                const lengthBytes = trace.stack[trace.stack.length - 4];
-                let lengthNumber = await web3.utils.hexToNumber("0x" + lengthBytes) / 32;
-                let stringDepthConstruction="";
-                for(let i=0;i<trace.depth-1;i++){
-                    stringDepthConstruction+="_1";
-                }
-                let call = {
-                    callId: "call_0" + stringDepthConstruction,
-                    callType: trace.op,
-                    callDepth: trace.depth,
-                    gas: web3.utils.hexToNumber("0x"+trace.stack[trace.stack.length - 1]),
-                    to: "0x"+trace.stack[trace.stack.length - 2].slice(-40),
-                    inputsCall: ""
-                }
-                let stringMemory="";
-                trace.memory.forEach((element)=>{
-                    stringMemory+=element;
-                })
-                 //taglio i valori che mi interessano 
-                 stringMemory=stringMemory.slice(web3.utils.hexToNumber("0x" + offsetBytes)*2, (web3.utils.hexToNumber("0x" + offsetBytes)*2)+web3.utils.hexToNumber("0x" + lengthBytes)*2);
-                 call.inputsCall=stringMemory;
-                // for (let i = offsetNumber; i <= offsetNumber + lengthNumber; i++) {
-                //     call.inputsCall.push(trace.memory[i]);
-                // }
-                internalCalls.push(call);
-            } else if (trace.op === "RETURN") {
-                //console.log("---------RETURN---------")
-                //console.log(trace);
             }
-//             fs.writeFileSync("./temporaryTrials/trace.json", JSON.stringify(trace), {flag: "a+"});
         }
     }
     
@@ -907,6 +622,11 @@ async function getTraceStorage(traceDebugged, blockNumber, functionName, transac
     const decodedValues = await optimizedDecodeValues(sstoreObject, contractTree, finalShaTraces, functionStorage, functionName, mainContract,web3,contractCompiled);
     // const decodedValues = await decodeValues(sstoreObject, contractTree, finalShaTraces, functionStorage, functionName, mainContract);
     const internalTxs= await decodeInternalTransaction(internalCalls,apiKey,smartContract,endpoint,web3,networkName)
+    internalCalls.length = 0;
+    trackBuffer.length = 0;
+    sstoreBuffer.length = 0;
+    sstoreOptimization.length = 0;
+
     return {decodedValues, internalTxs};
 }
 function regroupShatrace(finalShaTraces){
@@ -1772,7 +1492,7 @@ async function getContractCodeEtherscan(contractAddress) {
     // fs.writeFileSync('./temporaryTrials/dataResult.json', JSON.stringify(data.result[0]))
     let jsonCode = data.result[0].SourceCode;
     //console.log(jsonCode);
-    fs.writeFileSync('sourceCode', JSON.stringify(data.result[0]));
+    // fs.writeFileSync('sourceCode', JSON.stringify(data.result[0]));
 
     if (jsonCode.charAt(0) === "{") {
 
