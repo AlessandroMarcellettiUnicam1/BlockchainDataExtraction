@@ -6,12 +6,13 @@ const fs = require('fs');
 const {stringify} = require("csv-stringify");
 const multer = require('multer');
 const jsonToCsv = require("json-2-csv")
+const jp = require('jsonpath');
 
 
 const {getAllTransactions} = require("./services/main");
 const app = express();
 const upload = multer({dest: 'uploads/'})
-const port = 8000;
+const port = 8080;
 const { setEventTypes }=require("./ocelMapping/eventTypes");
 app.use(cors());
 
@@ -24,11 +25,140 @@ app.use((req, res, next) => {
 // Middleware: Serving static files from the "public" directory
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(bodyParser.urlencoded({extended: true}));
-app.use(bodyParser.json({limit: '1mb'}));
+app.use(bodyParser.json({limit: '50mb'}));
 
 const {searchTransaction} = require('./query/query');
 const {connectDB} = require("./config/db");
 const { setObjectTypes } = require('./ocelMapping/objectTypes/objectTypes');
+
+
+app.post('/api/generateGraph', (req, res) => {
+    const jsonData = req.body.jsonData;
+    const edges = req.body.edges;
+    const nodesSet = new Map();
+    let edgesArray = [];
+
+    const addNodeIfMissing = (id, label, shape, color, tx, key) => {
+        if (!nodesSet.has(id)) {
+            nodesSet.set(id, {
+                id: id,
+                size: 10,
+                hidden: false,
+                label: label,
+                keyUsed: key,
+                x: Math.random() * 100,
+                y: Math.random() * 100,
+                color: color,
+                details: tx
+            });
+        }
+    };
+    const addEdgeIfMissing = (from, to) => {
+        let id = `${from}-${to}`;
+        if (!edgesArray.some(edge => edge.id === id)) {
+            edgesArray.push({
+                id: id,
+                from: from,
+                to: to,
+                label: "",
+                value: 1,
+            });
+        } else {
+            edgesArray.forEach(edge => {
+                if (edge.id === id) {
+                    edge.value++;
+                }
+            });
+        }
+    }
+    const getNodeId = (item) => {
+        if (typeof item === 'object' && item !== null) {
+            return JSON.stringify(item);
+        }
+        return String(item);
+    };
+    const getRandomColor = () => {
+        return "#" + ((1 << 24) * Math.random() | 0).toString(16).padStart(6, "0");
+    };
+
+    edges.forEach(edge => {
+        let from = edge.from;
+        let to = edge.to;
+        const colorFrom = getRandomColor();
+        const colorTo = getRandomColor();
+        jsonData.forEach(tx => {
+            let fromResults = jp.value(tx, `$..${from}`);
+            let toResults = jp.value(tx, `$..${to}`);
+            const fromItems = Array.isArray(fromResults) ? fromResults : [fromResults];
+            const toItems = Array.isArray(toResults) ? toResults : [toResults];
+            fromItems.forEach((fromItem) => {
+                const idFrom = getNodeId(fromItem);
+                const labelFrom = idFrom.slice(0, 64);
+                addNodeIfMissing(idFrom, labelFrom, "ellipse", colorFrom, tx, from);
+
+                toItems.forEach((toItem) => {
+                    const idTo = getNodeId(toItem);
+                    const labelTo = idTo.slice(0, 64);
+                    addNodeIfMissing(idTo, labelTo, "box", colorTo, tx, to);
+                    addEdgeIfMissing(idFrom, idTo, "");
+                });
+            });
+        })
+    });
+
+    // Transform nodes for frontend
+    const nodes = Array.from(nodesSet.values()).map((obj, index) => ({
+        key: obj.id,
+        attributes: {
+            label: `${obj.label}`,
+            size: 10,
+            details: obj.details,
+            keyUsed: obj.keyUsed,
+            color: obj.color,
+            x: obj.x,
+            y: obj.y,
+        },
+    }));
+
+    // Color legend
+    const colorLegendData = [];
+    const colorSet = new Set();
+    nodes.forEach((node) => {
+        if (node.attributes.color && !colorSet.has(node.attributes.color)) {
+            colorLegendData.push({ color: node.attributes.color, keyAssigned: node.attributes.keyUsed });
+            colorSet.add(node.attributes.color);
+        }
+    });
+
+    // Edge scaling
+    const edgeValues =[];
+    const maxEdgeValue = Math.max(...edgeValues);
+    const minEdgeValue = Math.min(...edgeValues);
+    const scaleEdgeValue = (value) => {
+        if (maxEdgeValue === minEdgeValue) return 1;
+        return ((value - minEdgeValue) / (maxEdgeValue - minEdgeValue)) * 4 + 1;
+    }
+    const newEdges = edgesArray.map((obj, index) => ({
+        key: obj.id,
+        source: obj.from,
+        target: obj.to,
+        attributes: {
+            value: obj.value,
+            size: scaleEdgeValue(obj.value),
+            color: '#3399FF',
+            x: Math.random() * 100,
+            y: Math.random() * 100,
+        },
+    }));
+
+    res.send({
+        nodes,
+        edges: newEdges,
+        colorLegend: colorLegendData,
+        edgeFilter: edgeValues
+    });
+});
+
 
 app.post('/api/ocelMap',(req,res)=>{
     const ocelMap=req.body;
