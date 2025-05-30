@@ -23,15 +23,14 @@ async function optimizedDecodeValues(sstore, contractTree, shaTraces, functionSt
     // console.log(shaTraces)
     // console.log("------FUNCTION STORAGE------")
     // console.log(functionStorage)
-    const emptyVariable="0000000000000000000000000000000000000000000000000000000000000000";
     mainContractName=mainContract
-    let shatracesProcessed=[];
+    let shatracesProcessed=new Set();
     let resultOfPreprocessing=[]
     if(functionStorage!={}){
         for( const shatrace of shaTraces){
             // if(shatrace.hasOwnProperty("indexSum")){
                 let slotNumber=web3.utils.hexToNumber("0x" + shatrace.hexStorageIndex);
-                if(slotNumber<300 && !shatracesProcessed.includes(shatrace.finalKey)){
+                if(slotNumber<300 && !shatracesProcessed.has(shatrace.finalKey)){
                     let variabilePerSlot=getContractVariable(slotNumber,contractTree,functionName,mainContract)[0];
                         //shatraceProcessed lo passo anche al read complex data perchè vado ad inserirci tutte quelle chiavi che ottengo
                         //durante magari l'estrazioni di una stringa
@@ -44,37 +43,29 @@ async function optimizedDecodeValues(sstore, contractTree, shaTraces, functionSt
                         }else{
                             resultOfPreprocessing.push(resultreadComplexData)
                         }
-                        shatracesProcessed.push(shatrace.finalKey);
-                        shatracesProcessed.push(shatrace.hexStorageIndex)
+                        shatracesProcessed.add(shatrace.finalKey);
+                        shatracesProcessed.add(shatrace.hexStorageIndex)
     
                     
                 }else {
-                    shatracesProcessed.push(shatrace.finalKey);
+                    shatracesProcessed.add(shatrace.finalKey);
                 }
             // }
         }
     //tiro fuori che cosa ho dentro il function storage in base agli slot di memori che leggo 
         let mainContractCompiled=getMainContractCompiled(mainContract);
         for(const storageKey in functionStorage){
-            if(!shatracesProcessed.includes(storageKey) && web3.utils.hexToNumber("0x" + storageKey)<9999999){
-                let slotNumber= web3.utils.hexToNumber("0x" + storageKey);
-                let variablePerSlot=getContractVariable(slotNumber,contractTree,functionName,mainContract);
-                let temp=[];
-                //Se ho più variabili per slot le tiro fuori una ad una e assegno il valore alla variabile
-                if (variablePerSlot.length>1){
-                    newReadVarFormOffset(variablePerSlot,functionStorage).forEach((e)=>{
-                        temp.push(e);
-                    })
-                }else {
-                    //c'è solo una variabile per quello slot 
-                    //parlo sempre di variabili primitive 
-                    //per primitive considero anche gli array 
-                    variablePerSlot[0].value=functionStorage[variablePerSlot[0].contentSlot];
-                    temp.push(variablePerSlot[0]);
-                }
-                temp.forEach((e)=>{
-                    resultOfPreprocessing.push(e)
-                })
+            if (!shatracesProcessed.has(storageKey) && web3.utils.hexToNumber("0x" + storageKey) < 9999999) {
+                const slotNumber = web3.utils.hexToNumber("0x" + storageKey);
+                const variablePerSlot = getContractVariable(slotNumber, contractTree, functionName, mainContract);
+                const variables = variablePerSlot.length > 1
+                    ? newReadVarFormOffset(variablePerSlot, functionStorage)
+                    : [variablePerSlot[0]];
+        
+                variables.forEach((e) => {
+                    e.value = functionStorage[e.contentSlot];
+                    resultOfPreprocessing.push(e);
+                });
             }
         }
         let result=[];
@@ -84,41 +75,32 @@ async function optimizedDecodeValues(sstore, contractTree, shaTraces, functionSt
             
         })
         
-        result=fixOutput(result);
-        result.map(function(obj){
-            obj['variableName']=obj['name'];
-            delete obj['name']
-            obj['variableRawValue']=obj['value'];
-            delete obj['value']
-            obj['variableValue']=obj['decodedValue'];
-            delete obj['decodedValue']
-
-            // TODO: code used to remove unnecessary fields
-            delete obj['slot']
-            delete obj['offset']
-            delete obj['contentSlot']
-        })
-        let expandedResult = [];
-        result.forEach((obj) => {
-            if (Array.isArray(obj.variableValue)) {
-            const maxLength = obj.variableValue.length;
-            for (let i = 0; i < maxLength; i++) {
-                let variableRawValue=obj.variableRawValue[i]?obj.variableRawValue[i]:obj.variableRawValue;
-                expandedResult.push({
-                type: obj.type,
-                variableName: obj.variableName + "_" + i,
-                variableRawValue: variableRawValue,
-                variableValue: obj.variableValue[i]
-                });
-            }
-            } else {
-            expandedResult.push(obj);
-            }
+        result = result.map(obj => {
+            const { name, value, decodedValue, slot, offset, contentSlot, ...rest } = obj;
+        
+            return {
+                ...rest,
+                variableName: name,
+                variableRawValue: value,
+                variableValue: decodedValue
+            };
         });
-        result = expandedResult;
-        result=removeStructFormOutput(result);
-        result = result.filter(obj => obj.variableRawValue !== undefined && obj.variableValue !== undefined);
-        result=removeDuplicateV2(result);
+        
+        const expandedResult = result.flatMap(obj => {
+            if (Array.isArray(obj.variableValue)) {
+                return obj.variableValue.map((value, i) => ({
+                    ...obj,
+                    variableName: `${obj.variableName}_${i}`,
+                    variableRawValue: Array.isArray(obj.variableRawValue) ? obj.variableRawValue[i] : obj.variableRawValue,
+                    variableValue: value
+                }));
+            }
+            return obj;
+        });
+        
+        result = expandedResult.filter(obj => obj.variableRawValue !== undefined && obj.variableValue !== undefined);
+        result = removeStructFormOutput(result);
+        result = removeDuplicateV2(result);
         return result;
     }
     
@@ -175,75 +157,7 @@ function extractElementFromStruct(element,outputResult){
         }
     })
 }
-function fixOutput(result){
-    removeDuplicate(result);
-    let outputResult=[]
-    result.forEach((element)=>{
-        if(element){
-            element.slot = Number(element.slot);
-            if(element.element && element.element.length){
-                element.element.forEach((e)=>{
-                    e.slot = Number(e.slot);
-                })
-            }
-        }
-        //check if the element.slot is a BigInt
-        
-    });
-    result.forEach((element)=>{
-        if(element){
-            let flag=true;
-                if(Array.isArray(element.element)){
-                    element.element.forEach((e)=>{
-                        if(e.decodedValue){
-                            if(Array.isArray(e.decodedValue) && e.decodedValue.length===0 && flag){
-                                flag=false;
-                            }else if(!Array.isArray(e.decodedValue) && e.decodedValue===undefined && flag){
-                                flag=false;
-                            }
-                        }
-                    })
-                    if(flag){
-                        outputResult.push(element);
-                    }
-                }else{
-                    if(Array.isArray(element.decodedValue) && element.decodedValue.length===0 && flag){
-                        flag=false;
-                        // outputResult.push(element);
-                    }else if((!Array.isArray(element.decodedValue)) && element.decodedValue===undefined && flag){
-                        // outputResult.push(element);
-                        flag=false;
-                    }
-                    if(flag){
-                        outputResult.push(element);
-                    }
-                }
-        }
-    })
-    
-    return outputResult;
-}
-function removeDuplicate(result){
-    const uniqueResults = [];
-    const seen = new Set();
 
-    result.forEach((element) => {
-        const key = element.name;
-        if (!seen.has(key)) {
-            seen.add(key);
-            uniqueResults.push(element);
-        }
-    });
-    result = uniqueResults;
-}
-function checkDuplicate(outputResult){
-    outputResult.forEach((e)=>{
-        if(e.astId===element.astId){
-            return true;
-        }
-    })
-    return false;
-}
 
 
 /**
@@ -310,7 +224,7 @@ function readStructFromComplexData(variable, shaTraces, functionStorage,shatrace
         }
         element.slot=slotElementStruct;
         element.contentSlot=web3.utils.padLeft( web3.utils.numberToHex(slotElementStruct).slice(2),64);
-        shatracesProcessed.push(element.contentSlot);
+        shatracesProcessed.add(element.contentSlot);
         element=readComplexData(element,shaTraces,functionStorage,shatracesProcessed,arrayShaTrace)
         variable.element.push(element)
     })
@@ -390,7 +304,7 @@ function readString (variable,shaTraces ,functionStorage,shatracesProcessed,arra
             let bigNumberindex = BigInt(i);
             num = num + bigNumberindex;
             let slotResult = web3.utils.numberToHex(num).substring(2);
-            shatracesProcessed.push(slotResult);
+            shatracesProcessed.add(slotResult);
             listOfBlock = listOfBlock + (functionStorage[slotResult]);
         }
         variable.value=listOfBlock;
@@ -447,13 +361,13 @@ function readArrayComplexDyn(variable,shaTraces,functionStorage,shatracesProcess
     }else if(variable.type.includes("struct")){
         let keyslot=web3.utils.keccak256("0x"+variable.contentSlot).slice(2);
         if(shaTraces.indexSum===undefined){
-            shatracesProcessed.push(keyslot)
+            shatracesProcessed.add(keyslot)
             variable.contentSlot=keyslot
             variable.slot=web3.utils.hexToNumber("0x"+keyslot);
         }else{
             let keySlotToNumber=web3.utils.hexToNumber(keyslot);
             let keyResult=web3.utils.numberToHex(keySlotToNumber+BigInt(shaTraces.indexSum)).slice(2);
-            shatracesProcessed.push(keyResult)
+            shatracesProcessed.add(keyResult)
             variable.contentSlot=keyResult
             variable.slot=web3.utils.numberToHex("0x"+keyResult);
         }
@@ -477,7 +391,7 @@ function readStringArray(variable,shaTraces ,functionStorage,shatracesProcessed)
             let bigNumberindex = BigInt(i);
             num = num + bigNumberindex;
             let slotResult = web3.utils.numberToHex(num).substring(2);
-            shatracesProcessed.push(slotResult);
+            shatracesProcessed.add(slotResult);
             listOfBlock = listOfBlock + (functionStorage[slotResult]);
         }
         variable.value=listOfBlock;
@@ -493,12 +407,12 @@ function readBytesArrayDynamic(variable,shaTraces ,functionStorage,shatracesProc
         let keyOfSlot=web3.utils.keccak256("0x"+variable.contentSlot);
         variable.value=[];
         if(shaTraces.indexSum==undefined){
-            shatracesProcessed.push(keyOfSlot)
+            shatracesProcessed.add(keyOfSlot)
             variable.value.push(functionStorage[keyOfSlot.slice(2)]);
         }else{
             let keySlotToNumber=web3.utils.hexToNumber(keyOfSlot);
             let keyResult=web3.utils.numberToHex(keySlotToNumber+BigInt(shaTraces.indexSum)).slice(2);
-            shatracesProcessed.push(keyResult)
+            shatracesProcessed.add(keyResult)
             variable.value.push(functionStorage[keyResult]);
         }
         return variable;
@@ -515,17 +429,17 @@ function readUintArrayDynamic(variable,shaTraces ,functionStorage,shatracesProce
             if(web3.utils.hexToNumber("0x"+variable.arrayLength)>0){
                 for(let i=0;i<web3.utils.hexToNumber("0x"+variable.arrayLength);i++){
                     let keySlot=web3.utils.numberToHex(web3.utils.hexToNumber(keyOfSlot)+BigInt(i)).slice(2);
-                    shatracesProcessed.push(keySlot)
+                    shatracesProcessed.add(keySlot)
                     variable.value.push(functionStorage[keySlot]);
                 }
             }else{
-                shatracesProcessed.push(keyOfSlot)
+                shatracesProcessed.add(keyOfSlot)
                 variable.value.push(functionStorage[keyOfSlot.slice(2)]);
             }
         }else{
             let keySlotToNumber=web3.utils.hexToNumber(keyOfSlot);
             let keyResult=web3.utils.numberToHex(keySlotToNumber+BigInt(shaTraces.indexSum)).slice(2);
-            shatracesProcessed.push(keyResult)
+            shatracesProcessed.add(keyResult)
             variable.value.push(functionStorage[keyResult]);
         }
         return variable;
@@ -623,6 +537,7 @@ function decodePrimitive(variable,functionStorage){
     }
 }
 
+
 //funzione per tirare fuori i valori da un array 
 function decodePartialPrimitive(variable,functionStorage,contractCompiled){
     let type=variable.type.split("(")[0];
@@ -670,12 +585,6 @@ function readStruct(variable,functionStorage,contractCompiled){
         return decodeValue(variable,functionStorage,contractCompiled);
 
     }
-    return variable;
-    variable.type="";
-    variable.memberName="";
-    
-    
-    return decodeValue(variable,functionStorage,contractCompiled);
 }
 function decodeArray(variable,functionStorage){
     if(variable.type.includes("uint")){
@@ -716,24 +625,7 @@ function decodeBytesArrayDynamic(variable,functionStorage){
         variable.decodedValue.push(decodePrimitive({type:variable.type,value:element},functionStorage));
     }) 
     return variable;
-    // if(variable.type.includes("32")){
-    //     variable.elementDecoded.push("0x"+variable.value);
-    //     return variable;
-    // }else{
-    //     let typeSize=parseInt(variable.type.split(")")[0].split("uint")[1]);
-    //     let arrayLength=parseInt(variable.type.split(")")[1].split("_storage")[0]);
-    //     let result=[];
-    //     let charsForElement = typeSize * 2;
-    //     const slotLength = 64;
-    //     for (let i=0;i<arrayLength;i++){
-    //         let startOfTheElement = slotLength - (i*charsForElement);
-    //         let endOfTheElement = startOfTheElement - charsForElement;
-    //         let valueExatracted = variable.value.slice(endOfTheElement,startOfTheElement);
-    //         let valuePadded=web3.utils.padLeft(valueExatracted,64);
-    //         variable.elementDecoded.push("0x"+valuePadded);
-    //     }
-    //     return variable;
-    // }
+    
 }
 function decodeBytesArray(variable,functionStorage){
     if(variable.type.includes("32")){
