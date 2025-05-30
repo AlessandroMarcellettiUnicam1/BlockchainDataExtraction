@@ -12,7 +12,7 @@ const jp = require('jsonpath');
 const {getAllTransactions} = require("./services/main");
 const app = express();
 const upload = multer({dest: 'uploads/'})
-const port = 8080;
+const port = 8000;
 const { setEventTypes }=require("./ocelMapping/eventTypes");
 app.use(cors());
 
