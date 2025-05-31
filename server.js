@@ -62,11 +62,13 @@ app.post('/api/generateGraph', (req, res) => {
                 to: to,
                 label: "",
                 value: 1,
+                size:1
             });
         } else {
             edgesArray.forEach(edge => {
                 if (edge.id === id) {
                     edge.value++;
+                    edge.size=edge.value;
                 }
             });
         }
@@ -131,7 +133,7 @@ app.post('/api/generateGraph', (req, res) => {
     });
 
     // Edge scaling
-    const edgeValues =[];
+    const edgeValues = edgesArray.map(edge => edge.value);
     const maxEdgeValue = Math.max(...edgeValues);
     const minEdgeValue = Math.min(...edgeValues);
     const scaleEdgeValue = (value) => {
@@ -150,7 +152,6 @@ app.post('/api/generateGraph', (req, res) => {
             y: Math.random() * 100,
         },
     }));
-
     res.send({
         nodes,
         edges: newEdges,
