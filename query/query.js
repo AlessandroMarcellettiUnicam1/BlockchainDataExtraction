@@ -3,6 +3,7 @@ const mongoose = require('mongoose');
 const {
     transactionSchema,
 } = require("../schema/data");
+const { getActivityData, getCallsData, getStorageStateData, getGasUsage, getTimeData, getInputsData, getEventsData, getMostActiveSenders } = require('./queryFunctions');
 
 
 async function searchTransaction(query) {
@@ -62,25 +63,48 @@ async function searchTransaction(query) {
 function getModelByContractAddress(contractAddress) {
     return mongoose.model(contractAddress, transactionSchema, contractAddress);
 }
-async function searchAbi(query) { 
+async function searchAbi(query) {
     const { contractAddress } = query;
-    
+
     if (!contractAddress) {
         throw new Error("Contract address is required.");
     }
 
     try {
-        const collection = mongoose.connection.db.collection('ExtractionAbi'); 
+        const collection = mongoose.connection.db.collection('ExtractionAbi');
         const result = await collection.find(query).toArray();
         if(result.length>0){
             return result[0];
         }
         return null;
 
-    } catch (error) {
+    } catch (error) { getEventsData
         console.error("Error fetching ABI:", error);
         throw new Error(error.message);
     }
-    
+
 }
-module.exports = {getModelByContractAddress, searchTransaction,searchAbi};
+
+async function queryData({ type, query}) {
+    try {
+        const dataHandlers = {
+          'gasUsed': getGasUsage,
+          'activity': getActivityData,
+          'mostActiveSenders': getMostActiveSenders,
+          'time': getTimeData,
+          'inputs': getInputsData,
+          'events': getEventsData,
+          'call': getCallsData,
+          'storageState': getStorageStateData
+        };
+
+        const handler = dataHandlers[type];
+        if (!handler) throw new Error(`Invalid data type: ${type}`);
+        return await handler(query);
+    } catch (error) {
+        console.error("Error fetching collections:", error);
+        throw new Error(error.message);
+    }
+}
+
+module.exports = {getModelByContractAddress, searchTransaction,searchAbi, queryData};
