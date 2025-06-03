@@ -3,7 +3,7 @@
 This tool consists of a web application to extract data from contract transactions using the Etherscan API to store them in a MongoDB database.
 The purpose of this application is simplify the data analysis on Blockchain since that is possibile to retrieve information like (in addition to the _transaction hash_ or _gas used_): _internal transactions_, _storage state_, _events_ and so on for each transaction.
 
-___ 
+___
 
 ## Requirements
 - [NodeJs](https://nodejs.org/en) for the JavaScript environment
@@ -41,6 +41,12 @@ In this case the Alchemy provider has been used, but you are free to use whateve
 > [!NOTE]
 > To work with the Polygon blockchain you have to use [PolygonScan API](https://polygonscan.com/apis) instead of Etherscan
 
+and then run:
+```
+npm install
+npm run dev
+```
+
 ### Frontend
 ```
 git clone https://github.com/lollobeach/BlockchainProcessMining_frontend.git
@@ -53,7 +59,7 @@ npm install
 
 And in `BlockchainProcessMining_frontend` run:
 ```
-npm run start
+npm run dev
 ```
 
 This script will execute Express backend and React frontend together.

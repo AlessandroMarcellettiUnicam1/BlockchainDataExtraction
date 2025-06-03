@@ -18,8 +18,23 @@ app.use(cors());
 
 // Middleware: Logging for every request
 app.use((req, res, next) => {
-    console.log(`${new Date().toISOString()} - ${req.method} ${req.url}`);
-    next();
+  const start = Date.now();
+  const formattedDate = new Date().toLocaleString('it-IT', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  });
+  const logInfo = `${formattedDate} - ${req.method} ${req.url}`;
+
+  res.on('finish', () => {
+    const duration = Date.now() - start;
+    console.log(`${logInfo} - Status: ${res.statusCode} - Duration: ${duration}ms`);
+  });
+
+  next();
 });
 
 // Middleware: Serving static files from the "public" directory
@@ -27,9 +42,10 @@ app.use(express.static(path.join(__dirname, 'public')));
 app.use(bodyParser.urlencoded({extended: true}));
 app.use(bodyParser.json({limit: '50mb'}));
 
-const {searchTransaction} = require('./query/query');
+const {searchTransaction, queryData} = require('./query/query');
 const {connectDB} = require("./config/db");
 const { setObjectTypes } = require('./ocelMapping/objectTypes/objectTypes');
+const { default: mongoose } = require('mongoose');
 
 
 app.post('/api/generateGraph', (req, res) => {
@@ -447,7 +463,7 @@ function generateKeyValueStrings(obj, caseId, activityKey, keyToCheck = "") {
                         result.push(`\t\t\t<string key="${newKeyToCheck}" value="${obj[key]}"/>`);
                         break;
                     case "events":
-                        if(!(newKeyToCheck.split("_eventValues")[1]?.includes("1") || newKeyToCheck.split("_eventValues")[1]?.includes("2") 
+                        if(!(newKeyToCheck.split("_eventValues")[1]?.includes("1") || newKeyToCheck.split("_eventValues")[1]?.includes("2")
                         || newKeyToCheck.split("_eventValues")[1]?.includes("0") || newKeyToCheck.split("_eventValues")[1]?.includes("_length"))){
                             newKeyToCheck = newKeyToCheck.replace("events","BCEvent");
                             result.push(`\t\t\t<string key="${newKeyToCheck}" value="${obj[key]}"/>`);
@@ -465,7 +481,7 @@ function generateKeyValueStrings(obj, caseId, activityKey, keyToCheck = "") {
                         result.push(`\t\t\t<string key="${newKeyToCheck}" value="${obj[key]}"/>`);
                         break;
                 }
-                
+
             }
         }
     } else {
@@ -581,6 +597,22 @@ app.get('/about', (req, res) => {
 // Route: Dynamic Route with Parameter
 app.get('/user/:id', (req, res) => {
     res.send(`User ID: ${req.params.id}`);
+});
+
+app.get('/api/data', async (req, res) => {
+  const type = req.query.type;
+  const query = req.body;
+  console.log("Function called at: ", new Date().toISOString('it-IT'));
+  console.log("Query received -> ", query);
+  try {
+    await connectDB("Mainnet");
+    const data = await queryData({ type: type, query: query });
+    await mongoose.disconnect();
+    res.json(data);
+  } catch (error) {
+    console.error('Error fetching data:', error);
+    res.status(500).json({ error: error.message });
+  }
 });
 
 // Start the server
