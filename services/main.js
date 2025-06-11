@@ -8,7 +8,7 @@ let contractAbi = {};
 // const { newDecodeValues } = require('./newDecodedValue');
 // const { optimizedDecodeValues }= require('./reformatting')
 // const { optimizedDecodeValues }= require('./reformatting')
-const { decodeInternalTransaction } = require('./decodeInternalTransaction');
+const { decodeInternalTransaction,newDecodedInternalTransaction } = require('./decodeInternalTransaction');
 const { optimizedDecodeValues }= require('./newReformattigCode')
 // const { getTraceStorage } = require('./getTraceStorage');
 
@@ -569,7 +569,12 @@ async function getTraceStorage(traceDebugged, blockNumber, functionName, transac
     finalShaTraces=regroupShatrace(finalShaTraces);
     const decodedValues = await optimizedDecodeValues(sstoreObject, contractTree, finalShaTraces, functionStorage, functionName, mainContract,web3,contractCompiled);
     // const decodedValues = await decodeValues(sstoreObject, contractTree, finalShaTraces, functionStorage, functionName, mainContract);
-    const internalTxs= await decodeInternalTransaction(internalCalls,apiKey,smartContract,endpoint,web3,networkName)
+    let internalTxs=[];
+    if(internalCalls.length > 0){
+        // console.log("Decoding internal calls for transaction: ", debugInteralTransaction(transactionHash, web3Endpoint, web3));
+        internalTxs=await newDecodedInternalTransaction(transactionHash, apiKey, smartContract, web3Endpoint, web3, networkName);
+    }
+    // const internalTxs= await decodeInternalTransaction(internalCalls,apiKey,smartContract,endpoint,web3,networkName)
     // internalCalls.length = 0;
     // trackBuffer.length = 0;
     // sstoreBuffer.length = 0;

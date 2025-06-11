@@ -57,6 +57,7 @@ async function handleAbiFetch(element, addressTo, apiKey, endpoint, web3) {
  * Handles decoding the transaction using ABI from the database.
  */
 async function handleAbiFromDb(element, response, web3) {
+    console.log("ABI found in DB for address:", response.contractAddress);
     if (!response.abi.includes("Contract source code not verified")) {
         let abiFromDb = JSON.parse(response.abi);
         decodeInputs(element, abiFromDb, web3, response.contractName);
@@ -70,8 +71,10 @@ async function handleAbiFromDb(element, response, web3) {
  */
 function decodeInputs(element, abi, web3, contractName) {
     const decoder = new InputDataDecoder(abi);
-    const tempResult = decoder.decodeData("0x" + element.inputsCall);
-
+    const tempResult = decoder.decodeData(element.input);
+    delete element.input;
+    element.gas=web3.utils.hexToNumber(element.gas);
+    element.gasUsed=web3.utils.hexToNumber(element.gasUsed);
     element.activity = tempResult.method;
     element.contractCalledName = contractName;
     element.inputs = tempResult.inputs.map((input, i) => {
@@ -87,4 +90,55 @@ function decodeInputs(element, abi, web3, contractName) {
     });
 }
 
-module.exports = { decodeInternalTransaction };
+async function newDecodedInternalTransaction(transactionHash,apiKey, smartContract, endpoint, web3, networkName){
+    let internalCalls=await debugInteralTransaction(transactionHash,endpoint, web3);
+    if (!smartContract) {
+        await connectDB(networkName);
+        decodeInternalRecursive(internalCalls, apiKey, smartContract, endpoint, web3,0);
+    } else {
+        console.log("smart contract uploaded manually");
+    }
+    return internalCalls;
+}
+async function decodeInternalRecursive(internalCalls, apiKey, smartContract, endpoint, web3,depth) {
+    for (const element of internalCalls) {
+            let addressTo = element.to;
+            let query = { contractAddress: addressTo.toLowerCase() };
+            element.depth = element.type+"_0_1";
+            for(let i=0;i<depth;i++){
+                element.depth += "_1";
+            }
+            const response = await searchAbi(query);
+
+            if (!response) {
+                await handleAbiFetch(element, addressTo, apiKey, endpoint, web3);
+            } else {
+                await handleAbiFromDb(element, response, web3);
+            }
+            if( element.calls && element.calls.length > 0) {
+                await decodeInternalRecursive(element.calls, apiKey, smartContract, endpoint, web3,depth+1);
+            }
+    }
+}
+async function debugInteralTransaction(transactionHash,web3Endpoint,web3) {
+    try{
+        const rpcUrl = web3.currentProvider?.host || web3Endpoint;
+        const payload = {
+            jsonrpc: "2.0",
+            method: "debug_traceTransaction",
+            params: [
+                transactionHash,
+                { tracer: "callTracer" }
+            ],
+            id: 1
+        };
+         const response = await axios.post(rpcUrl, payload, {
+            headers: { "Content-Type": "application/json" }
+        });
+        return response.data.result.calls ;
+    } catch(err){
+        console.error("debugInteralTransaction error:", err.message);
+        throw err;
+    }
+}
+module.exports = { decodeInternalTransaction,newDecodedInternalTransaction };
