@@ -599,11 +599,9 @@ app.get('/user/:id', (req, res) => {
     res.send(`User ID: ${req.params.id}`);
 });
 
-app.get('/api/data', async (req, res) => {
+app.post('/api/data', async (req, res) => {
   const type = req.query.type;
   const query = req.body;
-  console.log("Function called at: ", new Date().toISOString('it-IT'));
-  console.log("Query received -> ", query);
   try {
     await connectDB("Mainnet");
     const data = await queryData({ type: type, query: query });

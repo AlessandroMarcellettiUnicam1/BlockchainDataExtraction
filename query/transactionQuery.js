@@ -16,7 +16,6 @@ export async function fetchTransactions(query) {
 	const { contractAddress, dateFrom, dateTo, fromBlock, toBlock } = query;
 	const queryFilter = {};
 
-	// Date filter
 	if (dateFrom && dateTo) {
 		queryFilter.timestamp = {
 			$gte: new Date(dateFrom),
@@ -24,8 +23,7 @@ export async function fetchTransactions(query) {
 		};
 	}
 
-	// Block filter
-	if (fromBlock && toBlock) {
+  if (fromBlock && toBlock) {
 		queryFilter.blockNumber = {
 			$gte: Number(fromBlock),
 			$lte: Number(toBlock),
@@ -40,7 +38,6 @@ export async function fetchTransactions(query) {
 			let transactions = await collection
 				.find(queryFilter, { projection: { _id: 0 } })
 				.toArray();
-			// Add contract address to each transaction
 			transactions = transactions.map((tx) => ({ ...tx, contractAddress }));
 			results = transactions;
 		} else {
@@ -56,7 +53,6 @@ export async function fetchTransactions(query) {
 			}
 		}
 
-		// Filter valid transactions
 		const validTransactions = results.filter(
 			(tx) => tx && Object.keys(tx).length > 0 && tx.gasUsed !== undefined
 		);
