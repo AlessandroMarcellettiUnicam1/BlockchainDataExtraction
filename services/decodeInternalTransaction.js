@@ -4,6 +4,7 @@ const { saveAbi } = require("../databaseStore");
 const { connectDB } = require("../config/db");
 const InputDataDecoder = require("ethereum-input-data-decoder");
 
+
 async function decodeInternalTransaction(internalCalls, apiKey, smartContract, endpoint, web3, networkName) {
     if (!smartContract) {
         await connectDB(networkName);
@@ -57,7 +58,7 @@ async function handleAbiFetch(element, addressTo, apiKey, endpoint, web3) {
  * Handles decoding the transaction using ABI from the database.
  */
 async function handleAbiFromDb(element, response, web3) {
-    console.log("ABI found in DB for address:", response.contractAddress);
+    // console.log("ABI found in DB for address:", response.contractAddress);
     if (!response.abi.includes("Contract source code not verified")) {
         let abiFromDb = JSON.parse(response.abi);
         decodeInputs(element, abiFromDb, web3, response.contractName);
@@ -71,10 +72,24 @@ async function handleAbiFromDb(element, response, web3) {
  */
 function decodeInputs(element, abi, web3, contractName) {
     const decoder = new InputDataDecoder(abi);
-    const tempResult = decoder.decodeData(element.input);
-    delete element.input;
-    element.gas=web3.utils.hexToNumber(element.gas);
-    element.gasUsed=web3.utils.hexToNumber(element.gasUsed);
+    let tempResult;
+    if(element.inputsCall){
+        tempResult = decoder.decodeData(element.inputsCall);
+        delete element.inputsCall;
+    }else{
+        tempResult = decoder.decodeData(element.input);
+        delete element.input;
+    }
+
+    if(isNaN(Number(element.gas))) {
+        element.gas = web3.utils.hexToNumber(element.gas);  
+    }
+    if(isNaN(Number(element.gas))) {
+        element.gasUsed = web3.utils.hexToNumber(element.gasUsed);
+    }
+
+    // element.gas=web3.utils.hexToNumber(element.gas);
+    // element.gasUsed=web3.utils.hexToNumber(element.gasUsed);
     element.activity = tempResult.method;
     element.contractCalledName = contractName;
     element.inputs = tempResult.inputs.map((input, i) => {

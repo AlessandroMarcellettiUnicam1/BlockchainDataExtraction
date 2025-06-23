@@ -569,12 +569,13 @@ async function getTraceStorage(traceDebugged, blockNumber, functionName, transac
     finalShaTraces=regroupShatrace(finalShaTraces);
     const decodedValues = await optimizedDecodeValues(sstoreObject, contractTree, finalShaTraces, functionStorage, functionName, mainContract,web3,contractCompiled);
     // const decodedValues = await decodeValues(sstoreObject, contractTree, finalShaTraces, functionStorage, functionName, mainContract);
-    let internalTxs=[];
-    if(internalCalls.length > 0){
+    let  internalTxs=[];
+    if(web3Endpoint!="" && !web3Endpoint.includes("alchemy.com") && internalCalls.length > 0){
         // console.log("Decoding internal calls for transaction: ", debugInteralTransaction(transactionHash, web3Endpoint, web3));
         internalTxs=await newDecodedInternalTransaction(transactionHash, apiKey, smartContract, web3Endpoint, web3, networkName);
+    }else{
+        internalTxs= await decodeInternalTransaction(internalCalls,apiKey,smartContract,endpoint,web3,networkName)
     }
-    // const internalTxs= await decodeInternalTransaction(internalCalls,apiKey,smartContract,endpoint,web3,networkName)
     // internalCalls.length = 0;
     // trackBuffer.length = 0;
     // sstoreBuffer.length = 0;
