@@ -47,6 +47,11 @@ const { searchTransaction, queryData } = require("./query/query");
 const { connectDB } = require("./config/db");
 const { setObjectTypes } = require("./ocelMapping/objectTypes/objectTypes");
 const { default: mongoose } = require("mongoose");
+<<<<<<< HEAD
+=======
+const { fetchTransactions } = require("./query/transactionQuery");
+const { formatTransactionForTreeView } = require("./query/queryFunctions");
+>>>>>>> 31f500e (feat(data_view): nested views with dialogs)
 
 app.post("/api/generateGraph", (req, res) => {
 	const jsonData = req.body.jsonData;
@@ -691,6 +696,58 @@ app.post("/api/data", async (req, res) => {
 		res.json(data);
 	} catch (error) {
 		console.error("Error fetching data:", error);
+		res.status(500).json({ error: error.message });
+	}
+});
+
+app.post("/api/data/activities", async (req, res) => {
+	const activity = req.query.activity;
+	const query = req.body;
+	try {
+		await connectDB("Mainnet");
+		const txs = await fetchTransactions(query);
+		const result = [];
+		txs.forEach((tx) => {
+			const activityName = tx.activity || tx.functionName || "unknown";
+			if (activityName === activity) {
+				result.push({
+					smartContract: tx.contractAddress || tx.contractName || "",
+					txHash: tx.transactionHash || "",
+					activity: activityName,
+					timestamp: tx.timestamp || "",
+					gasUsed: tx.gasUsed || 0,
+					blockNumber: tx.blockNumber || 0,
+					inputs: tx.inputs
+						? tx.inputs.map((i) => i.inputName || "").join(", ")
+						: "",
+					events: tx.events
+						? tx.events.map((e) => e.eventName || "").join(", ")
+						: "",
+				});
+			}
+		});
+		await mongoose.disconnect();
+		res.json(result);
+	} catch (error) {
+		console.error("Error fetching activity data:", error);
+		res.status(500).json({ error: error.message });
+	}
+});
+
+app.post("/api/data/txs", async (req, res) => {
+	const sender = req.query.sender;
+	const query = req.body;
+	try {
+		await connectDB("Mainnet");
+		const txs = await fetchTransactions(query);
+		const senderTxs = txs.filter(
+			(tx) => tx.sender && tx.sender.toLowerCase() === sender.toLowerCase()
+		);
+		const formattedTxs = senderTxs.map(formatTransactionForTreeView);
+		await mongoose.disconnect();
+		res.json(formattedTxs);
+	} catch (error) {
+		console.error("Error fetching activity data:", error);
 		res.status(500).json({ error: error.message });
 	}
 });
