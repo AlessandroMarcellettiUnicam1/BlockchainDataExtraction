@@ -47,11 +47,13 @@ const { searchTransaction, queryData } = require("./query/query");
 const { connectDB } = require("./config/db");
 const { setObjectTypes } = require("./ocelMapping/objectTypes/objectTypes");
 const { default: mongoose } = require("mongoose");
-<<<<<<< HEAD
-=======
 const { fetchTransactions } = require("./query/transactionQuery");
-const { formatTransactionForTreeView } = require("./query/queryFunctions");
->>>>>>> 31f500e (feat(data_view): nested views with dialogs)
+const {
+	formatTransactionForTreeView,
+	extractEventDataAsJson,
+	formatStorageHistoryForVisualization,
+	formatCallsForTreeView,
+} = require("./query/queryFunctions");
 
 app.post("/api/generateGraph", (req, res) => {
 	const jsonData = req.body.jsonData;
@@ -727,10 +729,10 @@ app.post("/api/data/activities", async (req, res) => {
 			}
 		});
 		await mongoose.disconnect();
-		res.json(result);
+		return res.json(result);
 	} catch (error) {
 		console.error("Error fetching activity data:", error);
-		res.status(500).json({ error: error.message });
+		return res.status(500).json({ error: error.message });
 	}
 });
 
@@ -745,7 +747,88 @@ app.post("/api/data/txs", async (req, res) => {
 		);
 		const formattedTxs = senderTxs.map(formatTransactionForTreeView);
 		await mongoose.disconnect();
-		res.json(formattedTxs);
+		return res.json(formattedTxs);
+	} catch (error) {
+		console.error("Error fetching activity data:", error);
+		return res.status(500).json({ error: error.message });
+	}
+});
+
+app.post("/api/data/events", async (req, res) => {
+	const eventName = req.query.eventName;
+	const query = req.body;
+	try {
+		await connectDB("Mainnet");
+		const txs = await fetchTransactions(query);
+		const formattedEvents = [];
+
+		txs.forEach((tx) => {
+			if (tx.events && Array.isArray(tx.events)) {
+				// Filter events to only include matching eventName
+				const matchingEvents = tx.events.filter(
+					(event) => event.eventName === eventName
+				);
+				if (matchingEvents.length > 0) {
+					// Create a modified tx object with only matching events
+					const filteredTx = { ...tx, events: matchingEvents };
+					formattedEvents.push(...extractEventDataAsJson(filteredTx));
+				}
+			}
+		});
+
+		await mongoose.disconnect();
+		return res.json(formattedEvents);
+	} catch (error) {
+		console.error("Error fetching activity data:", error);
+		res.status(500).json({ error: error.message });
+	}
+});
+
+app.post("/api/data/calls", async (req, res) => {
+	const { callType, page = 0, limit = 10 } = req.query;
+	const query = req.body;
+
+	try {
+		await connectDB("Mainnet");
+		const txs = await fetchTransactions(query);
+		const allFormattedCalls = formatCallsForTreeView(callType, txs);
+
+		const startIndex = parseInt(page) * parseInt(limit);
+		const endIndex = startIndex + parseInt(limit);
+		const paginatedCalls = allFormattedCalls.slice(startIndex, endIndex);
+
+		await mongoose.disconnect();
+		return res.json({
+			items: paginatedCalls,
+			total: allFormattedCalls.length,
+			page: parseInt(page),
+			totalPages: Math.ceil(allFormattedCalls.length / parseInt(limit)),
+		});
+	} catch (error) {
+		console.error("Error fetching activity data:", error);
+		res.status(500).json({ error: error.message });
+	}
+});
+
+app.post("/api/data/storageState", async (req, res) => {
+	const { variableName, limit = 1000, page = 1, sampleRate = 1 } = req.query;
+	const query = req.body;
+
+	try {
+		await connectDB("Mainnet");
+		const txs = await fetchTransactions(query);
+
+		const historyData = formatStorageHistoryForVisualization(
+			variableName,
+			txs,
+			{
+				limit: parseInt(limit),
+				page: parseInt(page),
+				sampleRate: parseInt(sampleRate),
+			}
+		);
+		await mongoose.disconnect();
+		return res.json(historyData);
 	} catch (error) {
 		console.error("Error fetching activity data:", error);
 		res.status(500).json({ error: error.message });
