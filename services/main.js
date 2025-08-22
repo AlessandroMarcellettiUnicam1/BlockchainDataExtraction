@@ -53,8 +53,7 @@ let contractCompiled = null
  * @returns {Promise<*|*[]>} - the blockchain log with the extracted data
  */
 
-async function getAllTransactions(mainContract, contractAddress, impl_contract, fromBlock, toBlock, network, filters, smartContract) {
-
+async function getAllTransactions(mainContract, contractAddress, impl_contract, fromBlock, toBlock, network, filters, smartContract,extractionType) {
     _contractAddress = contractAddress
     networkName = network;
     try{
@@ -133,7 +132,7 @@ async function getAllTransactions(mainContract, contractAddress, impl_contract, 
        
         await connectDB(networkName);
         await saveExtractionLog(userLog,networkName)
-        const result = await getStorageData(contractTransactions, mainContract, contractTree, contractAddress, filters);
+        const result = await getStorageData(contractTransactions, mainContract, contractTree, contractAddress, filters, smartContract,extractionType);
         await mongoose.disconnect();
 
        
@@ -272,7 +271,8 @@ async function debugTransaction(transactionHash, blockNumber) {
  * @param {Object} smartContract - The smart contract uploaded file.
  * @returns {Promise<Array>} - The blockchain log with the extracted data.
  */
-async function getStorageData(contractTransactions, mainContract, contractTree, contractAddress, filters, smartContract) {
+async function getStorageData(contractTransactions, mainContract, contractTree, contractAddress, filters, smartContract,extractionType) {
+    console.log(extractionType)
     let transactionsFiltered=null;
     // Decode input data for all transactions
    
@@ -286,19 +286,8 @@ async function getStorageData(contractTransactions, mainContract, contractTree, 
        
        
         for(const tx of transactionsFiltered){
-            await runWorkerForTx(tx, mainContract, contractTree, contractAddress, smartContract);
+            await runWorkerForTx(tx, mainContract, contractTree, contractAddress, smartContract,extractionType);
         }
-        // const BATCH_SIZE=1
-        // for (let i=0;i<transactionsFiltered.length;i+=BATCH_SIZE){
-        //     const batch=transactionsFiltered.slice(i,i+BATCH_SIZE)
-        //     const batchPromises=batch.map(tx=>
-        //         processTransactionSafe(tx,mainContract,contractTree,contractAddress,smartContract)
-        //     );
-        //     await Promise.allSettled(batchPromises);
-        //     batch.length=0;
-        //     if (global.gc) global.gc();
-        //     await new Promise(resolve => setTimeout(resolve, 500));
-        // }
         console.log("Extraction finished");
         return [];
     }catch(err){
@@ -318,7 +307,7 @@ async function getStorageData(contractTransactions, mainContract, contractTree, 
     }
     
 }
-function runWorkerForTx(tx, mainContract, contractTree, contractAddress, smartContract) {
+function runWorkerForTx(tx, mainContract, contractTree, contractAddress, smartContract,extractionType) {
     const workerPath = path.join(__dirname, 'worker.js');
     return new Promise((resolve, reject) => {
         const worker = fork(workerPath, [], {
@@ -338,6 +327,7 @@ function runWorkerForTx(tx, mainContract, contractTree, contractAddress, smartCo
             contractTree,
             contractAddress,
             smartContract,
+            extractionType,
             network: networkName,
             contractAbiData: contractAbi,
             contractCompiledData: contractCompiled

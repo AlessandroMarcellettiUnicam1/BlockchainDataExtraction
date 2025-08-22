@@ -63,6 +63,10 @@ async function handleAbiFromDb(element, response, web3) {
         let abiFromDb = JSON.parse(response.abi);
         decodeInputs(element, abiFromDb, web3, response.contractName);
     } else {
+        if(element.input){
+            element.inputsCall=element.input;
+            delete element.input;
+        }
         element.activity = "Contract source code not verified";
     }
 }
@@ -109,19 +113,23 @@ async function newDecodedInternalTransaction(transactionHash,apiKey, smartContra
     let internalCalls=await debugInteralTransaction(transactionHash,endpoint, web3);
     if (!smartContract) {
         await connectDB(networkName);
-        decodeInternalRecursive(internalCalls, apiKey, smartContract, endpoint, web3,0);
+        await decodeInternalRecursive(internalCalls, apiKey, smartContract, endpoint, web3,0);
     } else {
         console.log("smart contract uploaded manually");
     }
     return internalCalls;
 }
 async function decodeInternalRecursive(internalCalls, apiKey, smartContract, endpoint, web3,depth) {
-    for (const element of internalCalls) {
+    for (let element of internalCalls) {
             let addressTo = element.to;
             let query = { contractAddress: addressTo.toLowerCase() };
-            element.depth = element.type+"_0_1";
-            for(let i=0;i<depth;i++){
-                element.depth += "_1";
+            element.callId = "0_1";
+            element.depth=depth;
+            element.gas=web3.utils.hexToNumber(element.gas);
+            element.gasUsed=web3.utils.hexToNumber(element.gasUsed);
+            element.value=element.value?web3.utils.hexToNumber(element.value):0;
+            for(let i=0;i<element.depth;i++){
+                element.callId += "_1";
             }
             const response = await searchAbi(query);
 

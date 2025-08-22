@@ -15,13 +15,25 @@ const storageStateSchema = new mongoose.Schema({
 
 const internalTxSchema = new mongoose.Schema({
     callType: {type: String},
+    callId:{type:String},
     to: {type: String},
     inputsCall: [
         {type: mongoose.Schema.Types.Mixed}
     ],
     inputs: [
         {type:mongoose.Schema.Types.Mixed}
-    ]
+    ],
+    from: {type: String, required: false},
+    gas: {type: Number, required: false},
+    gasUsed: {type: Number, required: false},
+    output: {type: String, required: false},
+    value: {type: mongoose.Schema.Types.Mixed, required: false}, // Can be Number or String for big values
+    type: {type: String, required: false}, // CALL, STATICCALL, DELEGATECALL, etc.
+    depth: {type: Number, required: false},
+    activity: {type: String, required: false},
+    contractCalledName: {type: String, required: false},
+    input: {type: String, required: false}, // Raw input data
+    calls: [mongoose.Schema.Types.Mixed] // Nested calls
 }, { _id : false });
 
 const eventSchema = new mongoose.Schema({
@@ -37,6 +49,7 @@ const transactionSchema = new mongoose.Schema({
     gasUsed: {type: Number},
     blockNumber: {type: Number},
     timestamp: {type: Date},
+    value:{type:Number},
     inputs: [
         inputSchema
     ],
