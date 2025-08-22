@@ -327,6 +327,7 @@ async function createTransactionLog(tx, debugResult, pastEvents, mainContract, c
         blockNumber: parseInt(tx.blockNumber),
         contractAddress: tx.to,
         sender: tx.from,
+        value:tx.value,
         gasUsed: parseInt(tx.gasUsed),
         timestamp: new Date(tx.timeStamp * 1000).toISOString(),
         inputs: decodeInputs(tx.inputDecoded),
@@ -570,6 +571,8 @@ async function getTraceStorage(traceDebugged, blockNumber, functionName, transac
     const decodedValues = await optimizedDecodeValues(sstoreObject, contractTree, finalShaTraces, functionStorage, functionName, mainContract,web3,contractCompiled);
     // const decodedValues = await decodeValues(sstoreObject, contractTree, finalShaTraces, functionStorage, functionName, mainContract);
     let  internalTxs=[];
+
+    //TODO: mettere un flag tramite front end
     if(web3Endpoint!="" && !web3Endpoint.includes("alchemy.com") && internalCalls.length > 0){
         // console.log("Decoding internal calls for transaction: ", debugInteralTransaction(transactionHash, web3Endpoint, web3));
         internalTxs=await newDecodedInternalTransaction(transactionHash, apiKey, smartContract, web3Endpoint, web3, networkName);
