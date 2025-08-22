@@ -172,7 +172,7 @@ async function createTransactionLog(tx, pastEvents, mainContract, contractTree, 
     let storageVal=null;
     let debugResult=null;
     try{
-        if(extractionType!="OnlyDefault"){
+        if(extractionType!=0){
             debugResult = await debugTransaction(tx.hash, tx.blockNumber);
             storageVal = await getTraceStorage(debugResult.response, tx.blockNumber, tx.inputDecoded.method, tx.hash, mainContract, contractTree, smartContract,extractionType);
             transactionLog.storageState = storageVal.decodedValues;
@@ -383,7 +383,7 @@ async function getTraceStorage(traceDebugged, blockNumber, functionName, transac
             decodedValues:await optimizedDecodeValues(sstoreObject, contractTree, finalShaTraces, functionStorage, functionName, mainContract,web3,contractCompiled),
             internalTxs:null
         }
-        if(extractionType=="StorageState-PartialInternal"){
+        if(extractionType==1){
             result.internalTxs=await decodeInternalTransaction(internalCalls,apiKey,smartContract,endpoint,web3,networkName)
         }else{
             result.internalTxs=await await newDecodedInternalTransaction(transactionHash, apiKey, smartContract, web3Endpoint, web3, networkName);

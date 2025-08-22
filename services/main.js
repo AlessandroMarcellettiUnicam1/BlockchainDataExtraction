@@ -272,7 +272,6 @@ async function debugTransaction(transactionHash, blockNumber) {
  * @returns {Promise<Array>} - The blockchain log with the extracted data.
  */
 async function getStorageData(contractTransactions, mainContract, contractTree, contractAddress, filters, smartContract,extractionType) {
-    console.log(extractionType)
     let transactionsFiltered=null;
     // Decode input data for all transactions
    
