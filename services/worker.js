@@ -60,6 +60,7 @@ let contractCompiled = null;
  * @returns {Promise<Object|null>} - The processed transaction log or null if already processed.
  */
 async function processTransaction(tx, mainContract, contractTree, contractAddress, smartContract,extractionType) {
+    
     const query = {
         transactionHash: tx.hash.toLowerCase(),
         contractAddress: contractAddress.toLowerCase()
@@ -246,7 +247,7 @@ function decodeInput(type, value) {
  */
 async function getTraceStorage(traceDebugged, blockNumber, functionName, transactionHash, mainContract, contractTree,smartContract,extractionType) {
 
-    
+
     //used to store the storage changed by the function. Used to compare the generated keys
     let functionStorage = {};
     //used to store all the keys potentially related to a dynamic structure
@@ -384,9 +385,9 @@ async function getTraceStorage(traceDebugged, blockNumber, functionName, transac
             internalTxs:null
         }
         if(extractionType==1){
-            result.internalTxs=await decodeInternalTransaction(internalCalls,apiKey,smartContract,endpoint,web3,networkName)
+            result.internalTxs=await decodeInternalTransaction(internalCalls,apiKey,smartContract,endpoint,web3,networkName,web3Endpoint)
         }else{
-            result.internalTxs=await await newDecodedInternalTransaction(transactionHash, apiKey, smartContract, web3Endpoint, web3, networkName);
+            result.internalTxs=await await newDecodedInternalTransaction(transactionHash, apiKey, smartContract, endpoint, web3, networkName,web3Endpoint);
         }
         sstoreObject=null;
         return result;
@@ -474,14 +475,13 @@ function initializeWorker(network, contractAbiData, contractCompiledData) {
             endpoint = process.env.POLYGONSCAN_TESTNET_ENDPOINT;
             break;
     }
-    
     web3 = new Web3(web3Endpoint);
 }
 
 // Handle messages from main process
 process.on("message", async (data) => {
     const { tx, mainContract, contractTree, contractAddress, smartContract, network, contractAbiData, contractCompiledData,extractionType } = data;
-    
+    let transactionLog;
     try {
         // Initialize worker with necessary data
         initializeWorker(network, contractAbiData, contractCompiledData);

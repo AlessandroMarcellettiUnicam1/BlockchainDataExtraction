@@ -132,6 +132,23 @@ async function getAllTransactions(mainContract, contractAddress, impl_contract, 
        
         await connectDB(networkName);
         await saveExtractionLog(userLog,networkName)
+        let txFromDb=[];
+        for(const tx of contractTransactions){
+            const query = {
+                transactionHash: tx.hash.toLowerCase(),
+                contractAddress: contractAddress.toLowerCase()
+            };
+            const response = await searchTransaction(query, networkName);
+                if (response) {
+                    console.log(`Transaction already processed: ${tx.hash}`);
+                    const { _id, __v, ...transactionData } = response[0];
+                    txFromDb.push(transactionData);
+                }
+        }
+        if(txFromDb.length>0){
+            await mongoose.disconnect();
+            return txFromDb;
+        }
         const result = await getStorageData(contractTransactions, mainContract, contractTree, contractAddress, filters, smartContract,extractionType);
         await mongoose.disconnect();
 
