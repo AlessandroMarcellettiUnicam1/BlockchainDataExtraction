@@ -222,7 +222,6 @@ app.post('/api/xes', async (req, res) => {
 app.post('/api/query', async (req, res) => {
     const query = req.body;
 
-    console.log("Query received -> ", query);
     await connectDB(query.network)
     delete query.network;
     try {
@@ -603,7 +602,6 @@ app.get('/api/data', async (req, res) => {
   const type = req.query.type;
   const query = req.body;
   console.log("Function called at: ", new Date().toISOString('it-IT'));
-  console.log("Query received -> ", query);
   try {
     await connectDB("Mainnet");
     const data = await queryData({ type: type, query: query });
