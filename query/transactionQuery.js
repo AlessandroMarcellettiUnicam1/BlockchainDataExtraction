@@ -16,16 +16,34 @@ export async function fetchTransactions(query) {
 	const { contractAddress, dateFrom, dateTo, fromBlock, toBlock } = query;
 	const queryFilter = {};
 
-	if (dateFrom && dateTo) {
+	if (contractAddress) {
+		queryFilter.contractAddress = contractAddress;
+	}
+
+	if (dateFrom) {
 		queryFilter.timestamp = {
+			...queryFilter.timestamp,
 			$gte: new Date(dateFrom),
+		};
+	}
+
+	if (dateTo) {
+		queryFilter.timestamp = {
+			...queryFilter.timestamp,
 			$lte: new Date(dateTo),
 		};
 	}
 
-  if (fromBlock && toBlock) {
+	if (fromBlock) {
 		queryFilter.blockNumber = {
+			...queryFilter.blockNumber,
 			$gte: Number(fromBlock),
+		};
+	}
+
+	if (toBlock) {
+		queryFilter.blockNumber = {
+			...queryFilter.blockNumber,
 			$lte: Number(toBlock),
 		};
 	}
@@ -33,24 +51,17 @@ export async function fetchTransactions(query) {
 	let results = [];
 
 	try {
-		if (contractAddress) {
-			const collection = mongoose.connection.db.collection(contractAddress);
-			let transactions = await collection
+		// Always search across all collections
+		const collections = await mongoose.connection.db
+			.listCollections()
+			.toArray();
+
+		for (const c of collections) {
+			const collection = mongoose.connection.db.collection(c.name);
+			const transactions = await collection
 				.find(queryFilter, { projection: { _id: 0 } })
 				.toArray();
-			transactions = transactions.map((tx) => ({ ...tx, contractAddress }));
-			results = transactions;
-		} else {
-			const collections = await mongoose.connection.db
-				.listCollections()
-				.toArray();
-			for (const c of collections) {
-				const collection = mongoose.connection.db.collection(c.name);
-				let transactions = await collection
-					.find(queryFilter, { projection: { _id: 0 } })
-					.toArray();
-				results = results.concat(transactions);
-			}
+			results = results.concat(transactions);
 		}
 
 		const validTransactions = results.filter(
