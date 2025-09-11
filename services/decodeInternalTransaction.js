@@ -21,7 +21,7 @@ async function decodeInternalTransaction(internalCalls, apiKey, smartContract, e
             }
         }
     } else {
-        console.log("smart contract uploaded manually");
+        // console.log("smart contract uploaded manually");
     }
     return internalCalls;
 }
@@ -157,7 +157,7 @@ async function newDecodedInternalTransaction(transactionHash,apiKey, smartContra
         await connectDB(networkName);
         await decodeInternalRecursive(internalCalls, apiKey, smartContract, endpoint, web3,0);
     } else {
-        console.log("smart contract uploaded manually");
+        // console.log("smart contract uploaded manually");
     }
     return internalCalls;
 }
