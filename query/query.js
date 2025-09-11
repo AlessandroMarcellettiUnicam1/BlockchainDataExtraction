@@ -45,7 +45,7 @@ async function searchTransaction(query) {
 		delete query.timestampFrom;
 		delete query.timestampTo;
 	}
-	console.log("Query received -> ", query);
+	// console.log("Query received -> ", query);
 
 	try {
 		let results = [];
