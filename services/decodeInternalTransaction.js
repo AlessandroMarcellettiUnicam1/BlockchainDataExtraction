@@ -8,12 +8,10 @@ const InputDataDecoder = require("ethereum-input-data-decoder");
 async function decodeInternalTransaction(internalCalls, apiKey, smartContract, endpoint, web3, networkName) {
     if (!smartContract) {
         await connectDB(networkName);
-
         for (const element of internalCalls) {
             let addressTo = element.to;
             let query = { contractAddress: addressTo.toLowerCase() };
             const response = await searchAbi(query);
-
             if (!response) {
                 await handleAbiFetch(element, addressTo, apiKey, endpoint, web3);
             } else {

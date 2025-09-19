@@ -692,9 +692,8 @@ function decodeUintArrayDynamic(variable,functionStorage){
 
 function getContractVariable(slotIndex, contractTree, functionName, mainContract) {
     let contractVariables = [];
-
     for (const contractId in contractTree) {
-        if (contractTree[contractId].name === mainContract) {
+        if (contractTree[contractId].name === mainContract && contractTree[contractId].storage) {
             for (let i = 0; i < contractTree[contractId].storage.length; i++) {
                 if (Number(contractTree[contractId].storage[i].slot) === Number(slotIndex)) {
                     let variable={

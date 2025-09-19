@@ -12,6 +12,7 @@ const { optimizedDecodeValues } = require('./newReformattigCode');
 const { saveTransaction } = require("../databaseStore");
 const {searchTransaction} = require("../query/query")
 const { getRemoteVersion, detectVersion } = require("./solcVersionManager");
+const { searchAbi } = require("../query/query");
 
 let web3 = null;
 let contractAbi = {};
@@ -59,7 +60,7 @@ let contractCompiled = null;
  * @param {number} partialInt - The current transaction index.
  * @returns {Promise<Object|null>} - The processed transaction log or null if already processed.
  */
-async function processTransaction(tx, mainContract, contractTree, contractAddress, smartContract,extractionType) {
+async function processTransaction(tx, mainContract, contractTree, contractAddress, smartContract,extractionType,network) {
     
     const query = {
         transactionHash: tx.hash.toLowerCase(),
@@ -77,9 +78,9 @@ async function processTransaction(tx, mainContract, contractTree, contractAddres
     let pastEvents=null;
     try{
         console.log(`Processing transaction: ${tx.hash}`);
-        pastEvents = await getEvents(tx.hash, Number(tx.blockNumber), contractAddress);
-        await createTransactionLog(tx, pastEvents, mainContract, contractTree, smartContract,extractionType);
-
+        // pastEvents = await getEvents(tx.hash, Number(tx.blockNumber), contractAddress);
+        let transactionLog=await createTransactionLog(tx, pastEvents, mainContract, contractTree, smartContract,extractionType,contractAddress,network);
+        
         return [];
         
     }finally{
@@ -154,7 +155,7 @@ async function debugTransaction(transactionHash, blockNumber) {
  * @param {Object} smartContract - The smart contract uploaded file.
  * @returns {Promise<Object>} - The transaction log.
  */
-async function createTransactionLog(tx, pastEvents, mainContract, contractTree, smartContract,extractionType) {
+async function createTransactionLog(tx, pastEvents, mainContract, contractTree, smartContract,extractionType,contractAddress,network) {
 
     let transactionLog = {
         functionName: tx.inputDecoded.method,
@@ -168,7 +169,7 @@ async function createTransactionLog(tx, pastEvents, mainContract, contractTree, 
         value:tx.value,
         storageState: [],
         internalTxs: [],
-        events: pastEvents
+        events: []
     };
     let storageVal=null;
     let debugResult=null;
@@ -179,6 +180,15 @@ async function createTransactionLog(tx, pastEvents, mainContract, contractTree, 
             transactionLog.storageState = storageVal.decodedValues;
             transactionLog.internalTxs = storageVal.internalTxs;
         }
+        transactionLog.events=await getEvents(tx.hash,Number(tx.blockNumber),contractAddress);
+        if(transactionLog.internalTxs && transactionLog.internalTxs.length>0){
+            let internalResult= await iterateInternalForEvent(tx.hash,Number(tx.blockNumber),transactionLog.internalTxs,extractionType,network)
+            internalResult = internalResult.filter(element => !checkIfEventIsAlreadyStored(transactionLog.events, element));
+            internalResult.forEach((element)=>{
+                transactionLog.events.push(element)
+            })
+        }
+
         await saveTransaction(transactionLog, tx.to);
 
     }finally{
@@ -246,8 +256,6 @@ function decodeInput(type, value) {
  * @returns {Promise<{decodedValues: (*&{variableValue: string|string|*})[], internalCalls: *[]}>} - the decoded values of the storage state and the internal calls
  */
 async function getTraceStorage(traceDebugged, blockNumber, functionName, transactionHash, mainContract, contractTree,smartContract,extractionType) {
-
-
     //used to store the storage changed by the function. Used to compare the generated keys
     let functionStorage = {};
     //used to store all the keys potentially related to a dynamic structure
@@ -380,8 +388,9 @@ async function getTraceStorage(traceDebugged, blockNumber, functionName, transac
         traceDebugged.structLogs.length=0;
         let sstoreObject = {sstoreOptimization, sstoreBuffer}
         finalShaTraces=regroupShatrace(finalShaTraces);
+        // await optimizedDecodeValues(sstoreObject, contractTree, finalShaTraces, functionStorage, functionName, mainContract,web3,contractCompiled)
         let result={
-            decodedValues:await optimizedDecodeValues(sstoreObject, contractTree, finalShaTraces, functionStorage, functionName, mainContract,web3,contractCompiled),
+            decodedValues:contractTree.storageLayout?await optimizedDecodeValues(sstoreObject, contractTree.fullContractTree, finalShaTraces, functionStorage, functionName, mainContract,web3,contractCompiled):null,
             internalTxs:null
         }
         if(extractionType==1){
@@ -431,22 +440,70 @@ async function getEvents(transactionHash, block, contractAddress) {
     let filteredEvents = [];
     const pastEvents = await myContract.getPastEvents("allEvents", {fromBlock: block, toBlock: block});
     myContract=null;
-    for (let i = 0; i < pastEvents.length; i++) {
-        for (const value in pastEvents[i].returnValues) {
-            if (typeof pastEvents[i].returnValues[value] === "bigint") {
-                pastEvents[i].returnValues[value] = Number(pastEvents[i].returnValues[value]);
-            }
+    pastEvents.forEach((element)=>{
+        if(transactionHash==element.transactionHash){
+                for (const value in element.returnValues) {
+                    if (typeof element.returnValues[value] === "bigint") {
+                        element.returnValues[value] = Number(element.returnValues[value]);
+                    }
+                }
+                const event = {
+                    eventName: element.event,
+                    eventValues: element.returnValues
+                };
+                filteredEvents.push(event);
         }
-        const event = {
-            eventName: pastEvents[i].event,
-            eventValues: pastEvents[i].returnValues
-        };
-        filteredEvents.push(event);
+    })
+    return filteredEvents;
+}
+async function getEventsFromInternal(transactionHash,block,contractAddress,networkName){
+    let filteredEvents = [];
+    let query = { contractAddress: contractAddress.toLowerCase() };
+    const response = await searchAbi(query);
+    if(response && !response.abi.includes("Contract source code not verified")){
+        let abiFromDb = JSON.parse(response.abi);
+        let internalContract= new web3.eth.Contract(abiFromDb, contractAddress);
+        const pastEvents=await internalContract.getPastEvents("allEvents", {fromBlock: block, toBlock: block});
+        myContract=null;
+        pastEvents.forEach((element)=>{
+            if(transactionHash==element.transactionHash){
+                    for (const value in element.returnValues) {
+                        if (typeof element.returnValues[value] === "bigint") {
+                            element.returnValues[value] = Number(element.returnValues[value]);
+                        }
+                    }
+                    const event = {
+                        eventName: element.event,
+                        eventValues: element.returnValues
+                    };
+                    filteredEvents.push(event);
+            }
+        })
     }
-
     return filteredEvents;
 }
 
+async function iterateInternalForEvent(transactionHash,block,internalTxs,extractionType,network){
+    let filteredEvents=[];
+    switch (extractionType){
+        case("1"):
+            for (const element of internalTxs) {
+                let eventsFromInternal = await getEventsFromInternal(transactionHash, block, element["to"], network);
+                for (const ev of eventsFromInternal) {
+                    filteredEvents.push(ev);
+                }
+            }
+            return filteredEvents;
+        case(2):
+            break;
+        default:
+    }
+    return filteredEvents;
+}
+
+function checkIfEventIsAlreadyStored(events, eventToCheck) {
+  return events.some(el => JSON.stringify(el) === JSON.stringify(eventToCheck));
+}
 // Initialize worker environment
 function initializeWorker(network, contractAbiData, contractCompiledData) {
     networkName = network;
@@ -490,10 +547,10 @@ process.on("message", async (data) => {
         await connectDB(networkName);
         
         // Process the transaction
-        await processTransaction(tx, mainContract, contractTree, contractAddress, smartContract,extractionType);
+        await processTransaction(tx, mainContract, contractTree, contractAddress, smartContract,extractionType,network);
 
         // Clean up
-        await mongoose.disconnect();
+        // await mongoose.disconnect();
         
         if (global.gc) global.gc();
         await hre.run("clean");
@@ -539,3 +596,4 @@ process.on('unhandledRejection', (reason, promise) => {
     console.error('Unhandled Rejection in worker at:', promise, 'reason:', reason);
     process.exit(1);
 });
+

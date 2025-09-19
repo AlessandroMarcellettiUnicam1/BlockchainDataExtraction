@@ -302,6 +302,7 @@ async function getStorageData(contractTransactions, mainContract, contractTree, 
        
        
         for(const tx of transactionsFiltered){
+            // await getEvents(tx.hash,contractAddress, Number(tx.blockNumber)) 
             await runWorkerForTx(tx, mainContract, contractTree, contractAddress, smartContract,extractionType);
         }
         console.log("Extraction finished");
@@ -734,6 +735,7 @@ function regroupShatrace(finalShaTraces){
  * @returns {Promise<*>} - the AST of the smart contract, allowing the reading of the variables and the functions of the contract.
  */
 async function getCompiledData(contracts, contractName) {
+    let storageLayout=true;
     let input = {
         language: 'Solidity',
         sources: {},
@@ -782,16 +784,20 @@ async function getCompiledData(contracts, contractName) {
     source=null;
     //fs.writeFileSync('./temporaryTrials/contractTree.json', JSON.stringify(contractTree));
     //construct full function tree including also the inherited ones
-    let contractFunctionTree = await constructFullFunctionContractTree(contractTree);
+    let contractFunctionTree =  constructFullFunctionContractTree(contractTree);
     contractTree=null;
     //fs.writeFileSync('./temporaryTrials/contractFunctionTree.json', JSON.stringify(contractFunctionTree));
     //construct full contract tree including also variables
-    const fullContractTree = await injectVariablesToTree(contractFunctionTree, contractStorageTree);
+    const fullContractTree =  await injectVariablesToTree(contractFunctionTree, contractStorageTree);
+    if(contractStorageTree.length==0){
+        console.log("contratto non dispone di storage layout ")
+        storageLayout=false;
+    }
     contractStorageTree=null;
     contractFunctionTree=null;
     //fs.writeFileSync('./temporaryTrials/fullContractTree.json', JSON.stringify(fullContractTree));
 
-    return fullContractTree;
+    return {fullContractTree,storageLayout};
 }
 
 /**
@@ -990,7 +996,7 @@ async function getContractVariableTree(compiled) {
         //utility for getting the key corresponding to the specific contract and access it
         const firstKey = Object.keys(compiled.contracts[contract])[0];
         //check that the contract has some state variables
-        if (compiled.contracts[contract] && compiled.contracts[contract][firstKey] && compiled.contracts[contract][firstKey].storageLayout.storage.length !== 0) {
+        if (compiled.contracts[contract] && compiled.contracts[contract][firstKey] && compiled.contracts[contract][firstKey].storageLayout && compiled.contracts[contract][firstKey].storageLayout.storage && compiled.contracts[contract][firstKey].storageLayout.storage.length !== 0) {
             //get the storage of the contract
             const storageLay = compiled.contracts[contract][firstKey].storageLayout.storage;
             //read all variables from contract storage
@@ -1011,7 +1017,7 @@ async function getContractVariableTree(compiled) {
         }else{
             for(const keyNumber in Object.keys(compiled.contracts[contract])){
                 const otherKey = Object.keys(compiled.contracts[contract])[keyNumber];
-                if (compiled.contracts[contract][otherKey].storageLayout.storage.length !== 0) {
+                if (compiled.contracts[contract][otherKey].storageLayout && compiled.contracts[contract][otherKey].storageLayout.storage &&compiled.contracts[contract][otherKey].storageLayout.storage.length !== 0) {
 
                     const storageLay = compiled.contracts[contract][otherKey].storageLayout.storage;
                     for (const storageVar of storageLay) {
@@ -1044,25 +1050,30 @@ async function getContractVariableTree(compiled) {
  * @param contractAddress - the address of the contract to get the events
  * @returns {Promise<*[]>} - the events emitted by the transaction
  */
-async function getEvents(transactionHash, block, contractAddress) {
+async function getEvents(transactionHash,contractAddress,block) {
+    const receipt = await web3.eth.getTransactionReceipt(transactionHash);
+    console.log("receipt")
+    console.log(receipt)
     let myContract = new web3.eth.Contract(JSON.parse(contractAbi), contractAddress);
-    let filteredEvents = [];
+    // let filteredEvents = [];
     const pastEvents = await myContract.getPastEvents("allEvents", {fromBlock: block, toBlock: block});
-    myContract=null;
-    for (let i = 0; i < pastEvents.length; i++) {
-        for (const value in pastEvents[i].returnValues) {
-            if (typeof pastEvents[i].returnValues[value] === "bigint") {
-                pastEvents[i].returnValues[value] = Number(pastEvents[i].returnValues[value]);
-            }
-        }
-        const event = {
-            eventName: pastEvents[i].event,
-            eventValues: pastEvents[i].returnValues
-        };
-        filteredEvents.push(event);
-    }
+    console.log("pastEvents")
+    console.log(pastEvents)
+    // myContract=null;
+    // for (let i = 0; i < pastEvents.length; i++) {
+    //     for (const value in pastEvents[i].returnValues) {
+    //         if (typeof pastEvents[i].returnValues[value] === "bigint") {
+    //             pastEvents[i].returnValues[value] = Number(pastEvents[i].returnValues[value]);
+    //         }
+    //     }
+    //     const event = {
+    //         eventName: pastEvents[i].event,
+    //         eventValues: pastEvents[i].returnValues
+    //     };
+    //     filteredEvents.push(event);
+    // }
 
-    return filteredEvents;
+    return "";
 }
 // 0xa939a421a423fc2beb109f09f34d3fe96b3bb4bffaacd8203cc60e3d052efea3
 
