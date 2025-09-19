@@ -303,7 +303,12 @@ async function getStorageData(contractTransactions, mainContract, contractTree, 
        
         for(const tx of transactionsFiltered){
             // await getEvents(tx.hash,contractAddress, Number(tx.blockNumber)) 
-            await runWorkerForTx(tx, mainContract, contractTree, contractAddress, smartContract,extractionType);
+            try{
+                await runWorkerForTx(tx, mainContract, contractTree, contractAddress, smartContract,extractionType);
+
+            }catch (e){
+                console.log("errore nel worker",e)
+            }
         }
         console.log("Extraction finished");
         return [];
