@@ -490,7 +490,9 @@ async function iterateInternalForEvent(transactionHash,block,internalTxs,extract
             for (const element of internalTxs) {
                 let eventsFromInternal = await getEventsFromInternal(transactionHash, block, element["to"], network);
                 for (const ev of eventsFromInternal) {
-                    filteredEvents.push(ev);
+                    if(!checkIfEventIsAlreadyStored(filteredEvents, ev)){
+                        filteredEvents.push(ev);
+                    }
                 }
             }
             return filteredEvents;
