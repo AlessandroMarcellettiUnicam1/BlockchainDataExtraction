@@ -251,6 +251,44 @@ app.post("/api/query", async (req, res) => {
 	}
 });
 
+app.post("/api/uploadDataInDb",async (req,res)=>{
+	try{
+		try {
+			await connectDB("Mainnet")
+			// Read JSON file
+			
+			let documents = JSON.parse(req.body.jsonLog);
+			
+			// Normalize and insert by contractAddress
+			for (const doc of documents) {
+				if (!doc.contractAddress) {
+					// console.warn("Skipping doc without contractAddress:", doc);
+					continue;
+				}
+				if(doc["_id"]){
+					doc["_id"]=doc["_id"]["$oid"]
+				}
+				if(doc["timestamp"]){
+					doc["timestamp"]=doc["timestamp"]["$date"]
+				}
+				try{
+					const collectionName = doc.contractAddress.toLowerCase(); // use lowercase for safety
+					const collection = mongoose.connection.db.collection(collectionName);
+					await collection.insertOne(doc);
+				}catch (e){
+					console.log("error: ",e)
+				}
+			}
+		} catch (err) {
+			console.error("Error importing documents:", err);
+		}
+		res.send(200)
+		await mongoose.disconnect()
+	}catch(error){
+		console.error("Error fetching activity data:", error);
+		res.status(500).json({ error: error.message });
+	}
+});
 // Route: Home Page
 app.post("/submit", upload.single("file"), async (req, res) => {
 	const contractAddress = req.body.contractAddress; // Get data from input1
@@ -834,6 +872,7 @@ app.post("/api/data/storageState", async (req, res) => {
 		res.status(500).json({ error: error.message });
 	}
 });
+
 
 // Start the server
 app.listen(port, () => {
