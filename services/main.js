@@ -740,7 +740,7 @@ function regroupShatrace(finalShaTraces){
  * @returns {Promise<*>} - the AST of the smart contract, allowing the reading of the variables and the functions of the contract.
  */
 async function getCompiledData(contracts, contractName,compilerVerion) {
-    let storageLayout=true;
+    let storageLayout = true;
     let input = {
         language: 'Solidity',
         sources: {},
@@ -769,41 +769,40 @@ async function getCompiledData(contracts, contractName,compilerVerion) {
         input.sources[contractName].content = contracts;
         solidityVersion = await detectVersion(contracts)
     }
+    //v0.8.4+commit.c7e474f2
+    // v0.5.15+commit.6a57276f
+//v0.8.28+commit.7893614a
+    // solidityVersion = "v0.8.28+commit.7893614a";
+    // const solcSnapshot = await getRemoteVersion(solidityVersion.replace("soljson-", "").replace(".js", ""))
     const solcSnapshot = await getRemoteVersion(compilerVerion)
-    // const solcSnapshot = await getRemoteVersion("v0.7.6+commit.7338295f")
-    // v0.7.6+commit.7338295f
-    let output = solcSnapshot.compile(JSON.stringify(input));
-    contractCompiled = output
-    input=null;
-    let source = JSON.parse(output).sources;
 
+    const output = solcSnapshot.compile(JSON.stringify(input));
+    contractCompiled = output
+    // fs.writeFileSync('testContract.json', output);
+    const source = JSON.parse(output).sources;
     contractAbi = JSON.stringify(await getAbi(JSON.parse(output), contractName));
+   // console.log(contractAbi);
     // fs.writeFileSync('abitest.json', JSON.stringify(contractAbi));
     //get all storage variable for contract, including inherited ones
-
+    const storageData = await getContractVariableTree(JSON.parse(output));
     //console.log(storageData);
     //take the effective tree
-    let contractStorageTree = await getContractVariableTree(JSON.parse(output));
-    output=null;
+    const contractStorageTree = storageData;
     //get tree of functions for contract, NOT including inherited
-    let contractTree = await getFunctionContractTree(source);
-    source=null;
+    const contractTree = await getFunctionContractTree(source);
     //fs.writeFileSync('./temporaryTrials/contractTree.json', JSON.stringify(contractTree));
     //construct full function tree including also the inherited ones
-    let contractFunctionTree =  constructFullFunctionContractTree(contractTree);
-    contractTree=null;
+    const contractFunctionTree = await constructFullFunctionContractTree(contractTree);
     //fs.writeFileSync('./temporaryTrials/contractFunctionTree.json', JSON.stringify(contractFunctionTree));
     //construct full contract tree including also variables
-    const fullContractTree =  await injectVariablesToTree(contractFunctionTree, contractStorageTree);
-    if(contractStorageTree.length==0){
-        console.log("contratto non dispone di storage layout ")
+    const fullContractTree = await injectVariablesToTree(contractFunctionTree, contractStorageTree);
+    if (Object.keys(contractStorageTree).length === 0){
+        console.log("contratto senza storage layout")
         storageLayout=false;
     }
-    contractStorageTree=null;
-    contractFunctionTree=null;
     //fs.writeFileSync('./temporaryTrials/fullContractTree.json', JSON.stringify(fullContractTree));
 
-    return {fullContractTree,storageLayout};
+    return {fullContractTree:fullContractTree,storageLayout:storageLayout};
 }
 
 /**
@@ -844,19 +843,14 @@ async function getAbi(compiled, contractName) {
  * @returns {Object} - Updated contract function tree with storage variables injected.
  */
 async function injectVariablesToTree(contractFunctionTree, contractStorageTree) {
-    const storageMap = new Map();
-
-    // Preprocess the storage tree into a Map for faster lookups
-    for (const contractName in contractStorageTree) {
-        const { name, storage } = contractStorageTree[contractName];
-        storageMap.set(name, storage);
-    }
-
-    // Inject storage into the function tree
     for (const contractId in contractFunctionTree) {
-        const contract = contractFunctionTree[contractId];
-        if (storageMap.has(contract.name)) {
-            contract.storage = storageMap.get(contract.name);
+        //iterate again the contracts
+        for (const contractName in contractStorageTree) {
+            //find the same contract in the tree with variables
+
+            if (contractFunctionTree[contractId].name === contractStorageTree[contractName].name) {
+                contractFunctionTree[contractId].storage = contractStorageTree[contractName].storage;
+            }
         }
     }
 
@@ -871,23 +865,22 @@ async function injectVariablesToTree(contractFunctionTree, contractStorageTree) 
  * @returns {Object} - Full contract tree with inherited functions included.
  */
 async function constructFullFunctionContractTree(partialContractTree) {
+     //iterate all contracts from the partial tree (key is AST id)
     for (const contractId in partialContractTree) {
-        const contract = partialContractTree[contractId];
-        const inheritedFunctions = new Set(contract.functions);
-
-        // Add inherited functions
-        for (const inheritedId of contract.inherited) {
-            const inheritedContract = partialContractTree[inheritedId];
-            if (inheritedContract && inheritedContract.name !== contract.name) {
-                inheritedContract.functions.forEach(fn => inheritedFunctions.add(fn));
+        //get the ID of all inherited contract and iter them
+        for (const inheritedId of partialContractTree[contractId].inherited) {
+            //console.log("avente inherited: " + inheritedId + " che corrisponde a: " + partialContractTree[inheritedId].name);
+            if (partialContractTree[inheritedId].name !== partialContractTree[contractId].name &&
+                partialContractTree[contractId].functions.length > 0) {
+                //console.log("ora inserisce" + partialContractTree[inheritedId].functions);
+                partialContractTree[contractId].functions.push(...partialContractTree[inheritedId].functions);
             }
+            //push inside the main contract the inherited functions
+            //partialContractTree[contractId].functions.push(partialContractTree[inheritedId].functions);
         }
-
-        // Update the contract's functions with unique values
-        contract.functions = Array.from(inheritedFunctions);
+        const uniqueArray = Array.from(new Set(partialContractTree[contractId].functions));
+        partialContractTree[contractId].functions = uniqueArray;
     }
-
-
     return partialContractTree;
 }
 

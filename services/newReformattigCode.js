@@ -17,6 +17,7 @@ let mainContractName;
  * @returns {Promise<Array>} - A promise that resolves to an array of decoded values.
  */
 async function optimizedDecodeValues(sstore, contractTree, shaTraces, functionStorage, functionName, mainContract, web3Variable, contractCompiledPassed) {
+    // console.log(contractTree)
     web3 = web3Variable;
     contractCompiled = contractCompiledPassed;
     // console.log("------SHAT TRACES------")

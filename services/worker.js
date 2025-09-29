@@ -61,7 +61,6 @@ let contractCompiled = null;
  * @returns {Promise<Object|null>} - The processed transaction log or null if already processed.
  */
 async function processTransaction(tx, mainContract, contractTree, contractAddress, smartContract,extractionType,network) {
-    
     const query = {
         transactionHash: tx.hash.toLowerCase(),
         contractAddress: contractAddress.toLowerCase()
@@ -388,9 +387,8 @@ async function getTraceStorage(traceDebugged, blockNumber, functionName, transac
         traceDebugged.structLogs.length=0;
         let sstoreObject = {sstoreOptimization, sstoreBuffer}
         finalShaTraces=regroupShatrace(finalShaTraces);
-        // await optimizedDecodeValues(sstoreObject, contractTree, finalShaTraces, functionStorage, functionName, mainContract,web3,contractCompiled)
         let result={
-            decodedValues:contractTree.storageLayout?await optimizedDecodeValues(sstoreObject, contractTree.fullContractTree, finalShaTraces, functionStorage, functionName, mainContract,web3,contractCompiled):null,
+            decodedValues:contractTree.storageLayout?await optimizedDecodeValues(sstoreObject, contractTree.fullContractTree, finalShaTraces, functionStorage, functionName, mainContract,web3,contractCompiled):[],
             internalTxs:null
         }
         if(extractionType==1){
