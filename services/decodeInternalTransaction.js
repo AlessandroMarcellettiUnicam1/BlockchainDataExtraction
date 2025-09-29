@@ -31,7 +31,7 @@ async function handleAbiFetch(element, addressTo, apiKey, endpoint, web3) {
     let success = false;
     while (!success) {
         await new Promise((resolve) => setTimeout(resolve, 5000));
-        let callForAbi = await axios.get(`${endpoint}?module=contract&action=getsourcecode&address=${addressTo}&apikey=${apiKey}`);
+        let callForAbi = await axios.get(`${endpoint}&module=contract&action=getsourcecode&address=${addressTo}&apikey=${apiKey}`);
         if(callForAbi.data.result[0].Proxy==1){
            addressTo= callForAbi.data.result[0].Implementation;
         }else if(callForAbi.data.result[0].SimilarMatch){

@@ -84,7 +84,8 @@ async function getAllTransactions(mainContract, contractAddress, impl_contract, 
 
         web3 = new Web3(web3Endpoint)
         //contractAddress = proxy address in which storage and txs are made
-        let data = await axios.get(endpoint + `?module=account&action=txlist&address=${contractAddress}&startblock=${fromBlock}&endblock=${toBlock}&sort=asc&apikey=${apiKey}`)
+        
+        let data = await axios.get(endpoint + `&module=account&action=txlist&address=${contractAddress}&startblock=${fromBlock}&endblock=${toBlock}&sort=asc&apikey=${apiKey}`)
         const contractTransactions = await data.data.result
         data=null;
         // returns all contracts linked to te contract sent in input from etherscan
@@ -771,10 +772,12 @@ async function getCompiledData(contracts, contractName) {
     }
     const solcSnapshot = await getRemoteVersion(solidityVersion.replace("soljson-", "").replace(".js", ""))
 
+    // v0.7.6+commit.7338295f
     let output = solcSnapshot.compile(JSON.stringify(input));
     contractCompiled = output
     input=null;
     let source = JSON.parse(output).sources;
+
     contractAbi = JSON.stringify(await getAbi(JSON.parse(output), contractName));
    // console.log(contractAbi);
     // fs.writeFileSync('abitest.json', JSON.stringify(contractAbi));
@@ -935,9 +938,8 @@ async function getContractCodeEtherscan(contractAddress) {
     let contracts = [];
     let response=[];
     let buffer;
-    try{
-
-        response = await axios.get(endpoint + `?module=contract&action=getsourcecode&address=${contractAddress}&apikey=${apiKey}`);
+    try{    
+        response = await axios.get(endpoint + `&module=contract&action=getsourcecode&address=${contractAddress}&apikey=${apiKey}`);
         const data = response.data;
         if (data.result[0].SourceCode === "") {
             throw new Error("No contract found");
@@ -945,7 +947,6 @@ async function getContractCodeEtherscan(contractAddress) {
         let i = 0;
         // fs.writeFileSync('./temporaryTrials/dataResult.json', JSON.stringify(data.result[0]))
         let jsonCode = data.result[0].SourceCode;
-        //console.log(jsonCode);
         // fs.writeFileSync('sourceCode', JSON.stringify(data.result[0]));
     
         if (jsonCode.charAt(0) === "{") {
