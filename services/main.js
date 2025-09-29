@@ -89,17 +89,17 @@ async function getAllTransactions(mainContract, contractAddress, impl_contract, 
         const contractTransactions = await data.data.result
         data=null;
         // returns all contracts linked to te contract sent in input from etherscan
-        let contracts = null
+        let contractsResult = null
         // if the contract is uploaded by the user then the contract is compiled
         if (smartContract) {
-            contracts = smartContract
+            contractsResult = smartContract
         } else {
             //implementation contract address
-            contracts = await getContractCodeEtherscan(impl_contract);
+            contractsResult = await getContractCodeEtherscan(impl_contract);
         }
         //mainContract = implementationContract name
-        const contractTree = await getCompiledData(contracts, mainContract);
-        contracts=null;
+        const contractTree = await getCompiledData(contractsResult.contracts, mainContract,contractsResult.compilerVersion);
+        contractsResult=null;
         const userLog = {
             networkUsed: networkName,
             proxyContract: contractAddress,
@@ -343,7 +343,6 @@ function runWorkerForTx(tx, mainContract, contractTree, contractAddress, smartCo
             worker.kill('SIGKILL');
             reject(new Error('Worker timeout'));
         }, 300000); // 5 minutes timeout
-
         worker.send({
             tx,
             mainContract,
@@ -740,7 +739,7 @@ function regroupShatrace(finalShaTraces){
  * @param contractName - the name of the contract to compile
  * @returns {Promise<*>} - the AST of the smart contract, allowing the reading of the variables and the functions of the contract.
  */
-async function getCompiledData(contracts, contractName) {
+async function getCompiledData(contracts, contractName,compilerVerion) {
     let storageLayout=true;
     let input = {
         language: 'Solidity',
@@ -770,8 +769,8 @@ async function getCompiledData(contracts, contractName) {
         input.sources[contractName].content = contracts;
         solidityVersion = await detectVersion(contracts)
     }
-    const solcSnapshot = await getRemoteVersion(solidityVersion.replace("soljson-", "").replace(".js", ""))
-
+    const solcSnapshot = await getRemoteVersion(compilerVerion)
+    // const solcSnapshot = await getRemoteVersion("v0.7.6+commit.7338295f")
     // v0.7.6+commit.7338295f
     let output = solcSnapshot.compile(JSON.stringify(input));
     contractCompiled = output
@@ -779,7 +778,6 @@ async function getCompiledData(contracts, contractName) {
     let source = JSON.parse(output).sources;
 
     contractAbi = JSON.stringify(await getAbi(JSON.parse(output), contractName));
-   // console.log(contractAbi);
     // fs.writeFileSync('abitest.json', JSON.stringify(contractAbi));
     //get all storage variable for contract, including inherited ones
 
@@ -979,7 +977,7 @@ async function getContractCodeEtherscan(contractAddress) {
             contracts[actualContract].nameId = actualContract;
             contracts[actualContract].content = code;
         }
-        return contracts;
+        return {contracts:contracts,compilerVersion:data.result[0].CompilerVersion};
     }catch (err){
         console.log("error",err)
     }finally{
