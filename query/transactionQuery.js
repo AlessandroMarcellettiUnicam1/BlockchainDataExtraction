@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import {getAllTransactions} from "./flattenTransaction.js"
 
 // Cache setup
 const cache = new Map();
@@ -63,6 +64,8 @@ export async function fetchTransactions(query) {
 				.toArray();
 			results = results.concat(transactions);
 		}
+
+        results = await getAllTransactions(results);
 
 		const validTransactions = results.filter(
 			(tx) => tx && Object.keys(tx).length > 0 && tx.gasUsed !== undefined

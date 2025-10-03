@@ -116,7 +116,26 @@ export async function getInputsData(query) {
 	try {
 		const transactions = await fetchTransactions(query);
 
-		const formattedTransactions = transactions.map((tx) => {
+        let result = []
+        for (const transaction of transactions) {
+            for(let i = 0;i<transaction.inputs.length;i++) {
+                let value;
+                if(transaction.inputs[i]?.type==="bool")
+                    value = transaction.inputs[i]?.inputValue === "true";
+                else
+                    value = transaction.inputs[i]?.inputValue || transaction.inputs[i].value || "unknown"
+                result = result.concat({
+                    contractAddress: transaction.contractAddress,
+                    activity: transaction.activity || transaction.functionName || "unknown",
+                    timestamp: transaction.timestamp,
+                    inputName: transaction.inputs[i]?.inputName || transaction.inputs[i].name || "unknown",
+                    inputType: transaction.inputs[i]?.type || "unknown",
+                    //inputValue: transaction.inputs[i]?.inputValue || transaction.inputs[i].value || "unknown"
+                    inputValue: value
+                });
+            }
+        }
+		/*const formattedTransactions = transactions.map((tx) => {
 			return {
 				contractAddress: tx.contractAddress,
 				activity: tx.activity || tx.functionName || "unknown",
@@ -125,9 +144,9 @@ export async function getInputsData(query) {
 				inputType: tx.inputs[0]?.type || "unknown",
 				inputValue: tx.inputs[0]?.inputValue || "unknown",
 			};
-		});
+		});*/
 
-		return formattedTransactions;
+		return result;
 	} catch (error) {
 		console.error("Error fetching inputs data:", error);
 		throw new Error(error.message);
@@ -170,7 +189,18 @@ export async function getCallsData(query) {
 		const transactions = await fetchTransactions(query);
 		const callsData = {};
 
-		transactions.forEach((tx) => {
+        for(const transaction of transactions){
+            if(transaction.hasOwnProperty("type")){
+                if(!callsData[transaction.type]){
+                    callsData[transaction.type] = {
+                        callType : transaction.type,
+                        count : 0
+                    };
+                }
+                callsData[transaction.type].count += 1;
+            }
+        }
+		/*transactions.forEach((tx) => {
 			if (tx.internalTxs && tx.internalTxs.length > 0) {
 				tx.internalTxs.forEach((call) => {
 					const callType = call.callType || "unknown";
@@ -183,7 +213,7 @@ export async function getCallsData(query) {
 					callsData[callType].count += 1;
 				});
 			}
-		});
+		});*/
 
 		return Object.values(callsData);
 	} catch (error) {
@@ -232,7 +262,7 @@ export function formatTransactionForTreeView(tx) {
 	});
 	children.push({
 		id: `${tx.transactionHash}-activity`,
-		label: `Activity: ${tx.activity}`,
+		label: `Activity: ${tx.activity || tx.functionName}`,
 	});
 	children.push({
 		id: `${tx.transactionHash}-blockNumber`,
@@ -256,7 +286,7 @@ export function formatTransactionForTreeView(tx) {
 				inputValue = inputValue.toExponential(2); // Format large numbers as exponential
 			}
 			return {
-				id: `${tx.transactionHash}-input-${input.inputId}-${index}`,
+				id: `${tx.transactionHash}-input-${input.inputName}-${index}`,
 				label: `${input.inputName} (${input.type}): ${inputValue}`,
 			};
 		});
@@ -309,7 +339,7 @@ export function formatTransactionForTreeView(tx) {
 
 			return {
 				id: `${tx.transactionHash}-internalTx-${internalTx.callId}-${index}`,
-				label: `Call Type: ${internalTx.callType}, To: ${internalTx.to}, Inputs: [${inputsCallFormatted}]`,
+				label: `Call Type: ${internalTx.type}, To: ${internalTx.to}, Inputs: [${inputsCallFormatted}]`,
 			};
 		});
 		children.push({
