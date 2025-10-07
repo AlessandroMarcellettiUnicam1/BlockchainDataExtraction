@@ -298,7 +298,7 @@ async function getTraceStorage(traceDebugged, blockNumber, functionName, transac
         let sstoreObject = {sstoreOptimization, sstoreBuffer}
         finalShaTraces=regroupShatrace(finalShaTraces);
         let result={
-            decodedValues:contractTree.storageLayout?await optimizedDecodeValues(sstoreObject, contractTree.fullContractTree, finalShaTraces, functionStorage, functionName, mainContract,web3,contractCompiled):[],
+            decodedValues:contractTree.storageLayoutFlag?await optimizedDecodeValues(sstoreObject, contractTree.fullContractTree, finalShaTraces, functionStorage, functionName, mainContract,web3,contractCompiled):[],
             internalTxs:null
         }
         if(extractionType==1){

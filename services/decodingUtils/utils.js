@@ -78,32 +78,18 @@ async function getEventsFromInternal(transactionHash,block,contractAddress,netwo
 
 async function iterateInternalForEvent(transactionHash,block,internalTxs,extractionType,network,web3){
     let filteredEvents=[];
-    switch (extractionType){
-        case("1"):
-            for (const element of internalTxs) {
-                let eventsFromInternal = await getEventsFromInternal(transactionHash, block, element["to"], network,web3);
-                for (const ev of eventsFromInternal) {
-                    if(!checkIfEventIsAlreadyStored(filteredEvents, ev)){
-                        filteredEvents.push(ev);
-                    }
-                }
-            }
-            return filteredEvents;
-        case("2"):
-            
-        let flattenInternalTransaction=flattenInternalTransactions(internalTxs,transactionHash)
-        console.log(flattenInternalTransaction)
-            for(const element of internalTxs){
-                let eventsFromInternal = await getEventsFromInternal(transactionHash, block, element["to"], network,web3);
-                for (const ev of eventsFromInternal) {
-                    if(!checkIfEventIsAlreadyStored(filteredEvents, ev)){
-                        filteredEvents.push(ev);
-                    }
-                }
-            }
-            break;
-        default:
+    let flattenInternalTransaction=internalTxs;
+    if(extractionType==2){
+        flattenInternalTransaction=flattenInternalTransactions(internalTxs,transactionHash);
     }
+    for (const element of flattenInternalTransaction) {
+                let eventsFromInternal = await getEventsFromInternal(transactionHash, block, element["to"], network,web3);
+                for (const ev of eventsFromInternal) {
+                    if(!checkIfEventIsAlreadyStored(filteredEvents, ev)){
+                        filteredEvents.push(ev);
+                    }
+                }
+            }
     return filteredEvents;
 }
 function flattenInternalTransactions(transactions,txHash){

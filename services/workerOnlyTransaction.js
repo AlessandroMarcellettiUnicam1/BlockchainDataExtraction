@@ -311,7 +311,7 @@ async function getTraceStorage(traceDebugged, blockNumber, functionName, transac
             decodedValues:null,
             internalTxs:null
         }
-        if(contractTree && contractTree.storageLayout){
+        if(contractTree && contractTree.storageLayoutFlag){
             try{
                 result.decodedValues=await optimizedDecodeValues(sstoreObject, contractTree.fullContractTree, finalShaTraces, functionStorage, functionName, mainContract,web3,contractCompiled)
             }catch (err){
