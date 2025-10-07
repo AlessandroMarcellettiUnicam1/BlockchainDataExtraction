@@ -2,7 +2,7 @@ const { get } = require("mongoose");
 
 let web3;
 let mainContractName;
-
+let contractCompiled;
 /**
  * Optimizes and decodes values from the given storage and contract data.
  *
@@ -54,6 +54,7 @@ async function optimizedDecodeValues(sstore, contractTree, shaTraces, functionSt
             // }
         }
     //tiro fuori che cosa ho dentro il function storage in base agli slot di memori che leggo 
+    
         let mainContractCompiled=getMainContractCompiled(mainContract);
         for(const storageKey in functionStorage){
             if (!shatracesProcessed.has(storageKey) && web3.utils.hexToNumber("0x" + storageKey) < 9999999) {

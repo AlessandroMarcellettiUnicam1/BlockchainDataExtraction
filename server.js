@@ -9,6 +9,7 @@ const jsonToCsv = require("json-2-csv");
 const jp = require("jsonpath");
 
 const { getAllTransactions } = require("./services/main");
+const { getOneTransaction } = require("./services/mainOnyTransaction")
 const app = express();
 const upload = multer({ dest: "uploads/" });
 const port = 8000;
@@ -299,6 +300,8 @@ app.post("/submit", upload.single("file"), async (req, res) => {
 	const network = req.body.network;
 	const filters = JSON.parse(req.body.filters);
 	const extractionType = req.body.extractionType;
+	// const transactionFlag=req.body.transactionFlag;
+	const transactionFlag=true;
 	// Perform actions based on the received data
 	console.log(`Start Block: ${fromBlock}`);
 	console.log(`End Block: ${toBlock}`);
@@ -315,17 +318,31 @@ app.post("/submit", upload.single("file"), async (req, res) => {
 				console.error(err);
 				return res.status(500).send("Error reading file");
 			}
-			logs = await getAllTransactions(
-				contractName,
-				contractAddress,
-				implementationContractAddress,
-				fromBlock,
-				toBlock,
-				network,
-				filters,
-				data,
-				extractionType
-			);
+			if(transactionFlag){
+				logs = await getAllTransactions(
+					contractName,
+					contractAddress,
+					implementationContractAddress,
+					fromBlock,
+					toBlock,
+					network,
+					filters,
+					data,
+					extractionType
+				);
+			}else{
+				logs= await getOneTransaction(
+					contractName,
+					contractAddress,
+					implementationContractAddress,
+					fromBlock,
+					toBlock,
+					network,
+					filters,
+					data,
+					extractionType
+				)
+			}
 			fs.unlink(req.file.path, (err) => {
 				if (err) {
 					console.error(err);
@@ -338,17 +355,31 @@ app.post("/submit", upload.single("file"), async (req, res) => {
 			});
 		});
 	} else {
-		logs = await getAllTransactions(
-			contractName,
-			contractAddress,
-			implementationContractAddress,
-			fromBlock,
-			toBlock,
-			network,
-			filters,
-			null,
-			extractionType
-		);
+		if(transactionFlag){
+			logs = await getAllTransactions(
+				contractName,
+				contractAddress,
+				implementationContractAddress,
+				fromBlock,
+				toBlock,
+				network,
+				filters,
+				null,
+				extractionType
+			);
+		}else{
+			logs = await getOneTransaction(
+				contractName,
+				contractAddress,
+				implementationContractAddress,
+				fromBlock,
+				toBlock,
+				network,
+				filters,
+				null,
+				extractionType
+			);
+		}
 		if (logs instanceof Error) {
 			res.status(404).send(logs.message);
 		} else {
