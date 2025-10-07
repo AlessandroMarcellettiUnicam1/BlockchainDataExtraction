@@ -72,6 +72,7 @@ async function getEventsFromInternal(transactionHash,block,contractAddress,netwo
             }
         })
     }
+  
     return filteredEvents;
 }
 
@@ -88,13 +89,44 @@ async function iterateInternalForEvent(transactionHash,block,internalTxs,extract
                 }
             }
             return filteredEvents;
-        case(2):
+        case("2"):
+            
+        let flattenInternalTransaction=flattenInternalTransactions(internalTxs,transactionHash)
+        console.log(flattenInternalTransaction)
+            for(const element of internalTxs){
+                let eventsFromInternal = await getEventsFromInternal(transactionHash, block, element["to"], network,web3);
+                for (const ev of eventsFromInternal) {
+                    if(!checkIfEventIsAlreadyStored(filteredEvents, ev)){
+                        filteredEvents.push(ev);
+                    }
+                }
+            }
             break;
         default:
     }
     return filteredEvents;
 }
+function flattenInternalTransactions(transactions,txHash){
+    if(!Array.isArray(transactions) || transactions.length===0){
+        return [];
+    }
+    let i = 0;
+    let result = [];
+    result = result.concat(transactions);
+    for(const transaction of transactions) {
+        result = result.concat(flattenInternalTransactions(transaction.calls,txHash));
+    }
 
+      return result.map(item=>changeKey(item,"to","contractAddress")).
+                    map(item=>changeKey(item,"from","sender"));
+}
+function changeKey(obj, oldKey, newKey){
+    if(obj.hasOwnProperty(oldKey)){
+        obj[newKey] = obj[oldKey];
+        delete obj[oldKey];
+    }
+    return obj;
+}
 function checkIfEventIsAlreadyStored(events, eventToCheck) {
   return events.some(el => JSON.stringify(el) === JSON.stringify(eventToCheck));
 }
