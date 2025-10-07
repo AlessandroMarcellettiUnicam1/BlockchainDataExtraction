@@ -1,5 +1,6 @@
 import { fetchTransactions } from "./transactionQuery.js";
 
+
 export async function getGasUsage(query) {
 	try {
 		const transactions = await fetchTransactions(query);
@@ -20,7 +21,7 @@ export async function getGasUsage(query) {
 			activityGasMap[activity].count += 1;
 		});
 
-		return Object.values(activityGasMap);
+        return Object.values(activityGasMap);
 	} catch (error) {
 		console.error("Error fetching gas usage:", error);
 		throw new Error(error.message);
@@ -43,7 +44,6 @@ export async function getActivityData(query) {
 			}
 			activityStats[activity].count += 1;
 		});
-
 		return Object.values(activityStats);
 	} catch (error) {
 		console.error("Error fetching activity data:", error);
@@ -135,17 +135,6 @@ export async function getInputsData(query) {
                 });
             }
         }
-		/*const formattedTransactions = transactions.map((tx) => {
-			return {
-				contractAddress: tx.contractAddress,
-				activity: tx.activity || tx.functionName || "unknown",
-				timestamp: tx.timestamp,
-				inputName: tx.inputs[0]?.inputName || "unknown",
-				inputType: tx.inputs[0]?.type || "unknown",
-				inputValue: tx.inputs[0]?.inputValue || "unknown",
-			};
-		});*/
-
 		return result;
 	} catch (error) {
 		console.error("Error fetching inputs data:", error);
@@ -189,31 +178,37 @@ export async function getCallsData(query) {
 		const transactions = await fetchTransactions(query);
 		const callsData = {};
 
-        for(const transaction of transactions){
-            if(transaction.hasOwnProperty("type")){
-                if(!callsData[transaction.type]){
-                    callsData[transaction.type] = {
-                        callType : transaction.type,
-                        count : 0
-                    };
+        const {internalTxs} = query;
+        if(internalTxs) {
+            for (const transaction of transactions) {
+                if (transaction.hasOwnProperty("type")) {
+                    if (!callsData[transaction.type]) {
+                        callsData[transaction.type] = {
+                            callType: transaction.type,
+                            count: 0
+                        };
+                    }
+                    callsData[transaction.type].count += 1;
                 }
-                callsData[transaction.type].count += 1;
             }
         }
-		/*transactions.forEach((tx) => {
-			if (tx.internalTxs && tx.internalTxs.length > 0) {
-				tx.internalTxs.forEach((call) => {
-					const callType = call.callType || "unknown";
-					if (!callsData[callType]) {
-						callsData[callType] = {
-							callType: callType,
-							count: 0,
-						};
-					}
-					callsData[callType].count += 1;
-				});
-			}
-		});*/
+        else{
+            transactions.forEach((tx) => {
+                if (tx.internalTxs && tx.internalTxs.length > 0) {
+                    tx.internalTxs.forEach((call) => {
+                        const callType = call.type || "unknown";
+                        if (!callsData[callType]) {
+                            callsData[callType] = {
+                                callType: callType,
+                                count: 0,
+                            };
+                        }
+                        callsData[callType].count += 1;
+                    });
+                }
+            });
+        }
+
 
 		return Object.values(callsData);
 	} catch (error) {
