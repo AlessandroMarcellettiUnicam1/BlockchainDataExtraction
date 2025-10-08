@@ -795,6 +795,9 @@ function getMainContractCompiled(mainContract) {
             return testContract.contracts[contract][firstKey];
         }
     }
+    let entries=Object.entries(testContract.contracts["contract0"]);
+    const found = entries.find(([key]) => key === mainContract);
+    return found ? found[1] : null;
 }
 
 function newReadVarFormOffset(variables, functionStorage) {

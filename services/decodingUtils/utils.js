@@ -83,7 +83,7 @@ async function iterateInternalForEvent(transactionHash,block,internalTxs,extract
         flattenInternalTransaction=flattenInternalTransactions(internalTxs,transactionHash);
     }
     for (const element of flattenInternalTransaction) {
-                let eventsFromInternal = await getEventsFromInternal(transactionHash, block, element["to"], network,web3);
+                let eventsFromInternal = await getEventsFromInternal(transactionHash, block, element["contractAddress"], network,web3);
                 for (const ev of eventsFromInternal) {
                     if(!checkIfEventIsAlreadyStored(filteredEvents, ev)){
                         filteredEvents.push(ev);
