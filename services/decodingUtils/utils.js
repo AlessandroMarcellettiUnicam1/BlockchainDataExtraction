@@ -83,11 +83,9 @@ async function iterateInternalForEvent(transactionHash,block,internalTxs,extract
         flattenInternalTransaction=flattenInternalTransactions(internalTxs,transactionHash);
     }
     for (const element of flattenInternalTransaction) {
-                let eventsFromInternal = await getEventsFromInternal(transactionHash, block, element["contractAddress"], network,web3);
+                let eventsFromInternal = await getEventsFromInternal(transactionHash, block, extractionType==2?element["contractAddress"]:element["to"], network,web3);
                 for (const ev of eventsFromInternal) {
-                    if(!checkIfEventIsAlreadyStored(filteredEvents, ev)){
-                        filteredEvents.push(ev);
-                    }
+                        if(safeCheck(filteredEvents,ev)) filteredEvents.push(ev)
                 }
             }
     return filteredEvents;
@@ -113,7 +111,15 @@ function changeKey(obj, oldKey, newKey){
     }
     return obj;
 }
+function safeCheck(arr, ev) {
+  try {
+    return checkIfEventIsAlreadyStored(arr, ev);
+  } catch {
+    return false; // act as if it's not stored, so push it
+  }
+}
 function checkIfEventIsAlreadyStored(events, eventToCheck) {
+
   return events.some(el => JSON.stringify(el) === JSON.stringify(eventToCheck));
 }
 
