@@ -42,8 +42,10 @@ async function processTransaction(tx, mainContract, contractTree, contractAddres
         const { _id, __v, ...transactionData } = response[0];
         return transactionData;
     }
+    if(!(contractAbi === undefined || (typeof contractAbi === 'object' && contractAbi !== null && Object.keys(contractAbi).length === 0))){
+        decodeTransactionInputs(tx,contractAbi);
+    }
     
-    decodeTransactionInputs(tx,contractAbi);
     try{
         console.log(`Processing transaction: ${tx.hash}`);
         let transactionLog=await createTransactionLog(tx, mainContract, contractTree, smartContract,extractionType,contractAddress,network);

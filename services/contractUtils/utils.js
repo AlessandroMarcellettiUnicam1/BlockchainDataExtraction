@@ -65,7 +65,8 @@ async function getContractCodeEtherscan(contractAddress,endpoint,apiKey) {
  * @param contractName - the name of the contract to compile
  * @returns {Promise<*>} - the AST of the smart contract, allowing the reading of the variables and the functions of the contract.
  */
-async function getCompiledData(contracts, contractName,compilerVerion,contractAbi) {
+async function getCompiledData(contracts, contractName,compilerVerion) {
+    let contractAbi;
     let storageLayoutFlag = true;
     let input = {
         language: 'Solidity',
@@ -95,15 +96,12 @@ async function getCompiledData(contracts, contractName,compilerVerion,contractAb
         input.sources[contractName].content = contracts;
         solidityVersion = await detectVersion(contracts)
     }
-
+    
     const solcSnapshot = await getRemoteVersion(compilerVerion)
-
     const output = solcSnapshot.compile(JSON.stringify(input));
     contractCompiled = output
-
     const source = JSON.parse(output).sources;
     contractAbi = JSON.stringify(await getAbi(JSON.parse(output), contractName));
-
     //get all storage variable for contract, including inherited ones
     const storageData = await getContractVariableTree(JSON.parse(output));
 

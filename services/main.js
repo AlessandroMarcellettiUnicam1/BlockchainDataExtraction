@@ -92,11 +92,17 @@ async function getAllTransactions(mainContract, contractAddress, impl_contract, 
             //implementation contract address
             contractsResult = await getContractCodeEtherscan(impl_contract,endpoint,apiKey);
         }
-
         //mainContract = implementationContract name
         const contractTree = await getCompiledData(contractsResult.contracts, mainContract,contractsResult.compilerVersion);
         contractCompiled=contractTree.contractCompiled
         contractAbi=contractTree.contractAbi
+        if(contractAbi === undefined || (typeof contractAbi === 'object' && contractAbi !== null && Object.keys(contractAbi).length === 0)){
+            let callForAbi = await axios.get(`${endpoint}&module=contract&action=getsourcecode&address=${contractAddress}&apikey=${apiKey}`);
+            if(!callForAbi.data.message.includes("NOTOK")) {
+                    contractAbi=callForAbi.data.result[0].ABI
+            }
+        }
+        
         contractsResult=null;
         const userLog = {
             networkUsed: networkName,
