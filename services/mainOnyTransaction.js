@@ -48,7 +48,7 @@ let contractCompiled = null
  * @returns {Promise<*|*[]>} - the blockchain log with the extracted data
  */
 
-async function getAllTransactions(mainContract, contractAddress, impl_contract, fromBlock, toBlock, network, filters, smartContract,extractionType) {
+async function getOneTransaction(mainContract, contractAddress, impl_contract, fromBlock, toBlock, network, filters, smartContract,extractionType) {
     _contractAddress = contractAddress
     networkName = network;
     try{
@@ -81,7 +81,10 @@ async function getAllTransactions(mainContract, contractAddress, impl_contract, 
         //contractAddress = proxy address in which storage and txs are made
         
         let data = await axios.get(endpoint + `&module=account&action=txlist&address=${contractAddress}&startblock=${fromBlock}&endblock=${toBlock}&sort=asc&apikey=${apiKey}`)
-        const contractTransactions = await data.data.result
+        let contractTransactions=null;
+        if(data.data){
+            contractTransactions = await data.data.result
+        }
         data=null;
         // returns all contracts linked to te contract sent in input from etherscan
         let contractsResult = null
@@ -90,13 +93,21 @@ async function getAllTransactions(mainContract, contractAddress, impl_contract, 
             contractsResult = smartContract
         } else {
             //implementation contract address
-            contractsResult = await getContractCodeEtherscan(impl_contract,endpoint,apiKey);
+            try{
+                contractsResult = await getContractCodeEtherscan(impl_contract,endpoint,apiKey);
+            }catch (err){
+                console.error('getContractCodeEtherscan error: ', err);
+                throw new Error(err.message)
+            }
         }
 
         //mainContract = implementationContract name
-        const contractTree = await getCompiledData(contractsResult.contracts, mainContract,contractsResult.compilerVersion);
-        contractCompiled=contractTree.contractCompiled
-        contractAbi=contractTree.contractAbi
+        let contractTree=null;
+        if(contractsResult){
+            contractTree = await getCompiledData(contractsResult.contracts, mainContract,contractsResult.compilerVersion);
+            contractCompiled=contractTree.contractCompiled
+            contractAbi=contractTree.contractAbi
+        }
         contractsResult=null;
         const userLog = {
             networkUsed: networkName,
@@ -117,23 +128,7 @@ async function getAllTransactions(mainContract, contractAddress, impl_contract, 
        
         await connectDB(networkName);
         await saveExtractionLog(userLog,networkName)
-        // let txFromDb=[];
-        // for(const tx of contractTransactions){
-        //     const query = {
-        //         transactionHash: tx.hash.toLowerCase(),
-        //         contractAddress: contractAddress.toLowerCase()
-        //     };
-        //     const response = await searchTransaction(query, networkName);
-        //         if (response) {
-        //             console.log(`Transaction already processed: ${tx.hash}`);
-        //             const { _id, __v, ...transactionData } = response[0];
-        //             txFromDb.push(transactionData);
-        //         }
-        // }
-        // if(txFromDb.length>0){
-        //     await mongoose.disconnect();
-        //     return txFromDb;
-        // }
+    
         const result = await getStorageData(contractTransactions, mainContract, contractTree, contractAddress, filters, smartContract,extractionType);
         await mongoose.disconnect();
 
@@ -189,7 +184,7 @@ async function cleanupResources() {
     }
 }
 module.exports = {
-    getAllTransactions
+    getOneTransaction
 };
 //CakeOFT
 //PixesFarmsLand
@@ -245,7 +240,6 @@ async function getStorageData(contractTransactions, mainContract, contractTree, 
         if (global.gc) global.gc();
         // Establish database connection
        
-       
         for(const tx of transactionsFiltered){
             // await getEvents(tx.hash,contractAddress, Number(tx.blockNumber)) 
             try{
@@ -274,8 +268,8 @@ async function getStorageData(contractTransactions, mainContract, contractTree, 
     }
     
 }
-function runWorkerForTx(tx, mainContract, contractTree, contractAddress, smartContract,extractionType) {
-    const workerPath = path.join(__dirname, 'worker.js');
+function runWorkerForTx(tx, mainContract, contractTree, contractAddress, smartContract,extractionType,fromBlock) {
+    const workerPath = path.join(__dirname, 'workerOnlyTransaction.js');
     return new Promise((resolve, reject) => {
         const worker = fork(workerPath, [], {
             // Increase memory limit for worker
@@ -293,6 +287,7 @@ function runWorkerForTx(tx, mainContract, contractTree, contractAddress, smartCo
             contractAddress,
             smartContract,
             extractionType,
+            fromBlock,
             network: networkName,
             contractAbiData: contractAbi,
             contractCompiledData: contractCompiled

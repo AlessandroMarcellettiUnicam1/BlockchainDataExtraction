@@ -42,8 +42,11 @@ async function processTransaction(tx, mainContract, contractTree, contractAddres
         const { _id, __v, ...transactionData } = response[0];
         return transactionData;
     }
-    
-    decodeTransactionInputs(tx,contractAbi);
+    try{
+        decodeTransactionInputs(tx,contractAbi);
+    }catch (err){
+        console.log("error in the decode transaction inputs")
+    }
     try{
         console.log(`Processing transaction: ${tx.hash}`);
         let transactionLog=await createTransactionLog(tx, mainContract, contractTree, smartContract,extractionType,contractAddress,network);
@@ -96,16 +99,15 @@ async function debugTransaction(transactionHash, blockNumber) {
  * @returns {Promise<Object>} - The transaction log.
  */
 async function createTransactionLog(tx, mainContract, contractTree, smartContract,extractionType,contractAddress,network) {
-
     let transactionLog = {
-        functionName: tx.inputDecoded.method,
+        functionName: tx.inputDecoded?tx.inputDecoded.method:tx.methodId,
         transactionHash: tx.hash,
         blockNumber: parseInt(tx.blockNumber),
         contractAddress: tx.to,
         sender: tx.from,
         gasUsed: parseInt(tx.gasUsed),
         timestamp: new Date(tx.timeStamp * 1000).toISOString(),
-        inputs: decodeInputs(tx.inputDecoded,web3),
+        inputs:tx.inputDecoded? decodeInputs(tx.inputDecoded,web3):[],
         value:tx.value,
         storageState: [],
         internalTxs: [],
@@ -116,11 +118,17 @@ async function createTransactionLog(tx, mainContract, contractTree, smartContrac
     try{
         if(extractionType!=0){
             debugResult = await debugTransaction(tx.hash, tx.blockNumber);
-            storageVal = await getTraceStorage(debugResult.response, tx.blockNumber, tx.inputDecoded.method, tx.hash, mainContract, contractTree, smartContract,extractionType);
+            try{
+                storageVal = await getTraceStorage(debugResult.response, tx.blockNumber, tx.inputDecoded?tx.inputDecoded.method:null, tx.hash, mainContract, contractTree, smartContract,extractionType);
+            }catch(err){
+                console.log("errore nella getTraceStorage")
+            }
             transactionLog.storageState = storageVal.decodedValues;
             transactionLog.internalTxs = storageVal.internalTxs;
         }
-        transactionLog.events=await getEvents(tx.hash,Number(tx.blockNumber),contractAddress,web3,contractAbi);
+        if(Object.keys(contractAbi).length !== 0){
+            transactionLog.events=await getEvents(tx.hash,Number(tx.blockNumber),contractAddress,web3,contractAbi);
+        }
         if(transactionLog.internalTxs && transactionLog.internalTxs.length>0){
             let internalResult= await iterateInternalForEvent(tx.hash,Number(tx.blockNumber),transactionLog.internalTxs,extractionType,network,web3)
             internalResult = internalResult.filter(element => !checkIfEventIsAlreadyStored(transactionLog.events, element));
@@ -131,6 +139,8 @@ async function createTransactionLog(tx, mainContract, contractTree, smartContrac
 
         await saveTransaction(transactionLog, tx.to);
 
+    }catch (err){
+        console.log("error during the creation of the transaction Log")
     }finally{
         if (debugResult) {
             if (debugResult.response && debugResult.response.structLogs) {
@@ -298,13 +308,28 @@ async function getTraceStorage(traceDebugged, blockNumber, functionName, transac
         let sstoreObject = {sstoreOptimization, sstoreBuffer}
         finalShaTraces=regroupShatrace(finalShaTraces);
         let result={
-            decodedValues:contractTree.storageLayoutFlag?await optimizedDecodeValues(sstoreObject, contractTree.fullContractTree, finalShaTraces, functionStorage, functionName, mainContract,web3,contractCompiled):[],
+            decodedValues:null,
             internalTxs:null
         }
+        if(contractTree && contractTree.storageLayoutFlag){
+            try{
+                result.decodedValues=await optimizedDecodeValues(sstoreObject, contractTree.fullContractTree, finalShaTraces, functionStorage, functionName, mainContract,web3,contractCompiled)
+            }catch (err){
+                console.log("error in the decoding of the internal storaga: ",err);
+            }
+        }
         if(extractionType==1){
-            result.internalTxs=await decodeInternalTransaction(internalCalls,apiKey,smartContract,endpoint,web3,networkName,web3Endpoint)
+            try{
+                result.internalTxs=await decodeInternalTransaction(internalCalls,apiKey,smartContract,endpoint,web3,networkName,web3Endpoint)
+            }catch (err){
+                console.log("Error in the decodin internal transaction base: ",err);
+            }
         }else{
-            result.internalTxs=await await newDecodedInternalTransaction(transactionHash, apiKey, smartContract, endpoint, web3, networkName,web3Endpoint);
+            try{
+                result.internalTxs=await await newDecodedInternalTransaction(transactionHash, apiKey, smartContract, endpoint, web3, networkName,web3Endpoint);
+            }catch (err){
+                console.log("Error in the decoding internal txs exended: ",err);
+            }
         }
         sstoreObject=null;
         return result;
@@ -365,6 +390,7 @@ function initializeWorker(network, contractAbiData, contractCompiledData) {
 
 // Handle messages from main process
 process.on("message", async (data) => {
+    console.log("worker singolo")
     const { tx, mainContract, contractTree, contractAddress, smartContract, network, contractAbiData, contractCompiledData,extractionType } = data;
     let transactionLog;
     try {
