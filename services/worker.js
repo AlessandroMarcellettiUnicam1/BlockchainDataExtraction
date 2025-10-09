@@ -11,7 +11,7 @@ const { decodeInternalTransaction,newDecodedInternalTransaction } = require('./d
 const { optimizedDecodeValues } = require('./optimizedDecodeValues');
 const { saveTransaction } = require("../databaseStore");
 const {searchTransaction} = require("../query/query")
-const {decodeTransactionInputs,getEvents,iterateInternalForEvent,decodeInputs,checkIfEventIsAlreadyStored} = require('./decodingUtils/utils')
+const {decodeTransactionInputs,getEvents,iterateInternalForEvent,decodeInputs,safeCheck} = require('./decodingUtils/utils')
 let web3 = null;
 let contractAbi = {};
 let networkName = "";
@@ -124,8 +124,8 @@ async function createTransactionLog(tx, mainContract, contractTree, smartContrac
         }
         transactionLog.events=await getEvents(tx.hash,Number(tx.blockNumber),contractAddress,web3,contractAbi);
         if(transactionLog.internalTxs && transactionLog.internalTxs.length>0){
-            let internalResult= await iterateInternalForEvent(tx.hash,Number(tx.blockNumber),transactionLog.internalTxs,extractionType,network,web3)
-            internalResult = internalResult.filter(element => !checkIfEventIsAlreadyStored(transactionLog.events, element));
+            let internalResult= await iterateInternalForEvent(tx.hash,Number(tx.blockNumber),transactionLog.internalTxs,extractionType,extractionType,web3,apiKey,endpoint)
+            internalResult = internalResult.filter(element => !safeCheck(transactionLog.events, element));
             internalResult.forEach((element)=>{
                 transactionLog.events.push(element)
             })

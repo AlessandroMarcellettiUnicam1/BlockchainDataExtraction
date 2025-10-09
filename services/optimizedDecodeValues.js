@@ -36,16 +36,19 @@ async function optimizedDecodeValues(sstore, contractTree, shaTraces, functionSt
                         //shatraceProcessed lo passo anche al read complex data perchè vado ad inserirci tutte quelle chiavi che ottengo
                         //durante magari l'estrazioni di una stringa
                         //dove nella shatrace trovo un solo elemento mentre nel funcitonstorage trovo tutte le chiavi complesse che contengono la stringa
-                        let resultreadComplexData=readComplexData(variabilePerSlot,shatrace,functionStorage,shatracesProcessed,shaTraces)
-                        if(resultreadComplexData.length!=undefined){
-                            resultreadComplexData.forEach((e)=>{
-                                resultOfPreprocessing.push(e)
-                            })
-                        }else{
-                            resultOfPreprocessing.push(resultreadComplexData)
+                        if(variabilePerSlot){
+                            let resultreadComplexData=readComplexData(variabilePerSlot,shatrace,functionStorage,shatracesProcessed,shaTraces)
+                            if(resultreadComplexData.length!=undefined){
+                                resultreadComplexData.forEach((e)=>{
+                                    resultOfPreprocessing.push(e)
+                                })
+                            }else{
+                                resultOfPreprocessing.push(resultreadComplexData)
+                            }
+                            shatracesProcessed.add(shatrace.finalKey);
+                            shatracesProcessed.add(shatrace.hexStorageIndex)
                         }
-                        shatracesProcessed.add(shatrace.finalKey);
-                        shatracesProcessed.add(shatrace.hexStorageIndex)
+                        
     
                     
                 }else {
@@ -63,10 +66,12 @@ async function optimizedDecodeValues(sstore, contractTree, shaTraces, functionSt
                 const variables = variablePerSlot.length > 1
                     ? newReadVarFormOffset(variablePerSlot, functionStorage)
                     : [variablePerSlot[0]];
-        
                 variables.forEach((e) => {
-                    e.value = functionStorage[e.contentSlot];
-                    resultOfPreprocessing.push(e);
+                    if(e){
+                        e.value = functionStorage[e.contentSlot];
+                        resultOfPreprocessing.push(e);
+                    }
+                    
                 });
             }
         }

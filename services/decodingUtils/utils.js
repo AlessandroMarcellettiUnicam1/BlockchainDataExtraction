@@ -1,6 +1,8 @@
 const InputDataDecoder = require('ethereum-input-data-decoder');
 const { searchAbi}= require('../../query/query')
 const { Web3 } = require('web3');
+const axios = require("axios");
+const {saveAbi}= require("../../databaseStore")
 /**
  * Decodes the input data of all transactions using the contract ABI.
  *
@@ -48,10 +50,13 @@ async function getEvents(transactionHash, block, contractAddress,web3,contractAb
 }
 
 
-async function getEventsFromInternal(transactionHash,block,contractAddress,networkName,web3){
+async function getEventsFromInternal(transactionHash,block,contractAddress,extractionType,web3,apiKey,endpoint){
     let filteredEvents = [];
-    let query = { contractAddress: contractAddress.toLowerCase() };
-    const response = await searchAbi(query);
+    let query = { contractAddress: contractAddress };
+    let response = await searchAbi(query);
+    if(!(response && !response.abi.includes("Contract source code not verified"))){
+        response = await handleAbiFetch(contractAddress,apiKey,endpoint)
+    }
     if(response && !response.abi.includes("Contract source code not verified")){
         let abiFromDb = JSON.parse(response.abi);
         let internalContract= new web3.eth.Contract(abiFromDb, contractAddress);
@@ -75,19 +80,44 @@ async function getEventsFromInternal(transactionHash,block,contractAddress,netwo
   
     return filteredEvents;
 }
+async function handleAbiFetch(addressTo, apiKey, endpoint) {
+    let success = false;
+    while (!success) {
+        await new Promise((resolve) => setTimeout(resolve, 5000));
+        let callForAbi = await axios.get(`${endpoint}&module=contract&action=getsourcecode&address=${addressTo}&apikey=${apiKey}`);
+        if(callForAbi.data.result[0].Proxy==1){
+           addressTo= callForAbi.data.result[0].Implementation;
+        }else if(callForAbi.data.result[0].SimilarMatch){
+            addressTo=callForAbi.data.result[0].SimilarMatch;
+        }else if(!callForAbi.data.message.includes("NOTOK")) {
+            let storeAbi = {
+                contractName: callForAbi.data.result[0].ContractName,
+                contractAddress: addressTo,
+                abi: callForAbi.data.result[0].ABI,
+            };
+            await saveAbi(storeAbi);
 
-async function iterateInternalForEvent(transactionHash,block,internalTxs,extractionType,network,web3){
+            if (!storeAbi.abi.includes("Contract source code not verified")) {
+                return storeAbi;
+            } else {
+                
+            }
+            success = true;
+        }
+    }
+}
+async function iterateInternalForEvent(transactionHash,block,internalTxs,extractionType,network,web3,apikey,endpoint){
     let filteredEvents=[];
     let flattenInternalTransaction=internalTxs;
     if(extractionType==2){
         flattenInternalTransaction=flattenInternalTransactions(internalTxs,transactionHash);
     }
     for (const element of flattenInternalTransaction) {
-                let eventsFromInternal = await getEventsFromInternal(transactionHash, block, extractionType==2?element["contractAddress"]:element["to"], network,web3);
-                for (const ev of eventsFromInternal) {
-                        if(safeCheck(filteredEvents,ev)) filteredEvents.push(ev)
-                }
+            let eventsFromInternal = await getEventsFromInternal(transactionHash, block, extractionType==2?element["contractAddress"]:element["to"], network,web3,apikey,endpoint);
+            for (const ev of eventsFromInternal) {
+                   if(!safeCheck(filteredEvents,ev)) filteredEvents.push(ev)
             }
+    }
     return filteredEvents;
 }
 function flattenInternalTransactions(transactions,txHash){
@@ -115,7 +145,8 @@ function safeCheck(arr, ev) {
   try {
     return checkIfEventIsAlreadyStored(arr, ev);
   } catch {
-    return false; // act as if it's not stored, so push it
+    console.log("Event to large to check ")
+    return false; 
   }
 }
 function checkIfEventIsAlreadyStored(events, eventToCheck) {
@@ -159,5 +190,6 @@ module.exports={
     getEvents,
     iterateInternalForEvent,
     decodeInputs,
-    checkIfEventIsAlreadyStored
+    checkIfEventIsAlreadyStored,
+    safeCheck
 }

@@ -63,30 +63,43 @@ async function tryMethodSignature(element,web3){
     let methodSignature=element.input.slice(0,10)
     let callForSignature=await axios.get(`https://www.4byte.directory/api/v1/signatures/?hex_signature=${methodSignature}`);
     if(callForSignature.data.results && callForSignature.data.results[0] && callForSignature.data.results[0].text_signature){
-        let result=callForSignature.data.results[0].text_signature;
-        let activityAndValue=result.slice(0,-1).split('(')
-        let activity=activityAndValue[0];
-        let valueTypes=activityAndValue[1].split(',');
-        element.activity=activity;
-        let valueDecoded=element.input==="0x"?"0x":web3.eth.abi.decodeParameters(valueTypes,element.input.slice(10));
-        let tempResult=[];
-        for (const key in valueDecoded){
-            if(!key.includes("length")){
-                let temp={
-                    value:valueDecoded[key],
-                    name:valueTypes[Number(key)],
-                    type:valueTypes[Number(key)]
-                }
-                tempResult.push(temp)
+        //for a signature there are multiple method
+        for(let i=0;i<callForSignature.data.results.length;i++){
+            let result=callForSignature.data.results[i].text_signature;
+            let activityAndValue=result.slice(0,-1).split('(')
+            let activity=activityAndValue[0];
+            let valueTypes=activityAndValue[1].split(',');
+            element.activity=activity;
+            let valueDecoded;
+            try{
+                valueDecoded=element.input==="0x"?"0x":web3.eth.abi.decodeParameters(valueTypes,element.input.slice(10));
+            }catch(err){
+                console.log("errore in decoding element the method: ",element)
+                continue;
             }
-        }
-        if(tempResult.length>0){
-          element.inputs=tempResult;  
-        }else{
-            element.inputs="0x"
+            
+            let tempResult=[];
+            for (const key in valueDecoded){
+                if(!key.includes("length")){
+                    let temp={
+                        value:valueDecoded[key],
+                        name:valueTypes[Number(key)],
+                        type:valueTypes[Number(key)]
+                    }
+                    tempResult.push(temp)
+                }
+            }
+            if(tempResult.length>0){
+                element.inputs=tempResult;
+                return true;  
+            }
+           
+        };
+        if(!element.inputs){
+            element.inputs=element.input;
+            return true;
         }
         
-        return true;
     }
     return false;
 
