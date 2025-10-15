@@ -1,5 +1,5 @@
 const { get } = require("mongoose");
-
+const fs = require('fs');
 let web3;
 let mainContractName;
 let contractCompiled;
@@ -17,74 +17,20 @@ let contractCompiled;
  * @returns {Promise<Array>} - A promise that resolves to an array of decoded values.
  */
 async function optimizedDecodeValues(sstore, contractTree, shaTraces, functionStorage, functionName, mainContract, web3Variable, contractCompiledPassed) {
-    // console.log(contractTree)
     web3 = web3Variable;
     contractCompiled = contractCompiledPassed;
-    // console.log("------SHAT TRACES------")
-    // console.log(shaTraces)
-    // console.log("------FUNCTION STORAGE------")
-    // console.log(functionStorage)
-    mainContractName=mainContract
-    let shatracesProcessed=new Set();
-    let resultOfPreprocessing=[]
-    if(functionStorage!={}){
-        for( const shatrace of shaTraces){
-            // if(shatrace.hasOwnProperty("indexSum")){
-                let slotNumber=web3.utils.hexToNumber("0x" + shatrace.hexStorageIndex);
-                if(slotNumber<300 && !shatracesProcessed.has(shatrace.finalKey)){
-                    let variabilePerSlot=getContractVariable(slotNumber,contractTree,functionName,mainContract)[0];
-                        //shatraceProcessed lo passo anche al read complex data perchè vado ad inserirci tutte quelle chiavi che ottengo
-                        //durante magari l'estrazioni di una stringa
-                        //dove nella shatrace trovo un solo elemento mentre nel funcitonstorage trovo tutte le chiavi complesse che contengono la stringa
-                        if(variabilePerSlot){
-                            let resultreadComplexData=readComplexData(variabilePerSlot,shatrace,functionStorage,shatracesProcessed,shaTraces)
-                            if(resultreadComplexData.length!=undefined){
-                                resultreadComplexData.forEach((e)=>{
-                                    resultOfPreprocessing.push(e)
-                                })
-                            }else{
-                                resultOfPreprocessing.push(resultreadComplexData)
-                            }
-                            shatracesProcessed.add(shatrace.finalKey);
-                            shatracesProcessed.add(shatrace.hexStorageIndex)
-                        }
-                        
-    
-                    
-                }else {
-                    shatracesProcessed.add(shatrace.finalKey);
-                }
-            // }
-        }
-    //tiro fuori che cosa ho dentro il function storage in base agli slot di memori che leggo 
-    
-        let mainContractCompiled=getMainContractCompiled(mainContract);
-        for(const storageKey in functionStorage){
-            if (!shatracesProcessed.has(storageKey) && web3.utils.hexToNumber("0x" + storageKey) < 9999999) {
-                const slotNumber = web3.utils.hexToNumber("0x" + storageKey);
-                const variablePerSlot = getContractVariable(slotNumber, contractTree, functionName, mainContract);
-                const variables = variablePerSlot.length > 1
-                    ? newReadVarFormOffset(variablePerSlot, functionStorage)
-                    : [variablePerSlot[0]];
-                variables.forEach((e) => {
-                    if(e){
-                        e.value = functionStorage[e.contentSlot];
-                        resultOfPreprocessing.push(e);
-                    }
-                    
-                });
-            }
-        }
-        let result=[];
-        resultOfPreprocessing.forEach((element)=>{
-            let resultElement=decodeValue(element,functionStorage,mainContractCompiled);
-            result.push(resultElement)
-            
-        })
+    mainContractName = mainContract
+    let shatracesProcessed = new Set();
+    let resultOfPreprocessing = []
+    if (functionStorage != {}) {
+        decodeComplexData(shaTraces, contractTree, functionName,functionStorage, mainContract, shatracesProcessed, resultOfPreprocessing)
+        //tiro fuori che cosa ho dentro il function storage in base agli slot di memori che leggo 
         
+        // Separate found and missing keys
+        let result = decodingSimpleStorage(mainContract, functionStorage, shatracesProcessed, contractTree, functionName, resultOfPreprocessing)
         result = result.map(obj => {
             const { name, value, decodedValue, slot, offset, contentSlot, ...rest } = obj;
-        
+
             return {
                 ...rest,
                 variableName: name,
@@ -92,7 +38,6 @@ async function optimizedDecodeValues(sstore, contractTree, shaTraces, functionSt
                 variableValue: decodedValue
             };
         });
-        
         const expandedResult = result.flatMap(obj => {
             if (Array.isArray(obj.variableValue)) {
                 return obj.variableValue.map((value, i) => ({
@@ -104,15 +49,71 @@ async function optimizedDecodeValues(sstore, contractTree, shaTraces, functionSt
             }
             return obj;
         });
-        
+
         result = expandedResult.filter(obj => obj.variableRawValue !== undefined && obj.variableValue !== undefined);
         result = removeStructFormOutput(result);
-        result = removeDuplicateV2(result);
+        result = removeDuplicate(result);
+
         return result;
     }
-    
+
 }
-function removeDuplicateV2(result){
+function decodeComplexData(shaTraces, contractTree, functionName,functionStorage, mainContract, shatracesProcessed, resultOfPreprocessing) {
+    for (const shatrace of shaTraces) {
+        let slotNumber = web3.utils.hexToNumber("0x" + shatrace.hexStorageIndex);
+        if (slotNumber < 300 && !shatracesProcessed.has(shatrace.finalKey)) {
+            let variabilePerSlot = getContractVariable(slotNumber, contractTree, functionName, mainContract)[0];
+            
+            //shatraceProcessed lo passo anche al read complex data perchè vado ad inserirci tutte quelle chiavi che ottengo
+            //durante magari l'estrazioni di una stringa
+            //dove nella shatrace trovo un solo elemento mentre nel funcitonstorage trovo tutte le chiavi complesse che contengono la stringa
+            if (variabilePerSlot) {
+                let resultreadComplexData = readComplexData(variabilePerSlot, shatrace, functionStorage, shatracesProcessed, shaTraces)
+                if (resultreadComplexData.length != undefined) {
+                    resultreadComplexData.forEach((e) => {
+                        resultOfPreprocessing.push(e)
+                    })
+                } else {
+                    resultOfPreprocessing.push(resultreadComplexData)
+                }
+                shatracesProcessed.add(shatrace.finalKey);
+                shatracesProcessed.add(shatrace.hexStorageIndex)
+            }
+
+
+
+        } else {
+            shatracesProcessed.add(shatrace.finalKey);
+        }
+    }
+}
+function decodingSimpleStorage(mainContract,functionStorage,shatracesProcessed,contractTree,functionName,resultOfPreprocessing){
+    let mainContractCompiled = getMainContractCompiled(mainContract);
+    for (const storageKey in functionStorage) {
+        if (!shatracesProcessed.has(storageKey) && web3.utils.hexToNumber("0x" + storageKey) < 9999999) {
+            const slotNumber = web3.utils.hexToNumber("0x" + storageKey);
+            const variablePerSlot = getContractVariable(slotNumber, contractTree, functionName, mainContract);
+            const variables = variablePerSlot.length > 1
+                ? newReadVarFormOffset(variablePerSlot, functionStorage)
+                : [variablePerSlot[0]];
+            variables.forEach((e) => {
+                if (e) {
+                    e.value = functionStorage[e.contentSlot];
+                    resultOfPreprocessing.push(e);
+                }
+
+            });
+        }
+    }
+    let result = [];
+    resultOfPreprocessing.forEach((element) => {
+        let resultElement = decodeValue(element, functionStorage, mainContractCompiled);
+        result.push(resultElement)
+
+    })
+    return result;
+}
+function removeDuplicate(result){
     let uniqueResults = [];
     let seen =[];
 
@@ -154,9 +155,10 @@ function extractElementFromStruct(element,outputResult){
             
             
         }else{
-            let name=element.name?element.name:"";
+
+            let name=e.name?e.name:"";
             outputResult.push({
-                type:element.type,
+                type:element.type+"_"+e.type,
                 variableName:name+"_"+e.label,
                 variableRawValue:e.contentSlot,
                 variableValue:e.decodedValue
@@ -370,7 +372,8 @@ function readArrayComplexDyn(variable,shaTraces,functionStorage,shatracesProcess
         if(shaTraces.indexSum===undefined){
             shatracesProcessed.add(keyslot)
             variable.contentSlot=keyslot
-            variable.slot=web3.utils.hexToNumber("0x"+keyslot);
+            return readStructFromDynamicArary(variable,shaTraces,functionStorage,shatracesProcessed,arrayShaTrace)
+            // variable.slot=web3.utils.hexToNumber("0x"+keyslot);
         }else{
             let keySlotToNumber=web3.utils.hexToNumber(keyslot);
             let keyResult=web3.utils.numberToHex(keySlotToNumber+BigInt(shaTraces.indexSum)).slice(2);
@@ -381,6 +384,33 @@ function readArrayComplexDyn(variable,shaTraces,functionStorage,shatracesProcess
         return readComplexData(variable,shaTraces,functionStorage,shatracesProcessed,arrayShaTrace);
     }
     
+}
+//Sto leggendo una struttura che proviene da una array dinamico 
+/* siccome nello storage trovo solo il contenuto dell'ultimo elemento che mi viene modificato 
+Se ad esempio l'array ha la lunghezza = 3 io calcolo lo slot poi devo fare slot+length per trovare l'ultimo elemento
+Nel caso di una struttura non è una semplice somme della lunghezza ma devo considerare la dimensione della struttura
+Se la struttura è composta da 9 elementi (semplici) salterò non di length e basta ma di 9* lenght.
+*/
+function readStructFromDynamicArary(variable,shaTraces,functionStorage,shatracesProcessed,arrayShaTrace){
+    let members=getStructMembersByVariable(variable,contractCompiled);
+    // if(Number(variable.slot)!==web3.utils.hexToNumber("0x"+variable.contentSlot)){
+    //     variable.contentSlot=web3.utils.padLeft( web3.utils.numberToHex(variable.slot).slice(2),64);        
+    // }
+    variable.element=[];
+    members.forEach((element)=>{
+        let slotElementStruct;
+        
+        if(web3.utils.hexToNumber("0x"+variable.contentSlot)>9999999){
+            let slotToReach= (web3.utils.hexToNumber("0x"+variable.arrayLength)-1)*members.length
+            slotElementStruct=(BigInt(element.slot)+BigInt(slotToReach))+web3.utils.hexToNumber("0x"+variable.contentSlot)
+        }
+        element.slot=slotElementStruct;
+        element.contentSlot=web3.utils.padLeft( web3.utils.numberToHex(slotElementStruct).slice(2),64);
+        shatracesProcessed.add(element.contentSlot);
+        element=readComplexData(element,shaTraces,functionStorage,shatracesProcessed,arrayShaTrace)
+        variable.element.push(element)
+    })
+    return variable;
 }
 //siccome sono in un array è diverso dalla variabile singola
 function readStringArray(variable,shaTraces ,functionStorage,shatracesProcessed){
@@ -430,31 +460,32 @@ function readBytesArrayDynamic(variable,shaTraces ,functionStorage,shatracesProc
 
 function readUintArrayDynamic(variable,shaTraces ,functionStorage,shatracesProcessed){
     if(variable.type.includes("256")){
-        let keyOfSlot=web3.utils.keccak256("0x"+variable.contentSlot);
-        variable.value=[];
-        if(shaTraces.indexSum==undefined){
-            if(web3.utils.hexToNumber("0x"+variable.arrayLength)>0){
-                for(let i=0;i<web3.utils.hexToNumber("0x"+variable.arrayLength);i++){
-                    let keySlot=web3.utils.numberToHex(web3.utils.hexToNumber(keyOfSlot)+BigInt(i)).slice(2);
-                    shatracesProcessed.add(keySlot)
-                    variable.value.push(functionStorage[keySlot]);
+        if(functionStorage[variable.contentSlot]){
+            let keyOfSlot=web3.utils.keccak256("0x"+variable.contentSlot);
+            variable.value=[];
+            if(shaTraces.indexSum==undefined){
+                if(web3.utils.hexToNumber("0x"+variable.arrayLength)>0){
+                    for(let i=0;i<web3.utils.hexToNumber("0x"+variable.arrayLength);i++){
+                        let keySlot=web3.utils.numberToHex(web3.utils.hexToNumber(keyOfSlot)+BigInt(i)).slice(2);
+                        shatracesProcessed.add(keySlot)
+                        variable.value.push(functionStorage[keySlot]);
+                    }
+                }else{
+                    shatracesProcessed.add(keyOfSlot)
+                    variable.value.push(functionStorage[keyOfSlot.slice(2)]);
                 }
             }else{
-                shatracesProcessed.add(keyOfSlot)
-                variable.value.push(functionStorage[keyOfSlot.slice(2)]);
+                let keySlotToNumber=web3.utils.hexToNumber(keyOfSlot);
+                let keyResult=web3.utils.numberToHex(keySlotToNumber+BigInt(shaTraces.indexSum)).slice(2);
+                shatracesProcessed.add(keyResult)
+                variable.value.push(functionStorage[keyResult]);
             }
-        }else{
-            let keySlotToNumber=web3.utils.hexToNumber(keyOfSlot);
-            let keyResult=web3.utils.numberToHex(keySlotToNumber+BigInt(shaTraces.indexSum)).slice(2);
-            shatracesProcessed.add(keyResult)
-            variable.value.push(functionStorage[keyResult]);
         }
         return variable;
     }else{
         return decodeOptimizeDynamicArray(variable,shaTraces ,functionStorage,shatracesProcessed);
     }
 }
-
 function decodeOptimizeDynamicArray(variable,shaTraces ,functionStorage,shatracesProcessed){
     if(variable.type.includes("uint")){
        return decodeOptimizeUintDynamicArray(variable,shaTraces ,functionStorage,shatracesProcessed);
@@ -520,27 +551,33 @@ function decodeValue(variable,functionStorage,contractCompiled){
 }
 function decodePrimitive(variable,functionStorage){
     let type=variable.type;
-    if(variable.value){
-    let value = variable.value;
-    if (type.includes("uint")) {
-        return Number(web3.utils.hexToNumber("0x" + value));
-    } else if (type.includes("bool")) {
-        return web3.eth.abi.decodeParameter("bool", "0x" + value);
-    } else if (type.includes("bytes")) {
-        // return JSON.stringify(web3.utils.hexToBytes("0x" + value)).replace("\"", "");
-        return "0x"+value;
+    try{
 
-    } else if (type.includes("address")) {
-        return "0x" + value.slice(-40);
-    } else if (type.includes("enum")) {
-        let bigIntvalue = web3.eth.abi.decodeParameter("uint256", "0x" + value);
-        return Number(bigIntvalue);
-    }else if (type.includes("string")) {
-        return web3.utils.hexToAscii("0x" + value).replace(/\0/g, '');
-    }
-    return value;
-    }else{
-        return undefined
+        if(variable.value){
+        let value = variable.value;
+        if (type.includes("uint")) {
+            return Number(web3.utils.hexToNumber("0x" + value));
+        } else if (type.includes("bool")) {
+            return web3.eth.abi.decodeParameter("bool", "0x" + value);
+        } else if (type.includes("bytes")) {
+            // return JSON.stringify(web3.utils.hexToBytes("0x" + value)).replace("\"", "");
+            return "0x"+value;
+    
+        } else if (type.includes("address")) {
+            return "0x" + value.slice(-40);
+        } else if (type.includes("enum")) {
+            let bigIntvalue = web3.eth.abi.decodeParameter("uint256", "0x" + value);
+            return Number(bigIntvalue);
+        }else if (type.includes("string")) {
+            return web3.utils.hexToAscii("0x" + value).replace(/\0/g, '');
+        }
+        return value;
+        }else{
+            return undefined
+        }
+    }catch(err){
+        console.log("error in the extraction of the value")
+        return undefined;
     }
 }
 

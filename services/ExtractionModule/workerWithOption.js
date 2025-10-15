@@ -1,5 +1,5 @@
 const mongoose = require("mongoose");
-const { connectDB } = require("../config/db");
+const { connectDB } = require("../../config/db");
 require('dotenv').config();
 
 // Import necessary modules that were missing
@@ -7,11 +7,11 @@ const { Web3 } = require('web3');
 const hre = require("hardhat");
 const InputDataDecoder = require('ethereum-input-data-decoder');
 const axios = require("axios");
-const { decodeInternalTransaction,newDecodedInternalTransaction } = require('./decodeInternalTransaction');
-const { optimizedDecodeValues } = require('./optimizedDecodeValues');
-const { saveTransaction } = require("../databaseStore");
-const {searchTransaction} = require("../query/query")
-const {decodeTransactionInputs,getEvents,iterateInternalForEvent,decodeInputs,safeCheck} = require('./decodingUtils/utils')
+const { decodeInternalTransaction,newDecodedInternalTransaction } = require('../decodeInternalTransaction');
+const { optimizedDecodeValues } = require('../optimizedDecodeValues');
+const { saveTransaction } = require("../../databaseStore");
+const {searchTransaction} = require("../../query/query")
+const {decodeTransactionInputs,getEvents,iterateInternalForEvent,decodeInputs,safeCheck} = require('../decodingUtils/utils')
 let web3 = null;
 let contractAbi = {};
 let networkName = "";
@@ -30,7 +30,8 @@ let contractCompiled = null;
  * @param {number} partialInt - The current transaction index.
  * @returns {Promise<Object|null>} - The processed transaction log or null if already processed.
  */
-async function processTransaction(tx, mainContract, contractTree, contractAddress, smartContract,extractionType,network) {
+async function processTransaction(tx, mainContract, contractTree, contractAddress, smartContract,extractionType,network,option) {
+    console.log(option)
     const query = {
         transactionHash: tx.hash.toLowerCase(),
         contractAddress: contractAddress.toLowerCase()
@@ -48,7 +49,7 @@ async function processTransaction(tx, mainContract, contractTree, contractAddres
     
     try{
         console.log(`Processing transaction: ${tx.hash}`);
-        let transactionLog=await createTransactionLog(tx, mainContract, contractTree, smartContract,extractionType,contractAddress,network);
+        let transactionLog=await createTransactionLog(tx, mainContract, contractTree, smartContract,extractionType,contractAddress,network,option);
         
         return [];
         
@@ -97,17 +98,17 @@ async function debugTransaction(transactionHash, blockNumber) {
  * @param {Object} smartContract - The smart contract uploaded file.
  * @returns {Promise<Object>} - The transaction log.
  */
-async function createTransactionLog(tx, mainContract, contractTree, smartContract,extractionType,contractAddress,network) {
+async function createTransactionLog(tx, mainContract, contractTree, smartContract,extractionType,contractAddress,network,option) {
 
     let transactionLog = {
-        functionName: tx.inputDecoded.method,
+        functionName:tx.inputDecoded?tx.inputDecoded.method:tx.methodId,
         transactionHash: tx.hash,
         blockNumber: parseInt(tx.blockNumber),
         contractAddress: tx.to,
         sender: tx.from,
         gasUsed: parseInt(tx.gasUsed),
         timestamp: new Date(tx.timeStamp * 1000).toISOString(),
-        inputs: decodeInputs(tx.inputDecoded,web3),
+        inputs: tx.inputDecoded?decodeInputs(tx.inputDecoded,web3):[],
         value:tx.value,
         storageState: [],
         internalTxs: [],
@@ -116,9 +117,13 @@ async function createTransactionLog(tx, mainContract, contractTree, smartContrac
     let storageVal=null;
     let debugResult=null;
     try{
-        if(extractionType!=0){
+        if(option.default!=0){
             debugResult = await debugTransaction(tx.hash, tx.blockNumber);
-            storageVal = await getTraceStorage(debugResult.response, tx.blockNumber, tx.inputDecoded.method, tx.hash, mainContract, contractTree, smartContract,extractionType);
+            try{
+                storageVal = await getTraceStorage(debugResult.response, tx.blockNumber, tx.inputDecoded?tx.inputDecoded.method:null, tx.hash, mainContract, contractTree, smartContract,option);
+            }catch (err){
+                console.log("error in the getTraceStorage")
+            }
             transactionLog.storageState = storageVal.decodedValues;
             transactionLog.internalTxs = storageVal.internalTxs;
         }
@@ -130,7 +135,6 @@ async function createTransactionLog(tx, mainContract, contractTree, smartContrac
                 transactionLog.events.push(element)
             })
         }
-
         await saveTransaction(transactionLog, tx.to);
 
     }finally{
@@ -166,7 +170,7 @@ async function createTransactionLog(tx, mainContract, contractTree, smartContrac
  * @param contractTree - the contract tree used to identify the contract variables with the 'mainContract'
  * @returns {Promise<{decodedValues: (*&{variableValue: string|string|*})[], internalCalls: *[]}>} - the decoded values of the storage state and the internal calls
  */
-async function getTraceStorage(traceDebugged, blockNumber, functionName, transactionHash, mainContract, contractTree,smartContract,extractionType) {
+async function getTraceStorage(traceDebugged, blockNumber, functionName, transactionHash, mainContract, contractTree,smartContract,extractionOption) {
     //used to store the storage changed by the function. Used to compare the generated keys
     let functionStorage = {};
     //used to store all the keys potentially related to a dynamic structure
@@ -299,14 +303,19 @@ async function getTraceStorage(traceDebugged, blockNumber, functionName, transac
         traceDebugged.structLogs.length=0;
         let sstoreObject = {sstoreOptimization, sstoreBuffer}
         finalShaTraces=regroupShatrace(finalShaTraces);
-        let result={
-            decodedValues:contractTree.storageLayoutFlag?await optimizedDecodeValues(sstoreObject, contractTree.fullContractTree, finalShaTraces, functionStorage, functionName, mainContract,web3,contractCompiled):[],
-            internalTxs:null
+        let internalStorage=[];
+        if(extractionOption.internalStorage!=0){
+            internalStorage=contractTree.storageLayoutFlag?await optimizedDecodeValues(sstoreObject, contractTree.fullContractTree, finalShaTraces, functionStorage, functionName, mainContract,web3,contractCompiled):[];
         }
-        if(extractionType==1){
-            result.internalTxs=await decodeInternalTransaction(internalCalls,apiKey,smartContract,endpoint,web3,networkName,web3Endpoint)
-        }else{
-            result.internalTxs=await newDecodedInternalTransaction(transactionHash, apiKey, smartContract, endpoint, web3, networkName,web3Endpoint);
+        let internalTxs=[]
+        if(extractionOption.internalTransaction==0){
+            internalTxs=await decodeInternalTransaction(internalCalls,apiKey,smartContract,endpoint,web3,networkName,web3Endpoint)
+        }else if(extractionOption.internalTransaction==1){
+            internalTxs=await newDecodedInternalTransaction(transactionHash, apiKey, smartContract, endpoint, web3, networkName,web3Endpoint);
+        }
+        let result={
+            decodedValues:internalStorage,
+            internalTxs:internalTxs
         }
         sstoreObject=null;
         return result;
@@ -367,7 +376,7 @@ function initializeWorker(network, contractAbiData, contractCompiledData) {
 
 // Handle messages from main process
 process.on("message", async (data) => {
-    const { tx, mainContract, contractTree, contractAddress, smartContract, network, contractAbiData, contractCompiledData,extractionType } = data;
+    const { tx, mainContract, contractTree, contractAddress, smartContract,option, network, contractAbiData, contractCompiledData,extractionType } = data;
     let transactionLog;
     try {
         // Initialize worker with necessary data
@@ -377,7 +386,7 @@ process.on("message", async (data) => {
         await connectDB(networkName);
         
         // Process the transaction
-        await processTransaction(tx, mainContract, contractTree, contractAddress, smartContract,extractionType,network);
+        await processTransaction(tx, mainContract, contractTree, contractAddress, smartContract,extractionType,network,option);
 
         // Clean up
         // await mongoose.disconnect();

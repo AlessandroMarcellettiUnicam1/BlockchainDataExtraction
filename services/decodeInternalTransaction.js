@@ -33,7 +33,17 @@ async function handleAbiFetch(element, addressTo, apiKey, endpoint, web3) {
         await new Promise((resolve) => setTimeout(resolve, 5000));
         let callForAbi = await axios.get(`${endpoint}&module=contract&action=getsourcecode&address=${addressTo}&apikey=${apiKey}`);
         if(callForAbi.data.result[0].Proxy==1){
-           addressTo= callForAbi.data.result[0].Implementation;
+            let storeAbi = {
+                contractName: callForAbi.data.result[0].ContractName,
+                contractAddress: addressTo,
+                abi: callForAbi.data.result[0].ABI,
+            };
+            try{
+                decodeInputs(element, storeAbi.abi, web3, callForAbi.data.result[0].ContractName);
+            }catch (err){
+                console.log("provato a decodificare l'internal tramite il proxy e non l'implementazione")
+            }
+            addressTo= callForAbi.data.result[0].Implementation;
         }else if(callForAbi.data.result[0].SimilarMatch){
             addressTo=callForAbi.data.result[0].SimilarMatch;
         }else if(!callForAbi.data.message.includes("NOTOK")) {

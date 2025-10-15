@@ -4,18 +4,16 @@ const fs = require('fs');
 const axios = require("axios");
 const {stringify} = require("csv-stringify")
 let contractAbi = {};
-const { decodeInternalTransaction } = require('./decodeInternalTransaction');
-const { optimizedDecodeValues }= require('./optimizedDecodeValues')
-const { getCompiledData, getContractCodeEtherscan } = require ('./contractUtils/utils')
+const { getCompiledData, getContractCodeEtherscan } = require ('../contractUtils/utils')
 //const contractAddress = '0x152649eA73beAb28c5b49B26eb48f7EAD6d4c898'cake;
 //const contractAddress = '0x5C1A0CC6DAdf4d0fB31425461df35Ba80fCBc110';
 //const contractAddress = '0xc9EEf4c46ABcb11002c9bB8A47445C96CDBcAffb';
 //const cotractAddressAdidas = 0x28472a58A490c5e09A238847F66A68a47cC76f0f
 const hre = require("hardhat");
-const {saveTransaction, saveExtractionLog} = require("../databaseStore");
-const {getRemoteVersion, detectVersion} = require("./solcVersionManager");
-const {searchTransaction} = require("../query/query")
-const {connectDB} = require("../config/db");
+const {saveTransaction, saveExtractionLog} = require("../../databaseStore");
+const {getRemoteVersion, detectVersion} = require("../solcVersionManager");
+const {searchTransaction} = require("../../query/query")
+const {connectDB} = require("../../config/db");
 const mongoose = require("mongoose");
 require('dotenv').config();
 const v8 = require('v8');
@@ -45,10 +43,11 @@ let contractCompiled = null
  * @param network - the network where the contract is deployed
  * @param filters - the filters to be applied to the transactions
  * @param smartContract - the smart contract uploaded file
+ * @param option - is a object that contains different field to allow different type of extraction
  * @returns {Promise<*|*[]>} - the blockchain log with the extracted data
  */
 
-async function getOneTransaction(mainContract, contractAddress, impl_contract, fromBlock, toBlock, network, filters, smartContract,extractionType) {
+async function getAllTransactions(mainContract, contractAddress, impl_contract, fromBlock, toBlock, network, filters, smartContract,option) {
     _contractAddress = contractAddress
     networkName = network;
     try{
@@ -129,7 +128,7 @@ async function getOneTransaction(mainContract, contractAddress, impl_contract, f
         await connectDB(networkName);
         await saveExtractionLog(userLog,networkName)
     
-        const result = await getStorageData(contractTransactions, mainContract, contractTree, contractAddress, filters, smartContract,extractionType);
+        const result = await getStorageData(contractTransactions, mainContract, contractTree, contractAddress, filters, smartContract,option);
         await mongoose.disconnect();
 
        
@@ -184,7 +183,7 @@ async function cleanupResources() {
     }
 }
 module.exports = {
-    getOneTransaction
+    getAllTransactions
 };
 //CakeOFT
 //PixesFarmsLand
@@ -228,7 +227,7 @@ function applyFilters(contractTransactions, filters) {
  * @param {Object} smartContract - The smart contract uploaded file.
  * @returns {Promise<Array>} - The blockchain log with the extracted data.
  */
-async function getStorageData(contractTransactions, mainContract, contractTree, contractAddress, filters, smartContract,extractionType) {
+async function getStorageData(contractTransactions, mainContract, contractTree, contractAddress, filters, smartContract,option) {
     let transactionsFiltered=null;
     // Decode input data for all transactions
    
@@ -242,7 +241,7 @@ async function getStorageData(contractTransactions, mainContract, contractTree, 
         for(const tx of transactionsFiltered){
             // await getEvents(tx.hash,contractAddress, Number(tx.blockNumber)) 
             try{
-                await runWorkerForTx(tx, mainContract, contractTree, contractAddress, smartContract,extractionType);
+                await runWorkerForTx(tx, mainContract, contractTree, contractAddress, smartContract,option);
 
             }catch (e){
                 console.log("errore nel worker",e)
@@ -267,8 +266,8 @@ async function getStorageData(contractTransactions, mainContract, contractTree, 
     }
     
 }
-function runWorkerForTx(tx, mainContract, contractTree, contractAddress, smartContract,extractionType,fromBlock) {
-    const workerPath = path.join(__dirname, 'workerOnlyTransaction.js');
+function runWorkerForTx(tx, mainContract, contractTree, contractAddress, smartContract,option) {
+    const workerPath = path.join(__dirname, 'workerWithOption.js');
     return new Promise((resolve, reject) => {
         const worker = fork(workerPath, [], {
             // Increase memory limit for worker
@@ -285,8 +284,7 @@ function runWorkerForTx(tx, mainContract, contractTree, contractAddress, smartCo
             contractTree,
             contractAddress,
             smartContract,
-            extractionType,
-            fromBlock,
+            option,
             network: networkName,
             contractAbiData: contractAbi,
             contractCompiledData: contractCompiled
