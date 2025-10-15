@@ -306,21 +306,21 @@ app.post("/submit", upload.single("file"), async (req, res) => {
 	//const option=req.body.option
 	let option;
 	switch(extractionType){
-		case (0):
+		case ("0"):
 			option={
 				default:0,
 				internalStorage:1,
 				internalTransaction:1
 			}
 			break;
-		case(1):
+		case("1"):
 			option={
 					default:1,
 					internalStorage:1,
 					internalTransaction:0
 				}
 			break;
-		case(2):
+		case("2"):
 			option={
 					default:1,
 					internalStorage:1,
