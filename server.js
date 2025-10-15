@@ -304,10 +304,29 @@ app.post("/submit", upload.single("file"), async (req, res) => {
 	// const transactionFlag=req.body.transactionFlag;
 	//TODO
 	//const option=req.body.option
-	const option={
-		default:1,
-		internalStorage:1,
-		internalTransaction:0
+	let option;
+	switch(extractionType){
+		case (0):
+			option={
+				default:0,
+				internalStorage:1,
+				internalTransaction:1
+			}
+			break;
+		case(1):
+			option={
+					default:1,
+					internalStorage:1,
+					internalTransaction:0
+				}
+			break;
+		case(2):
+			option={
+					default:1,
+					internalStorage:1,
+					internalTransaction:1
+			}
+			break;
 	}
 	// Perform actions based on the received data
 	console.log(`Start Block: ${fromBlock}`);
