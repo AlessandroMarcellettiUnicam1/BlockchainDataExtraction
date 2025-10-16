@@ -79,13 +79,6 @@ async function getAllTransactions(mainContract, contractAddress, impl_contract, 
         web3 = new Web3(web3Endpoint)
         //contractAddress = proxy address in which storage and txs are made
         
-        let data = await axios.get(endpoint + `&module=account&action=txlist&address=${contractAddress}&startblock=${fromBlock}&endblock=${toBlock}&sort=asc&apikey=${apiKey}`)
-        let contractTransactions=null;
-        if(data.data){
-            contractTransactions = await data.data.result
-        }
-        data=null;
-        // returns all contracts linked to te contract sent in input from etherscan
         let contractsResult = null
         // if the contract is uploaded by the user then the contract is compiled
         if (smartContract) {
@@ -127,8 +120,8 @@ async function getAllTransactions(mainContract, contractAddress, impl_contract, 
        
         await connectDB(networkName);
         await saveExtractionLog(userLog,networkName)
-    
-        const result = await getStorageData(contractTransactions, mainContract, contractTree, contractAddress, filters, smartContract,option);
+        let result = await startExtraction(endpoint,contractAddress,fromBlock,toBlock,apiKey,mainContract,contractTree,filters,smartContract,option);
+         console.log("Extraction finished");
         await mongoose.disconnect();
 
        
@@ -154,6 +147,43 @@ async function getAllTransactions(mainContract, contractAddress, impl_contract, 
     }finally{
         await cleanupResources();
     }
+}
+/**
+ * function that start the extraction taking the transaction from the API call. The API retrive only from 5k to 10k transaction per call
+ * So if the last block number retrive is less than the to block inserted into the front end it recall the method to
+ * extract the remaining transaction
+ * ß
+ * @param {*} endpoint 
+ * @param {*} contractAddress 
+ * @param {*} fromBlock 
+ * @param {*} toBlock 
+ * @param {*} apiKey 
+ * @param {*} mainContract 
+ * @param {*} contractTree 
+ * @param {*} filters 
+ * @param {*} smartContract 
+ * @param {*} option 
+ * @returns 
+ */
+async function startExtraction(endpoint,contractAddress,fromBlock,toBlock,apiKey,mainContract,contractTree,filters,smartContract,option){
+    let data = await axios.get(endpoint + `&module=account&action=txlist&address=${contractAddress}&startblock=${fromBlock}&endblock=${toBlock}&sort=asc&apikey=${apiKey}`)
+    let contractTransactions=null;
+    if(data.data){
+        contractTransactions = await data.data.result
+    }
+    data=null;
+    let result;
+    if (contractTransactions.length>0) {
+        result = await getStorageData(contractTransactions, mainContract, contractTree, contractAddress, filters, smartContract, option);
+        if (parseInt(contractTransactions[contractTransactions.length - 1].blockNumber) < toBlock) {
+            result = startExtraction(endpoint, contractAddress, parseInt(contractTransactions[contractTransactions.length - 1].blockNumber) + 1, toBlock, apiKey, mainContract, contractTree, filters, smartContract, option);
+        } else {
+            return result;
+        }
+    }else{  
+        return result
+    }
+    
 }
 async function cleanupResources() {
     try {
@@ -247,7 +277,7 @@ async function getStorageData(contractTransactions, mainContract, contractTree, 
                 console.log("errore nel worker",e)
             }
         }
-        console.log("Extraction finished");
+       
         return [];
     }catch(err){
         console.log(err)
