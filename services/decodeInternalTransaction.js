@@ -57,7 +57,15 @@ async function handleAbiFetch(element, addressTo, apiKey, endpoint, web3) {
             if (!storeAbi.abi.includes("Contract source code not verified")) {
                 decodeInputs(element, storeAbi.abi, web3, callForAbi.data.result[0].ContractName);
             } else {
-                if(!await tryMethodSignature(element,web3)){
+                if(!element.input){
+                    element.input="0x"+element.inputsCall
+                }
+                if(element.input==="0x"){
+                    element.activity="tranfer"
+                    element.value="0x"
+                    element.name="undefined"
+                    element.type="undefined"
+                }else if(!await tryMethodSignature(element,web3)){
                     element.activity = "Contract source code not verified";
                 }
                 delete element.input
@@ -67,9 +75,6 @@ async function handleAbiFetch(element, addressTo, apiKey, endpoint, web3) {
     }
 }
 async function tryMethodSignature(element,web3){
-    if(!element.input){
-        element.input="0x"+element.inputsCall
-    }
     let methodSignature=element.input.slice(0,10)
     let callForSignature=await axios.get(`https://www.4byte.directory/api/v1/signatures/?hex_signature=${methodSignature}`);
     if(callForSignature.data.results && callForSignature.data.results[0] && callForSignature.data.results[0].text_signature){
@@ -82,7 +87,7 @@ async function tryMethodSignature(element,web3){
             element.activity=activity;
             let valueDecoded;
             try{
-                valueDecoded=element.input==="0x"?"0x":web3.eth.abi.decodeParameters(valueTypes,element.input.slice(10));
+                valueDecoded=element.input==="0x"?["0x"]:web3.eth.abi.decodeParameters(valueTypes,element.input.slice(10));
             }catch(err){
                 console.log("errore in decoding element the method: ",element)
                 continue;
@@ -125,12 +130,22 @@ async function handleAbiFromDb(element, response, web3) {
     } else {
         if(element.input){
             element.inputsCall=element.input;
-            if(!await tryMethodSignature(element,web3)){
+            if(element.input==="0x"){
+                    element.activity="tranfer"
+                    element.value="0x"
+                    element.name="undefined"
+                    element.type="undefined"
+            }else if(!await tryMethodSignature(element,web3)){
                 element.activity = "Contract source code not verified";
             }
             delete element.input
         }else if(element.inputsCall){
-            if(!await tryMethodSignature(element,web3)){
+            if(element.input==="0x"){
+                    element.activity="tranfer"
+                    element.value="0x"
+                    element.name="undefined"
+                    element.type="undefined"
+            }else if(!await tryMethodSignature(element,web3)){
                 element.activity = "Contract source code not verified";
             }
         }

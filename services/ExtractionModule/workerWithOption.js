@@ -31,7 +31,6 @@ let contractCompiled = null;
  * @returns {Promise<Object|null>} - The processed transaction log or null if already processed.
  */
 async function processTransaction(tx, mainContract, contractTree, contractAddress, smartContract,extractionType,network,option) {
-    console.log(option)
     const query = {
         transactionHash: tx.hash.toLowerCase(),
         contractAddress: contractAddress.toLowerCase()
