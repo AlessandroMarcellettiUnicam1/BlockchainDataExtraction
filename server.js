@@ -53,6 +53,7 @@ const {
 	extractEventDataAsJson,
 	formatStorageHistoryForVisualization,
 	formatCallsForTreeView,
+    formatInternalTransactionsForTreeView
 } = require("./query/queryFunctions");
 
 app.post("/api/generateGraph", (req, res) => {
@@ -822,6 +823,43 @@ app.post("/api/data/events", async (req, res) => {
 	}
 });
 
+app.post("/api/data/transactions",async (req,res)=>{
+    try{
+        const query = req.body.query;
+        await connectDB("Mainnet");
+        const txs = await fetchTransactions(query);
+        await mongoose.disconnect();
+        return res.json(txs);
+    } catch (error) {
+        console.error("Error fetching activity data:", error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+app.post("/api/data/internalTxsTree", async (req,res)=>{
+    const {txHash,page,limit} = req.query;
+    const query = req.body;
+    try{
+        await connectDB("Mainnet");
+        const txs = await fetchTransactions(query);
+        const tx = txs.find((tx) => tx.transactionHash === txHash);
+        const allFormattedTransaction = formatInternalTransactionsForTreeView(tx);
+        const startIndex = parseInt(page) * parseInt(limit);
+        const endIndex = startIndex + parseInt(limit);
+        const paginatedCalls = allFormattedTransaction.slice(startIndex, endIndex);
+        await mongoose.disconnect();
+        return res.json({
+            items: paginatedCalls,
+            total: allFormattedTransaction.length,
+            page: parseInt(page),
+            totalPages: Math.ceil(allFormattedTransaction.length / parseInt(limit)),
+        });
+    } catch (error) {
+        console.error("Error fetching activity data:", error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
 app.post("/api/data/calls", async (req, res) => {
 	const { callType, page = 0, limit = 10 } = req.query;
 	const query = req.body;
@@ -830,11 +868,9 @@ app.post("/api/data/calls", async (req, res) => {
 		await connectDB("Mainnet");
 		const txs = await fetchTransactions(query);
 		const allFormattedCalls = formatCallsForTreeView(callType, txs);
-
 		const startIndex = parseInt(page) * parseInt(limit);
 		const endIndex = startIndex + parseInt(limit);
 		const paginatedCalls = allFormattedCalls.slice(startIndex, endIndex);
-
 		await mongoose.disconnect();
 		return res.json({
 			items: paginatedCalls,
