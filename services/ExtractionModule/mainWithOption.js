@@ -2,17 +2,11 @@ const {Web3} = require('web3');
 
 const fs = require('fs');
 const axios = require("axios");
-const {stringify} = require("csv-stringify")
 let contractAbi = {};
 const { getCompiledData, getContractCodeEtherscan } = require ('../contractUtils/utils')
-//const contractAddress = '0x152649eA73beAb28c5b49B26eb48f7EAD6d4c898'cake;
-//const contractAddress = '0x5C1A0CC6DAdf4d0fB31425461df35Ba80fCBc110';
-//const contractAddress = '0xc9EEf4c46ABcb11002c9bB8A47445C96CDBcAffb';
-//const cotractAddressAdidas = 0x28472a58A490c5e09A238847F66A68a47cC76f0f
 const hre = require("hardhat");
-const {saveTransaction, saveExtractionLog} = require("../../databaseStore");
-const {getRemoteVersion, detectVersion} = require("../solcVersionManager");
-const {searchTransaction} = require("../../query/query")
+const {searchTransaction}= require("../../query/query")
+const { saveExtractionLog} = require("../../databaseStore");
 const {connectDB} = require("../../config/db");
 const mongoose = require("mongoose");
 require('dotenv').config();
@@ -50,12 +44,18 @@ let contractCompiled = null
 async function getAllTransactions(mainContract, contractAddress, impl_contract, fromBlock, toBlock, network, filters, smartContract,option) {
     _contractAddress = contractAddress
     networkName = network;
+    let networkData={
+        web3Endpoint,
+        apiKey,
+        endpoint,
+        networkName:network
+    };
     try{
         switch (network) {
         case "Mainnet":
-            web3Endpoint = process.env.WEB3_ALCHEMY_MAINNET_URL
-            apiKey = process.env.API_KEY_ETHERSCAN
-            endpoint = process.env.ETHERSCAN_MAINNET_ENDPOINT
+                networkData.web3Endpoint = process.env.WEB3_ALCHEMY_MAINNET_URL,
+                networkData.apiKey = process.env.API_KEY_ETHERSCAN,
+                networkData.endpoint = process.env.ETHERSCAN_MAINNET_ENDPOINT
             break
         case "Sepolia":
             web3Endpoint = process.env.WEB3_ALCHEMY_SEPOLIA_URL
@@ -76,31 +76,9 @@ async function getAllTransactions(mainContract, contractAddress, impl_contract, 
 
         }
 
-        web3 = new Web3(web3Endpoint)
+        web3 = new Web3(networkData.web3Endpoint)
         //contractAddress = proxy address in which storage and txs are made
-        
-        let contractsResult = null
-        // if the contract is uploaded by the user then the contract is compiled
-        if (smartContract) {
-            contractsResult = smartContract
-        } else {
-            //implementation contract address
-            try{
-                contractsResult = await getContractCodeEtherscan(impl_contract,endpoint,apiKey);
-            }catch (err){
-                console.error('getContractCodeEtherscan error: ', err);
-                throw new Error(err.message)
-            }
-        }
-
         //mainContract = implementationContract name
-        let contractTree=null;
-        if(contractsResult){
-            contractTree = await getCompiledData(contractsResult.contracts, mainContract,contractsResult.compilerVersion);
-            contractCompiled=contractTree.contractCompiled
-            contractAbi=contractTree.contractAbi
-        }
-        contractsResult=null;
         const userLog = {
             networkUsed: networkName,
             proxyContract: contractAddress,
@@ -117,11 +95,20 @@ async function getAllTransactions(mainContract, contractAddress, impl_contract, 
             timestampLog: new Date().toISOString()
         }
         
-       
         await connectDB(networkName);
         await saveExtractionLog(userLog,networkName)
-        let result = await startExtraction(endpoint,contractAddress,fromBlock,toBlock,apiKey,mainContract,contractTree,filters,smartContract,option);
-         console.log("Extraction finished");
+        let contractTree=await getContractTree(smartContract,impl_contract,networkData.endpoint,networkData.apiKey,mainContract);
+        contractCompiled = contractTree.contractCompiled
+        contractAbi = contractTree.contractAbi
+
+        //in this case I get the list of a transaction for a block range of a smart contract 
+        let transactionList = await getTransactionFromContract(networkData,contractAddress,fromBlock,toBlock)
+
+        let result;
+        result=await getStorageData(transactionList, mainContract, contractTree, contractAddress, filters, smartContract, option, networkData);
+
+
+        console.log("Extraction finished");
         await mongoose.disconnect();
 
        
@@ -149,42 +136,79 @@ async function getAllTransactions(mainContract, contractAddress, impl_contract, 
     }
 }
 /**
- * function that start the extraction taking the transaction from the API call. The API retrive only from 5k to 10k transaction per call
- * So if the last block number retrive is less than the to block inserted into the front end it recall the method to
- * extract the remaining transaction
- * ß
+ * 
+ * @param {*} smartContract 
+ * @param {*} impl_contract 
  * @param {*} endpoint 
+ * @param {*} apiKey 
+ * @param {*} mainContract 
+ * @returns 
+ */
+async function getContractTree(smartContract,impl_contract,endpoint,apiKey,mainContract){
+    let contractsResult = null
+    // if the contract is uploaded by the user then the contract is compiled
+    let contractTree = null;
+    if (smartContract) {
+        contractsResult = smartContract
+    } else {
+        //implementation contract address
+        try {
+            contractsResult = await getContractCodeEtherscan(impl_contract, endpoint, apiKey);
+            if (contractsResult) {
+                contractTree = await getCompiledData(contractsResult.contracts, mainContract, contractsResult.compilerVersion);
+                contractCompiled = contractTree.contractCompiled
+                contractAbi = contractTree.contractAbi
+            }
+        } catch (err) {
+            console.error('getContractCodeEtherscan error: ', err);
+            throw new Error(err.message)
+        }
+    }
+
+    contractsResult = null
+    return contractTree;
+}
+/**
+ * Recursive function to get all the trasaction in a block range
+ * @param {*} networkData 
  * @param {*} contractAddress 
  * @param {*} fromBlock 
  * @param {*} toBlock 
- * @param {*} apiKey 
- * @param {*} mainContract 
- * @param {*} contractTree 
- * @param {*} filters 
- * @param {*} smartContract 
- * @param {*} option 
  * @returns 
  */
-async function startExtraction(endpoint,contractAddress,fromBlock,toBlock,apiKey,mainContract,contractTree,filters,smartContract,option){
-    let data = await axios.get(endpoint + `&module=account&action=txlist&address=${contractAddress}&startblock=${fromBlock}&endblock=${toBlock}&sort=asc&apikey=${apiKey}`)
-    let contractTransactions=null;
-    if(data.data){
-        contractTransactions = await data.data.result
+async function getTransactionFromContract(networkData, contractAddress, fromBlock, toBlock) {
+    // Make the API request
+    const response = await axios.get(
+        `${networkData.endpoint}&module=account&action=txlist` +
+        `&address=${contractAddress}&startblock=${fromBlock}&endblock=${toBlock}&sort=asc&apikey=${networkData.apiKey}`
+    );
+
+    // Extract result array
+    let contractTransactions = response.data?.result || [];
+
+    // If no transactions, just return empty array
+    if (contractTransactions.length === 0) {
+        return [];
     }
-    data=null;
-    let result;
-    if (contractTransactions.length>0) {
-        result = await getStorageData(contractTransactions, mainContract, contractTree, contractAddress, filters, smartContract, option);
-        if (parseInt(contractTransactions[contractTransactions.length - 1].blockNumber) < toBlock) {
-            result = startExtraction(endpoint, contractAddress, parseInt(contractTransactions[contractTransactions.length - 1].blockNumber) + 1, toBlock, apiKey, mainContract, contractTree, filters, smartContract, option);
-        } else {
-            return result;
-        }
-    }else{  
-        return result
+
+    // Find the last transaction’s block number
+    const lastBlock = parseInt(contractTransactions[contractTransactions.length - 1].blockNumber);
+
+    // If we haven’t reached the toBlock yet, keep fetching
+    if (lastBlock < toBlock) {
+        const nextBatch = await getTransactionFromContract(
+            networkData,
+            contractAddress,
+            lastBlock + 1, // <-- move startBlock forward
+            toBlock
+        );
+        contractTransactions = contractTransactions.concat(nextBatch);
     }
-    
+
+    return contractTransactions;
 }
+
+
 async function cleanupResources() {
     try {
         // Close database connections
@@ -249,18 +273,18 @@ function applyFilters(contractTransactions, filters) {
  * The transactions are filtered using the filters provided by the user, then a search is carried out in the database
  * to avoid processing them again. If the transaction is not found in the database, it is debugged to proceed with storage decoding.
  *
- * @param {Array} contractTransactions - Transactions extracted using Etherscan API.
- * @param {string} mainContract - The main contract to decode.
- * @param {Object} contractTree - The contract tree derived before decoding the storage.
- * @param {string} contractAddress - The contract address used to search the transactions in the database and save new ones.
- * @param {Object} filters - Filters to be applied to the transactions.
- * @param {Object} smartContract - The smart contract uploaded file.
- * @returns {Promise<Array>} - The blockchain log with the extracted data.
+ * @param {*} contractTransactions 
+ * @param {*} mainContract 
+ * @param {*} contractTree 
+ * @param {*} contractAddress 
+ * @param {*} filters 
+ * @param {*} smartContract 
+ * @param {*} option 
+ * @param {*} networkData 
+ * @returns 
  */
-async function getStorageData(contractTransactions, mainContract, contractTree, contractAddress, filters, smartContract,option) {
+async function getStorageData(contractTransactions, mainContract, contractTree, contractAddress, filters, smartContract,option,networkData) {
     let transactionsFiltered=null;
-    // Decode input data for all transactions
-   
     try{
     // Apply filters to transactions
         transactionsFiltered = applyFilters(contractTransactions, filters);
@@ -269,9 +293,18 @@ async function getStorageData(contractTransactions, mainContract, contractTree, 
         // Establish database connection
        
         for(const tx of transactionsFiltered){
-            // await getEvents(tx.hash,contractAddress, Number(tx.blockNumber)) 
-            try{
-                await runWorkerForTx(tx, mainContract, contractTree, contractAddress, smartContract,option);
+            try {
+                const query = {
+                    transactionHash: tx.hash.toLowerCase(),
+                    contractAddress: contractAddress.toLowerCase()
+                };
+                const response = await searchTransaction(query, networkData.networkName);
+                if (response) {
+                    console.log(`Transaction already processed: ${tx.hash}`);
+                    const { _id, __v, ...transactionData } = response[0];
+                }else{
+                    await runWorkerForTx(tx, mainContract, contractTree, contractAddress, smartContract,option,networkData);
+                }
 
             }catch (e){
                 console.log("errore nel worker",e)
@@ -296,7 +329,7 @@ async function getStorageData(contractTransactions, mainContract, contractTree, 
     }
     
 }
-function runWorkerForTx(tx, mainContract, contractTree, contractAddress, smartContract,option) {
+function runWorkerForTx(tx, mainContract, contractTree, contractAddress, smartContract,option,networkData) {
     const workerPath = path.join(__dirname, 'workerWithOption.js');
     return new Promise((resolve, reject) => {
         const worker = fork(workerPath, [], {
@@ -315,9 +348,7 @@ function runWorkerForTx(tx, mainContract, contractTree, contractAddress, smartCo
             contractAddress,
             smartContract,
             option,
-            network: networkName,
-            contractAbiData: contractAbi,
-            contractCompiledData: contractCompiled
+            networkData
         });
 
         worker.on("message", (msg) => {

@@ -20,12 +20,13 @@ function decodeTransactionInputs(tx,contractAbi,web3) {
 
 
 /**
- * Method used to retrieve the emitted events in the transaction block, using web3.js.
- *
- * @param transactionHash - the hash of the transaction to get the events
- * @param block - the block number of the transaction
- * @param contractAddress - the address of the contract to get the events
- * @returns {Promise<*[]>} - the events emitted by the transaction
+ * 
+ * @param {*} transactionHash 
+ * @param {*} block 
+ * @param {*} contractAddress 
+ * @param {*} web3 
+ * @param {*} contractAbi 
+ * @returns 
  */
 async function getEvents(transactionHash, block, contractAddress,web3,contractAbi) {
     let myContract = new web3.eth.Contract(JSON.parse(contractAbi), contractAddress);
@@ -49,13 +50,21 @@ async function getEvents(transactionHash, block, contractAddress,web3,contractAb
     return filteredEvents;
 }
 
-
-async function getEventsFromInternal(transactionHash,block,contractAddress,extractionType,web3,apiKey,endpoint){
+/**
+ * 
+ * @param {*} transactionHash 
+ * @param {*} block 
+ * @param {*} contractAddress 
+ * @param {*} networkData 
+ * @param {*} web3 
+ * @returns 
+ */
+async function getEventsFromInternal(transactionHash,block,contractAddress,networkData,web3){
     let filteredEvents = [];
     let query = { contractAddress: contractAddress };
     let response = await searchAbi(query);
     if(!(response && !response.abi.includes("Contract source code not verified"))){
-        response = await handleAbiFetch(contractAddress,apiKey,endpoint)
+        response = await handleAbiFetch(contractAddress,networkData.apiKey,networkData.endpoint)
     }
     if(response && !response.abi.includes("Contract source code not verified")){
         let abiFromDb = JSON.parse(response.abi);
@@ -106,14 +115,24 @@ async function handleAbiFetch(addressTo, apiKey, endpoint) {
         }
     }
 }
-async function iterateInternalForEvent(transactionHash,block,internalTxs,extractionType,network,web3,apikey,endpoint){
+/**
+ * 
+ * @param {*} transactionHash 
+ * @param {*} block 
+ * @param {*} internalTxs 
+ * @param {*} extractionType 
+ * @param {*} networkData 
+ * @param {*} web3 
+ * @returns 
+ */
+async function iterateInternalForEvent(transactionHash,block,internalTxs,extractionType,networkData,web3){
     let filteredEvents=[];
     let flattenInternalTransaction=internalTxs;
     if(extractionType==2){
         flattenInternalTransaction=flattenInternalTransactions(internalTxs,transactionHash);
     }
     for (const element of flattenInternalTransaction) {
-            let eventsFromInternal = await getEventsFromInternal(transactionHash, block, extractionType==2?element["contractAddress"]:element["to"], network,web3,apikey,endpoint);
+            let eventsFromInternal = await getEventsFromInternal(transactionHash, block, extractionType==2?element["contractAddress"]:element["to"], networkData,web3);
             for (const ev of eventsFromInternal) {
                    if(!safeCheck(filteredEvents,ev)) filteredEvents.push(ev)
             }

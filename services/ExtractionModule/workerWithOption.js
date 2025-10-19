@@ -1,9 +1,9 @@
 const mongoose = require("mongoose");
 const { connectDB } = require("../../config/db");
 require('dotenv').config();
-
+const fs = require('fs');
 // Import necessary modules that were missing
-const { Web3 } = require('web3');
+const { Web3, net } = require('web3');
 const hre = require("hardhat");
 const InputDataDecoder = require('ethereum-input-data-decoder');
 const axios = require("axios");
@@ -12,43 +12,38 @@ const { optimizedDecodeValues } = require('../optimizedDecodeValues');
 const { saveTransaction } = require("../../databaseStore");
 const {searchTransaction} = require("../../query/query")
 const {decodeTransactionInputs,getEvents,iterateInternalForEvent,decodeInputs,safeCheck} = require('../decodingUtils/utils')
-let web3 = null;
-let contractAbi = {};
-let networkName = "";
-let web3Endpoint = "";
-let apiKey = "";
-let endpoint = "";
-let contractCompiled = null;
+
 /**
- * Processes a single transaction to extract storage data.
- *
- * @param {Object} tx - The transaction object.
- * @param {string} mainContract - The main contract to decode.
- * @param {Object} contractTree - The contract tree for decoding.
- * @param {string} contractAddress - The contract address.
- * @param {Object} smartContract - The smart contract uploaded file.
- * @param {number} partialInt - The current transaction index.
- * @returns {Promise<Object|null>} - The processed transaction log or null if already processed.
+ * 
+ * @param {*} tx 
+ * @param {*} mainContract 
+ * @param {*} contractTree 
+ * @param {*} contractAddress 
+ * @param {*} smartContract 
+ * @param {*} extractionType 
+ * @param {*} option 
+ * @param {*} networkData 
+ * @returns 
  */
-async function processTransaction(tx, mainContract, contractTree, contractAddress, smartContract,extractionType,network,option) {
+async function processTransaction(tx, mainContract, contractTree, contractAddress, smartContract,extractionType,option,networkData) {
     const query = {
         transactionHash: tx.hash.toLowerCase(),
         contractAddress: contractAddress.toLowerCase()
     };
 
-    const response = await searchTransaction(query, networkName);
+    const response = await searchTransaction(query, networkData.networkName);
     if (response) {
         console.log(`Transaction already processed: ${tx.hash}`);
         const { _id, __v, ...transactionData } = response[0];
         return transactionData;
     }
-    if(!(contractAbi === undefined || (typeof contractAbi === 'object' && contractAbi !== null && Object.keys(contractAbi).length === 0))){
-        decodeTransactionInputs(tx,contractAbi);
+    if(!(contractTree.contractAbi === undefined || (typeof contractTree.contractAbi === 'object' && contractTree.contractAbi !== null && Object.keys(contractTree.contractAbi).length === 0))){
+        decodeTransactionInputs(tx,contractTree.contractAbi);
     }
     
     try{
         console.log(`Processing transaction: ${tx.hash}`);
-        let transactionLog=await createTransactionLog(tx, mainContract, contractTree, smartContract,extractionType,contractAddress,network,option);
+        let transactionLog=await createTransactionLog(tx, mainContract, contractTree, smartContract,extractionType,contractAddress,option,networkData);
         
         return [];
         
@@ -65,16 +60,16 @@ async function processTransaction(tx, mainContract, contractTree, contractAddres
  * @param blockNumber - the block number where the transaction is stored
  * @returns {Promise<{requiredTime: number, response: any}>} - the response of the debugged transaction and the required time to debug it
  */
-async function debugTransaction(transactionHash, blockNumber) {
+async function debugTransaction(transactionHash, blockNumber,networkData) {
     let response = null;
     try {
-        await hre.changeNetwork(networkName, blockNumber)
+        await hre.changeNetwork(networkData.networkName, blockNumber)
         const start = new Date()
-        
         response = await hre.network.provider.send("debug_traceTransaction", [
             transactionHash
         ]);
-
+         // Save the response to a JSON file
+        // fs.writeFileSync("alltrace.json", JSON.stringify(response, null, 2));
         const end = new Date()
         const requiredTime = parseFloat(((end - start) / 1000).toFixed(2))
         return {response, requiredTime}
@@ -88,17 +83,19 @@ async function debugTransaction(transactionHash, blockNumber) {
     }
 }
 /**
- * Creates a transaction log by decoding inputs, storage state, and events.
- *
- * @param {Object} tx - The transaction object.
- * @param {Object} debugResult - The debugged transaction result.
- * @param {string} mainContract - The main contract to decode.
- * @param {Object} contractTree - The contract tree for decoding.
- * @param {Object} smartContract - The smart contract uploaded file.
- * @returns {Promise<Object>} - The transaction log.
+ * 
+ * @param {*} tx 
+ * @param {*} mainContract 
+ * @param {*} contractTree 
+ * @param {*} smartContract 
+ * @param {*} extractionType 
+ * @param {*} contractAddress 
+ * @param {*} networkData 
+ * @param {*} option 
+ * @returns 
  */
-async function createTransactionLog(tx, mainContract, contractTree, smartContract,extractionType,contractAddress,network,option) {
-
+async function createTransactionLog(tx, mainContract, contractTree, smartContract,extractionType,contractAddress,networkData,option) {
+    let web3=new Web3(networkData.web3Endpoint)
     let transactionLog = {
         functionName:tx.inputDecoded?tx.inputDecoded.method:tx.methodId,
         transactionHash: tx.hash,
@@ -117,23 +114,27 @@ async function createTransactionLog(tx, mainContract, contractTree, smartContrac
     let debugResult=null;
     try{
         if(option.default!=0){
-            debugResult = await debugTransaction(tx.hash, tx.blockNumber);
+            debugResult = await debugTransaction(tx.hash, tx.blockNumber,networkData);
             try{
-                storageVal = await getTraceStorage(debugResult.response, tx.blockNumber, tx.inputDecoded?tx.inputDecoded.method:null, tx.hash, mainContract, contractTree, smartContract,option);
+                storageVal = await getTraceStorage(debugResult.response, networkData, tx.inputDecoded?tx.inputDecoded.method:null, tx.hash, mainContract, contractTree, smartContract,option,web3);
             }catch (err){
                 console.log("error in the getTraceStorage")
             }
-            transactionLog.storageState = storageVal.decodedValues;
-            transactionLog.internalTxs = storageVal.internalTxs;
+            transactionLog.storageState =storageVal ? storageVal.decodedValues:[];
+            transactionLog.internalTxs =storageVal ? storageVal.internalTxs:[];
         }
-        transactionLog.events=await getEvents(tx.hash,Number(tx.blockNumber),contractAddress,web3,contractAbi);
-        if(transactionLog.internalTxs && transactionLog.internalTxs.length>0){
-            let internalResult= await iterateInternalForEvent(tx.hash,Number(tx.blockNumber),transactionLog.internalTxs,extractionType,extractionType,web3,apiKey,endpoint)
-            internalResult = internalResult.filter(element => !safeCheck(transactionLog.events, element));
-            internalResult.forEach((element)=>{
-                transactionLog.events.push(element)
-            })
-        }
+        //funzione per eventi TODO
+        await getEventForTransaction(transactionLog,tx.hash,Number(tx.blockNumber),contractAddress,web3,contractTree,extractionType,networkData);
+        // if(Object.keys(contractTree.contractAbi).length !== 0){
+        //     transactionLog.events=await getEvents(tx.hash,Number(tx.blockNumber),contractAddress,web3,contractTree.contractAbi);
+        // }
+        // if(transactionLog.internalTxs && transactionLog.internalTxs.length>0){
+        //     let internalResult= await iterateInternalForEvent(tx.hash,Number(tx.blockNumber),transactionLog.internalTxs,extractionType,networkData,web3);
+        //     internalResult = internalResult.filter(element => !safeCheck(transactionLog.events, element));
+        //     internalResult.forEach((element)=>{
+        //         transactionLog.events.push(element)
+        //     })
+        // }
         await saveTransaction(transactionLog, tx.to);
 
     }finally{
@@ -158,7 +159,18 @@ async function createTransactionLog(tx, mainContract, contractTree, smartContrac
     return ;
 }
 
-
+async function getEventForTransaction(transactionLog,hash,blockNumber,contractAddress,web3,contractTree,extractionType,networkData){
+    if (Object.keys(contractTree.contractAbi).length !== 0) {
+        transactionLog.events = await getEvents(hash, blockNumber, contractAddress, web3, contractTree.contractAbi);
+    }
+    if (transactionLog.internalTxs && transactionLog.internalTxs.length > 0) {
+        let internalResult = await iterateInternalForEvent(hash, blockNumber, transactionLog.internalTxs, extractionType, networkData, web3);
+        internalResult = internalResult.filter(element => !safeCheck(transactionLog.events, element));
+        internalResult.forEach((element) => {
+            transactionLog.events.push(element)
+        })
+    }
+}
 /**
  *
  * @param traceDebugged - the debugged transaction with its opcodes
@@ -169,7 +181,7 @@ async function createTransactionLog(tx, mainContract, contractTree, smartContrac
  * @param contractTree - the contract tree used to identify the contract variables with the 'mainContract'
  * @returns {Promise<{decodedValues: (*&{variableValue: string|string|*})[], internalCalls: *[]}>} - the decoded values of the storage state and the internal calls
  */
-async function getTraceStorage(traceDebugged, blockNumber, functionName, transactionHash, mainContract, contractTree,smartContract,extractionOption) {
+async function getTraceStorage(traceDebugged, networkData, functionName, transactionHash, mainContract, contractTree,smartContract,extractionOption,web3) {
     //used to store the storage changed by the function. Used to compare the generated keys
     let functionStorage = {};
     //used to store all the keys potentially related to a dynamic structure
@@ -304,13 +316,13 @@ async function getTraceStorage(traceDebugged, blockNumber, functionName, transac
         finalShaTraces=regroupShatrace(finalShaTraces);
         let internalStorage=[];
         if(extractionOption.internalStorage!=0){
-            internalStorage=contractTree.storageLayoutFlag?await optimizedDecodeValues(sstoreObject, contractTree.fullContractTree, finalShaTraces, functionStorage, functionName, mainContract,web3,contractCompiled):[];
+            internalStorage=contractTree && contractTree.storageLayoutFlag?await optimizedDecodeValues(sstoreObject, contractTree.fullContractTree, finalShaTraces, functionStorage, functionName, mainContract,web3,contractTree.contractCompiled):[];
         }
         let internalTxs=[]
         if(extractionOption.internalTransaction==0){
-            internalTxs=await decodeInternalTransaction(internalCalls,apiKey,smartContract,endpoint,web3,networkName,web3Endpoint)
+            internalTxs=await decodeInternalTransaction(internalCalls,networkData.apiKey,smartContract,networkData.endpoint,web3,networkData.networkName,networkData.web3Endpoint)
         }else if(extractionOption.internalTransaction==1){
-            internalTxs=await newDecodedInternalTransaction(transactionHash, apiKey, smartContract, endpoint, web3, networkName,web3Endpoint);
+            internalTxs=await newDecodedInternalTransaction(transactionHash, networkData.apiKey, smartContract, networkData.endpoint, web3, networkData.networkName,networkData.web3Endpoint);
         }
         let result={
             decodedValues:internalStorage,
@@ -343,49 +355,17 @@ function regroupShatrace(finalShaTraces){
 }
 
 
-// Initialize worker environment
-function initializeWorker(network, contractAbiData, contractCompiledData) {
-    networkName = network;
-    contractAbi = contractAbiData;
-    contractCompiled = contractCompiledData;
-    switch (network) {
-        case "Mainnet":
-            web3Endpoint = process.env.WEB3_ALCHEMY_MAINNET_URL;
-            apiKey = process.env.API_KEY_ETHERSCAN;
-            endpoint = process.env.ETHERSCAN_MAINNET_ENDPOINT;
-            break;
-        case "Sepolia":
-            web3Endpoint = process.env.WEB3_ALCHEMY_SEPOLIA_URL;
-            apiKey = process.env.API_KEY_ETHERSCAN;
-            endpoint = process.env.ETHERSCAN_SEPOLIA_ENDPOINT;
-            break;
-        case "Polygon":
-            web3Endpoint = process.env.WEB3_ALCHEMY_POLYGON_URL;
-            apiKey = process.env.API_KEY_POLYGONSCAN;
-            endpoint = process.env.POLYGONSCAN_MAINNET_ENDPOINT;
-            break;
-        case "Amoy":
-            web3Endpoint = process.env.WEB3_ALCHEMY_AMOY_URL;
-            apiKey = process.env.API_KEY_POLYGONSCAN;
-            endpoint = process.env.POLYGONSCAN_TESTNET_ENDPOINT;
-            break;
-    }
-    web3 = new Web3(web3Endpoint);
-}
-
 // Handle messages from main process
 process.on("message", async (data) => {
-    const { tx, mainContract, contractTree, contractAddress, smartContract,option, network, contractAbiData, contractCompiledData,extractionType } = data;
+    const { tx, mainContract, contractTree, contractAddress, smartContract,option, networkData,extractionType } = data;
     let transactionLog;
     try {
-        // Initialize worker with necessary data
-        initializeWorker(network, contractAbiData, contractCompiledData);
         
-        // Connect to database
-        await connectDB(networkName);
+        // Connect to database  
+        await connectDB(networkData.networkName);
         
         // Process the transaction
-        await processTransaction(tx, mainContract, contractTree, contractAddress, smartContract,extractionType,network,option);
+        await processTransaction(tx, mainContract, contractTree, contractAddress, smartContract,extractionType,networkData,option);
 
         // Clean up
         // await mongoose.disconnect();
@@ -397,10 +377,8 @@ process.on("message", async (data) => {
             hre.network.provider.removeAllListeners();
         }
         
-        // Clean up Web3 instance
-        web3 = null;
-        contractAbi = null;
-        contractCompiled = null;
+        // contractAbi = null;
+        // contractCompiled = null;
         
         // Force garbage collection
         if (global.gc) global.gc();

@@ -4,8 +4,15 @@ const { saveAbi } = require("../databaseStore");
 const { connectDB } = require("../config/db");
 const InputDataDecoder = require("ethereum-input-data-decoder");
 
-
-async function decodeInternalTransaction(internalCalls, apiKey, smartContract, endpoint, web3, networkName) {
+/**
+ * 
+ * @param {*} internalCalls 
+ * @param {*} smartContract 
+ * @param {*} web3 
+ * @param {*} networkData 
+ * @returns 
+ */
+async function decodeInternalTransaction(internalCalls, smartContract, web3,networkData) {
     if (!smartContract) {
         await connectDB(networkName);
         for (const element of internalCalls) {
@@ -13,7 +20,7 @@ async function decodeInternalTransaction(internalCalls, apiKey, smartContract, e
             let query = { contractAddress: addressTo.toLowerCase() };
             const response = await searchAbi(query);
             if (!response) {
-                await handleAbiFetch(element, addressTo, apiKey, endpoint, web3);
+                await handleAbiFetch(element, addressTo, networkData.apiKey, networkData.endpoint, web3);
             } else {
                 await handleAbiFromDb(element, response, web3);
             }
@@ -25,7 +32,12 @@ async function decodeInternalTransaction(internalCalls, apiKey, smartContract, e
 }
 
 /**
- * Handles fetching ABI from the API and decoding the transaction.
+ * 
+ * @param {*} element 
+ * @param {*} addressTo 
+ * @param {*} apiKey 
+ * @param {*} endpoint 
+ * @param {*} web3 
  */
 async function handleAbiFetch(element, addressTo, apiKey, endpoint, web3) {
     let success = false;
@@ -74,53 +86,64 @@ async function handleAbiFetch(element, addressTo, apiKey, endpoint, web3) {
         }
     }
 }
+/**
+ * 
+ * @param {*} element 
+ * @param {*} web3 
+ * @returns 
+ */
 async function tryMethodSignature(element,web3){
     let methodSignature=element.input.slice(0,10)
-    let callForSignature=await axios.get(`https://www.4byte.directory/api/v1/signatures/?hex_signature=${methodSignature}`);
-    if(callForSignature.data.results && callForSignature.data.results[0] && callForSignature.data.results[0].text_signature){
-        //for a signature there are multiple method
-        for(let i=0;i<callForSignature.data.results.length;i++){
-            let result=callForSignature.data.results[i].text_signature;
-            let activityAndValue=result.slice(0,-1).split('(')
-            let activity=activityAndValue[0];
-            let valueTypes=activityAndValue[1].split(',');
-            element.activity=activity;
-            let valueDecoded;
-            try{
-                valueDecoded=element.input==="0x"?["0x"]:web3.eth.abi.decodeParameters(valueTypes,element.input.slice(10));
-            }catch(err){
-                console.log("errore in decoding element the method: ",element)
-                continue;
+    if(methodSignature!="0x00000000"){
+        let callForSignature=await axios.get(`https://www.4byte.directory/api/v1/signatures/?hex_signature=${methodSignature}`);
+        if(callForSignature.data.results && callForSignature.data.results[0] && callForSignature.data.results[0].text_signature){
+            //for a signature there are multiple method
+            for(let i=0;i<callForSignature.data.results.length;i++){
+                let result=callForSignature.data.results[i].text_signature;
+                let activityAndValue=result.slice(0,-1).split('(')
+                let activity=activityAndValue[0];
+                let valueTypes=activityAndValue[1].split(',');
+                element.activity=activity;
+                let valueDecoded;
+                try{
+                    valueDecoded=element.input==="0x"?["0x"]:web3.eth.abi.decodeParameters(valueTypes,element.input.slice(10));
+                }catch(err){
+                    console.log("errore in decoding element the method: ",element)
+                    continue;
+                }
+                
+                let tempResult=[];
+                for (const key in valueDecoded){
+                    if(!key.includes("length")){
+                        let temp={
+                            value:valueDecoded[key],
+                            name:valueTypes[Number(key)],
+                            type:valueTypes[Number(key)]
+                        }
+                        tempResult.push(temp)
+                    }
+                }
+                if(tempResult.length>0){
+                    element.inputs=tempResult;
+                    return true;  
+                }
+            
+            };
+            if(!element.inputs){
+                element.inputs=element.input;
+                return true;
             }
             
-            let tempResult=[];
-            for (const key in valueDecoded){
-                if(!key.includes("length")){
-                    let temp={
-                        value:valueDecoded[key],
-                        name:valueTypes[Number(key)],
-                        type:valueTypes[Number(key)]
-                    }
-                    tempResult.push(temp)
-                }
-            }
-            if(tempResult.length>0){
-                element.inputs=tempResult;
-                return true;  
-            }
-           
-        };
-        if(!element.inputs){
-            element.inputs=element.input;
-            return true;
         }
-        
     }
     return false;
 
 }
 /**
- * Handles decoding the transaction using ABI from the database.
+ * 
+ * @param {*} element 
+ * @param {*} response 
+ * @param {*} web3 
  */
 async function handleAbiFromDb(element, response, web3) {
     // console.log("ABI found in DB for address:", response.contractAddress);
@@ -128,11 +151,14 @@ async function handleAbiFromDb(element, response, web3) {
         let abiFromDb = JSON.parse(response.abi);
         decodeInputs(element, abiFromDb, web3, response.contractName);
     } else {
+        if(!element.input){
+            element.input="0x"+element.inputsCall;
+        }
         if(element.input){
             element.inputsCall=element.input;
             if(element.input==="0x"){
                     element.activity="tranfer"
-                    element.value="0x"
+                    element.value=element.value
                     element.name="undefined"
                     element.type="undefined"
             }else if(!await tryMethodSignature(element,web3)){
@@ -142,7 +168,7 @@ async function handleAbiFromDb(element, response, web3) {
         }else if(element.inputsCall){
             if(element.input==="0x"){
                     element.activity="tranfer"
-                    element.value="0x"
+                    element.value=element.value
                     element.name="undefined"
                     element.type="undefined"
             }else if(!await tryMethodSignature(element,web3)){
@@ -153,7 +179,11 @@ async function handleAbiFromDb(element, response, web3) {
 }
 
 /**
- * Decodes the inputs of a transaction using the ABI.
+ * 
+ * @param {*} element 
+ * @param {*} abi 
+ * @param {*} web3 
+ * @param {*} contractName 
  */
 function decodeInputs(element, abi, web3, contractName) {
     const decoder = new InputDataDecoder(abi);
@@ -191,18 +221,36 @@ function decodeInputs(element, abi, web3, contractName) {
     });
 }
 
-async function newDecodedInternalTransaction(transactionHash,apiKey, smartContract, endpoint, web3, networkName,web3Endpoint){
-    let internalCalls=await debugInteralTransaction(transactionHash,endpoint, web3,web3Endpoint);
+/**
+ * 
+ * @param {*} transactionHash 
+ * @param {*} smartContract 
+ * @param {*} networkData 
+ * @param {*} web3 
+ * @returns 
+ */
+async function newDecodedInternalTransaction(transactionHash, smartContract,networkData, web3,){
+    let internalCalls=await debugInteralTransaction(transactionHash,networkData.endpoint);
     if (!smartContract && internalCalls) {
         
         await connectDB(networkName);
-        await decodeInternalRecursive(internalCalls, apiKey, smartContract, endpoint, web3,0);
+        await decodeInternalRecursive(internalCalls, smartContract, networkData, web3,0);
     } else {
         // console.log("smart contract uploaded manually");
     }
     return internalCalls;
 }
-async function decodeInternalRecursive(internalCalls, apiKey, smartContract, endpoint, web3,depth) {
+
+
+/**
+ * 
+ * @param {*} internalCalls 
+ * @param {*} smartContract 
+ * @param {*} networkData 
+ * @param {*} web3 
+ * @param {*} depth 
+ */
+async function decodeInternalRecursive(internalCalls, smartContract,networkData, web3,depth) {
         for (const element of internalCalls) {
                 let addressTo = element.to;
                 let query = { contractAddress: addressTo.toLowerCase() };
@@ -216,7 +264,7 @@ async function decodeInternalRecursive(internalCalls, apiKey, smartContract, end
                 }
                 const response = await searchAbi(query);
                 if (!response) {
-                    await handleAbiFetch(element, addressTo, apiKey, endpoint, web3);
+                    await handleAbiFetch(element, addressTo, networkData.apiKey, networkData.endpoint, web3);
                 } else {
                     await handleAbiFromDb(element, response, web3);
                 }
@@ -228,7 +276,7 @@ async function decodeInternalRecursive(internalCalls, apiKey, smartContract, end
                     delete element.input;
                 }
                 if( element.calls && element.calls.length > 0) {
-                    await decodeInternalRecursive(element.calls, apiKey, smartContract, endpoint, web3,depth+1);
+                    await decodeInternalRecursive(element.calls, smartContract, networkData, web3,depth+1);
                 }
         }
 }
@@ -254,7 +302,14 @@ function flattenCalls(call, parentIndex = null, list = [], index = { i: 0 }) {
 
     return list;
 }
-async function debugInteralTransaction(transactionHash,web3Endpoint,web3,web3Endpoint) {
+
+/**
+ * 
+ * @param {*} transactionHash 
+ * @param {*} web3Endpoint 
+ * @returns 
+ */
+async function debugInteralTransaction(transactionHash,web3Endpoint) {
     try{
         const rpcUrl = web3Endpoint;
         const payload = {
