@@ -61,30 +61,32 @@ async function optimizedDecodeValues(sstore, contractTree, shaTraces, functionSt
 }
 function decodeComplexData(shaTraces, contractTree, functionName,functionStorage, mainContract, shatracesProcessed, resultOfPreprocessing) {
     for (const shatrace of shaTraces) {
-        let slotNumber = web3.utils.hexToNumber("0x" + shatrace.hexStorageIndex);
-        if (slotNumber < 300 && !shatracesProcessed.has(shatrace.finalKey)) {
-            let variabilePerSlot = getContractVariable(slotNumber, contractTree, functionName, mainContract)[0];
-            
-            //shatraceProcessed lo passo anche al read complex data perchè vado ad inserirci tutte quelle chiavi che ottengo
-            //durante magari l'estrazioni di una stringa
-            //dove nella shatrace trovo un solo elemento mentre nel funcitonstorage trovo tutte le chiavi complesse che contengono la stringa
-            if (variabilePerSlot) {
-                let resultreadComplexData = readComplexData(variabilePerSlot, shatrace, functionStorage, shatracesProcessed, shaTraces)
-                if (resultreadComplexData.length != undefined) {
-                    resultreadComplexData.forEach((e) => {
-                        resultOfPreprocessing.push(e)
-                    })
-                } else {
-                    resultOfPreprocessing.push(resultreadComplexData)
+        if (shatrace.hexStorageIndex) {
+            let slotNumber = web3.utils.hexToNumber("0x" + shatrace.hexStorageIndex);
+            if (slotNumber < 300 && !shatracesProcessed.has(shatrace.finalKey)) {
+                let variabilePerSlot = getContractVariable(slotNumber, contractTree, functionName, mainContract)[0];
+
+                //shatraceProcessed lo passo anche al read complex data perchè vado ad inserirci tutte quelle chiavi che ottengo
+                //durante magari l'estrazioni di una stringa
+                //dove nella shatrace trovo un solo elemento mentre nel funcitonstorage trovo tutte le chiavi complesse che contengono la stringa
+                if (variabilePerSlot) {
+                    let resultreadComplexData = readComplexData(variabilePerSlot, shatrace, functionStorage, shatracesProcessed, shaTraces)
+                    if (resultreadComplexData.length != undefined) {
+                        resultreadComplexData.forEach((e) => {
+                            resultOfPreprocessing.push(e)
+                        })
+                    } else {
+                        resultOfPreprocessing.push(resultreadComplexData)
+                    }
+                    shatracesProcessed.add(shatrace.finalKey);
+                    shatracesProcessed.add(shatrace.hexStorageIndex)
                 }
+
+
+
+            } else {
                 shatracesProcessed.add(shatrace.finalKey);
-                shatracesProcessed.add(shatrace.hexStorageIndex)
             }
-
-
-
-        } else {
-            shatracesProcessed.add(shatrace.finalKey);
         }
     }
 }
