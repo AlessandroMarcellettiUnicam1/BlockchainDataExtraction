@@ -226,13 +226,13 @@ function decodeInputs(element, abi, web3, contractName) {
  * @returns 
  */
 async function newDecodedInternalTransaction(transactionHash, smartContract,networkData, web3,){
-    let internalCalls=await debugInteralTransaction(transactionHash,networkData.endpoint);
+    
+    let internalCalls=await debugInteralTransaction(transactionHash,networkData.web3Endpoint);
     if (!smartContract && internalCalls) {
-        
-        await connectDB(networkName);
+        await connectDB(networkData.networkName);
         await decodeInternalRecursive(internalCalls, smartContract, networkData, web3,0);
     } else {
-        // console.log("smart contract uploaded manually");
+        console.log("smart contract uploaded manually");
     }
     return internalCalls;
 }

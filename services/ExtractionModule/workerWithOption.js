@@ -111,7 +111,7 @@ async function createTransactionLog(tx, mainContract, contractTree, smartContrac
             transactionLog.storageState =storageVal ? storageVal.decodedValues:[];
             transactionLog.internalTxs =storageVal ? storageVal.internalTxs:[];
         }
-        await getEventForTransaction(transactionLog,tx.hash,Number(tx.blockNumber),contractAddress,web3,contractTree,extractionType,networkData);
+        await getEventForTransaction(transactionLog,tx.hash,Number(tx.blockNumber),contractAddress,web3,contractTree,option,networkData);
         await saveTransaction(transactionLog, tx.to!=''?tx.to:tx.from);
 
     }finally{
@@ -146,12 +146,13 @@ async function createTransactionLog(tx, mainContract, contractTree, smartContrac
  * @param {*} extractionType : the extraction type
  * @param {*} networkData : object representing the network data ( apiKey,endPoint, networkName,web3Endpoint)
  */
-async function getEventForTransaction(transactionLog,hash,blockNumber,contractAddress,web3,contractTree,extractionType,networkData){
+async function getEventForTransaction(transactionLog,hash,blockNumber,contractAddress,web3,contractTree,option,networkData){
+
     if (contractTree && Object.keys(contractTree.contractAbi).length !== 0) {
         transactionLog.events = await getEvents(hash, blockNumber, contractAddress, web3, contractTree.contractAbi);
     }
     if (transactionLog.internalTxs && transactionLog.internalTxs.length > 0) {
-        let internalResult = await iterateInternalForEvent(hash, blockNumber, transactionLog.internalTxs, extractionType, networkData, web3);
+        let internalResult = await iterateInternalForEvent(hash, blockNumber, transactionLog.internalTxs, option, networkData, web3);
         internalResult = internalResult.filter(element => !safeCheck(transactionLog.events, element));
         internalResult.forEach((element) => {
             transactionLog.events.push(element)
@@ -309,7 +310,7 @@ async function getTraceStorage(traceDebugged, networkData, functionName, transac
         if(extractionOption.internalTransaction==0){
             internalTxs=await decodeInternalTransaction(internalCalls,networkData.apiKey,smartContract,networkData.endpoint,web3,networkData.networkName,networkData.web3Endpoint)
         }else if(extractionOption.internalTransaction==1){
-            internalTxs=await newDecodedInternalTransaction(transactionHash, networkData.apiKey, smartContract, networkData.endpoint, web3, networkData.networkName,networkData.web3Endpoint);
+            internalTxs=await newDecodedInternalTransaction(transactionHash, smartContract, networkData, web3);
         }
         let result={
             decodedValues:internalStorage,

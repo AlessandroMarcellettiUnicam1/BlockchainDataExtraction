@@ -125,14 +125,14 @@ async function handleAbiFetch(addressTo, apiKey, endpoint) {
  * @param {*} web3 
  * @returns 
  */
-async function iterateInternalForEvent(transactionHash,block,internalTxs,extractionType,networkData,web3){
+async function iterateInternalForEvent(transactionHash,block,internalTxs,option,networkData,web3){
     let filteredEvents=[];
     let flattenInternalTransaction=internalTxs;
-    if(extractionType==2){
+    if(option.internalTransaction==1){
         flattenInternalTransaction=flattenInternalTransactions(internalTxs,transactionHash);
     }
     for (const element of flattenInternalTransaction) {
-            let eventsFromInternal = await getEventsFromInternal(transactionHash, block, extractionType==2?element["contractAddress"]:element["to"], networkData,web3);
+            let eventsFromInternal = await getEventsFromInternal(transactionHash, block, option.internalTransaction==1?element["contractAddress"]:element["to"], networkData,web3);
             for (const ev of eventsFromInternal) {
                    if(!safeCheck(filteredEvents,ev)) filteredEvents.push(ev)
             }
