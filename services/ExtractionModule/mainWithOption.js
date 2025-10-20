@@ -16,15 +16,9 @@ const { fork } = require("child_process");
 
 const {ethers} = require("hardhat");
 
-let networkName = ""
-let web3 = null
-let web3Endpoint = ""
-let apiKey = ""
-let endpoint = ""
 
-let _contractAddress = ""
 
-let contractCompiled = null
+
 
 
 /**
@@ -42,12 +36,10 @@ let contractCompiled = null
  */
 
 async function getAllTransactions(mainContract, contractAddress, impl_contract, fromBlock, toBlock, network, filters, smartContract,option) {
-    _contractAddress = contractAddress
-    networkName = network;
     let networkData={
-        web3Endpoint,
-        apiKey,
-        endpoint,
+        web3Endpoint:"",
+        apiKey:"",
+        endpoint:"",
         networkName:network
     };
     try{
@@ -58,29 +50,27 @@ async function getAllTransactions(mainContract, contractAddress, impl_contract, 
                 networkData.endpoint = process.env.ETHERSCAN_MAINNET_ENDPOINT
             break
         case "Sepolia":
-            web3Endpoint = process.env.WEB3_ALCHEMY_SEPOLIA_URL
-            apiKey = process.env.API_KEY_ETHERSCAN
-            endpoint = process.env.ETHERSCAN_SEPOLIA_ENDPOINT
+            networkData.web3Endpoint = process.env.WEB3_ALCHEMY_SEPOLIA_URL
+            networkData.apiKey = process.env.API_KEY_ETHERSCAN
+            networkData.endpoint = process.env.ETHERSCAN_SEPOLIA_ENDPOINT
             break
         case "Polygon":
-            web3Endpoint = process.env.WEB3_ALCHEMY_POLYGON_URL
-            apiKey = process.env.API_KEY_POLYGONSCAN
-            endpoint = process.env.POLYGONSCAN_MAINNET_ENDPOINT
+            networkData.web3Endpoint = process.env.WEB3_ALCHEMY_POLYGON_URL
+            networkData.apiKey = process.env.API_KEY_POLYGONSCAN
+            networkData.endpoint = process.env.POLYGONSCAN_MAINNET_ENDPOINT
             break
         case "Amoy":
-            web3Endpoint = process.env.WEB3_ALCHEMY_AMOY_URL
-            apiKey = process.env.API_KEY_POLYGONSCAN
-            endpoint = process.env.POLYGONSCAN_TESTNET_ENDPOINT
+            networkData.web3Endpoint = process.env.WEB3_ALCHEMY_AMOY_URL
+            networkData.apiKey = process.env.API_KEY_POLYGONSCAN
+            networkData.endpoint = process.env.POLYGONSCAN_TESTNET_ENDPOINT
             break
         default:
 
         }
-
-        web3 = new Web3(networkData.web3Endpoint)
         //contractAddress = proxy address in which storage and txs are made
         //mainContract = implementationContract name
         const userLog = {
-            networkUsed: networkName,
+            networkUsed: networkData.networkName,
             proxyContract: contractAddress,
             implementationContract: impl_contract,
             contractName: mainContract,
@@ -95,11 +85,9 @@ async function getAllTransactions(mainContract, contractAddress, impl_contract, 
             timestampLog: new Date().toISOString()
         }
         
-        await connectDB(networkName);
-        await saveExtractionLog(userLog,networkName)
+        await connectDB(networkData.networkName);
+        await saveExtractionLog(userLog,networkData.networkName)
         let contractTree=await getContractTree(smartContract,impl_contract,networkData.endpoint,networkData.apiKey,mainContract);
-        contractCompiled = contractTree.contractCompiled
-        contractAbi = contractTree.contractAbi
 
         //in this case I get the list of a transaction for a block range of a smart contract 
         let transactionList = await getTransactionFromContract(networkData,contractAddress,fromBlock,toBlock)
@@ -273,8 +261,8 @@ function applyFilters(contractTransactions, filters) {
  * The transactions are filtered using the filters provided by the user, then a search is carried out in the database
  * to avoid processing them again. If the transaction is not found in the database, it is debugged to proceed with storage decoding.
  *
- * @param {*} contractTransactions 
- * @param {*} mainContract 
+ * @param {*} contractTransactions : list of transaction to extract
+ * @param {*} mainContract : main contract to use to decode 
  * @param {*} contractTree 
  * @param {*} contractAddress 
  * @param {*} filters 

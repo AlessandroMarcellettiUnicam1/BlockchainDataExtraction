@@ -78,7 +78,7 @@ async function handleAbiFetch(element, addressTo, apiKey, endpoint, web3) {
                     element.name="undefined"
                     element.type="undefined"
                 }else if(!await tryMethodSignature(element,web3)){
-                    element.activity = "Contract source code not verified";
+                    element.activity="undefined"
                 }
                 delete element.input
             }
@@ -106,7 +106,7 @@ async function tryMethodSignature(element,web3){
                 element.activity=activity;
                 let valueDecoded;
                 try{
-                    valueDecoded=element.input==="0x"?["0x"]:web3.eth.abi.decodeParameters(valueTypes,element.input.slice(10));
+                    valueDecoded=web3.eth.abi.decodeParameters(valueTypes,element.input.slice(10));
                 }catch(err){
                     console.log("errore in decoding element the method: ",element)
                     continue;
@@ -135,12 +135,17 @@ async function tryMethodSignature(element,web3){
             }
             
         }
+    }else if(methodSignature!="0x00000000"){
+        element.activity = "Transfer*"
+        element.value = element.value;
+        element.name = "undefined"
+        element.type = "undefined"
     }
     return false;
 
 }
 /**
- * 
+ * if the abi is of a contract already extract i get the abi from the db and use it to decode the input
  * @param {*} element 
  * @param {*} response 
  * @param {*} web3 
@@ -165,15 +170,6 @@ async function handleAbiFromDb(element, response, web3) {
                 element.activity = "Contract source code not verified";
             }
             delete element.input
-        }else if(element.inputsCall){
-            if(element.input==="0x"){
-                    element.activity="tranfer"
-                    element.value=element.value
-                    element.name="undefined"
-                    element.type="undefined"
-            }else if(!await tryMethodSignature(element,web3)){
-                element.activity = "Contract source code not verified";
-            }
         }
     }
 }

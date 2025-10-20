@@ -26,21 +26,9 @@ const {decodeTransactionInputs,getEvents,iterateInternalForEvent,decodeInputs,sa
  * @returns 
  */
 async function processTransaction(tx, mainContract, contractTree, contractAddress, smartContract,extractionType,option,networkData) {
-    const query = {
-        transactionHash: tx.hash.toLowerCase(),
-        contractAddress: contractAddress.toLowerCase()
-    };
-
-    const response = await searchTransaction(query, networkData.networkName);
-    if (response) {
-        console.log(`Transaction already processed: ${tx.hash}`);
-        const { _id, __v, ...transactionData } = response[0];
-        return transactionData;
+    if (contractTree?.contractAbi && (typeof contractTree.contractAbi !== 'object' || Object.keys(contractTree.contractAbi).length > 0)) {
+        decodeTransactionInputs(tx, contractTree.contractAbi);
     }
-    if(!(contractTree.contractAbi === undefined || (typeof contractTree.contractAbi === 'object' && contractTree.contractAbi !== null && Object.keys(contractTree.contractAbi).length === 0))){
-        decodeTransactionInputs(tx,contractTree.contractAbi);
-    }
-    
     try{
         console.log(`Processing transaction: ${tx.hash}`);
         let transactionLog=await createTransactionLog(tx, mainContract, contractTree, smartContract,extractionType,contractAddress,option,networkData);
@@ -123,19 +111,8 @@ async function createTransactionLog(tx, mainContract, contractTree, smartContrac
             transactionLog.storageState =storageVal ? storageVal.decodedValues:[];
             transactionLog.internalTxs =storageVal ? storageVal.internalTxs:[];
         }
-        //funzione per eventi TODO
         await getEventForTransaction(transactionLog,tx.hash,Number(tx.blockNumber),contractAddress,web3,contractTree,extractionType,networkData);
-        // if(Object.keys(contractTree.contractAbi).length !== 0){
-        //     transactionLog.events=await getEvents(tx.hash,Number(tx.blockNumber),contractAddress,web3,contractTree.contractAbi);
-        // }
-        // if(transactionLog.internalTxs && transactionLog.internalTxs.length>0){
-        //     let internalResult= await iterateInternalForEvent(tx.hash,Number(tx.blockNumber),transactionLog.internalTxs,extractionType,networkData,web3);
-        //     internalResult = internalResult.filter(element => !safeCheck(transactionLog.events, element));
-        //     internalResult.forEach((element)=>{
-        //         transactionLog.events.push(element)
-        //     })
-        // }
-        await saveTransaction(transactionLog, tx.to);
+        await saveTransaction(transactionLog, tx.to!=''?tx.to:tx.from);
 
     }finally{
         if (debugResult) {
@@ -158,9 +135,19 @@ async function createTransactionLog(tx, mainContract, contractTree, smartContrac
 
     return ;
 }
-
+/**
+ * function to get the event emitted in t
+ * @param {*} transactionLog : is the log tha we have to store in the db
+ * @param {*} hash : has of the transaction
+ * @param {*} blockNumber : block number to get the event emitted
+ * @param {*} contractAddress : the address of the contract
+ * @param {*} web3 : we3 instances 
+ * @param {*} contractTree : object contract tree that contain the abi
+ * @param {*} extractionType : the extraction type
+ * @param {*} networkData : object representing the network data ( apiKey,endPoint, networkName,web3Endpoint)
+ */
 async function getEventForTransaction(transactionLog,hash,blockNumber,contractAddress,web3,contractTree,extractionType,networkData){
-    if (Object.keys(contractTree.contractAbi).length !== 0) {
+    if (contractTree && Object.keys(contractTree.contractAbi).length !== 0) {
         transactionLog.events = await getEvents(hash, blockNumber, contractAddress, web3, contractTree.contractAbi);
     }
     if (transactionLog.internalTxs && transactionLog.internalTxs.length > 0) {
