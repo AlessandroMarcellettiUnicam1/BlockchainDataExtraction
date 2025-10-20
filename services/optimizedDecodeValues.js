@@ -28,6 +28,7 @@ async function optimizedDecodeValues(sstore, contractTree, shaTraces, functionSt
         
         // Separate found and missing keys
         let result = decodingSimpleStorage(mainContract, functionStorage, shatracesProcessed, contractTree, functionName, resultOfPreprocessing)
+        result=result.filter(item => item !== undefined);
         result = result.map(obj => {
             const { name, value, decodedValue, slot, offset, contentSlot, ...rest } = obj;
 
