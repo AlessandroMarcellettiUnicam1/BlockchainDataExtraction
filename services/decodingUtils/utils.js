@@ -82,7 +82,16 @@ async function getEventsFromInternal(transactionHash,block,contractAddress,netwo
                         eventName: element.event,
                         eventValues: element.returnValues
                     };
-                    filteredEvents.push(event);
+                    if(event.eventName){
+                        filteredEvents.push(event);
+                    }else{
+                        let undefinedEvent={
+                            elementName:"undefined",
+                            eventValues:element.topics
+                        }
+                        filteredEvents.push(undefinedEvent)
+                    }
+                   
             }
         })
     }
@@ -91,15 +100,12 @@ async function getEventsFromInternal(transactionHash,block,contractAddress,netwo
 }
 async function handleAbiFetch(addressTo, apiKey, endpoint) {
     let success = false;
+    let storeAbi;
     while (!success) {
         await new Promise((resolve) => setTimeout(resolve, 5000));
         let callForAbi = await axios.get(`${endpoint}&module=contract&action=getsourcecode&address=${addressTo}&apikey=${apiKey}`);
-        if(callForAbi.data.result[0].Proxy==1){
-           addressTo= callForAbi.data.result[0].Implementation;
-        }else if(callForAbi.data.result[0].SimilarMatch){
-            addressTo=callForAbi.data.result[0].SimilarMatch;
-        }else if(!callForAbi.data.message.includes("NOTOK")) {
-            let storeAbi = {
+        if(!callForAbi.data.message.includes("NOTOK")) {
+            storeAbi = {
                 contractName: callForAbi.data.result[0].ContractName,
                 contractAddress: addressTo,
                 abi: callForAbi.data.result[0].ABI,
@@ -114,6 +120,7 @@ async function handleAbiFetch(addressTo, apiKey, endpoint) {
             success = true;
         }
     }
+    return storeAbi;
 }
 /**
  * 
@@ -126,40 +133,33 @@ async function handleAbiFetch(addressTo, apiKey, endpoint) {
  * @returns 
  */
 async function iterateInternalForEvent(transactionHash,block,internalTxs,option,networkData,web3){
-    let filteredEvents=[];
-    let flattenInternalTransaction=internalTxs;
     if(option.internalTransaction==1){
-        flattenInternalTransaction=flattenInternalTransactions(internalTxs,transactionHash);
+        //flattenInternalTransaction=flattenInternalTransactions(internalTxs,transactionHash);
+        await assignEventToInternal(transactionHash,block,internalTxs,networkData,web3);
+    }else{
+        for (const element of internalTxs) {
+            element.events = await getEventsFromInternal(transactionHash, block, option.internalTransaction == 1 ? element["contractAddress"] : element["to"], networkData, web3);
+        }   
     }
-    for (const element of flattenInternalTransaction) {
-            let eventsFromInternal = await getEventsFromInternal(transactionHash, block, option.internalTransaction==1?element["contractAddress"]:element["to"], networkData,web3);
-            for (const ev of eventsFromInternal) {
-                   if(!safeCheck(filteredEvents,ev)) filteredEvents.push(ev)
-            }
-    }
-    return filteredEvents;
 }
-function flattenInternalTransactions(transactions,txHash){
-    if(!Array.isArray(transactions) || transactions.length===0){
-        return [];
+/**
+ * 
+ * @param {*} transactionHash 
+ * @param {*} block 
+ * @param {*} internalTxs 
+ * @param {*} networkData 
+ * @param {*} web3 
+ */
+async function assignEventToInternal(transactionHash,block,internalTxs,networkData,web3){
+    for(const transaction of internalTxs) {
+        transaction.events=await getEventsFromInternal(transactionHash, block, transaction.to, networkData,web3);
+        if(transaction.calls){
+            await assignEventToInternal(transactionHash,block,transaction.calls,networkData,web3);
+        }
     }
-    let i = 0;
-    let result = [];
-    result = result.concat(transactions);
-    for(const transaction of transactions) {
-        result = result.concat(flattenInternalTransactions(transaction.calls,txHash));
-    }
+}
 
-      return result.map(item=>changeKey(item,"to","contractAddress")).
-                    map(item=>changeKey(item,"from","sender"));
-}
-function changeKey(obj, oldKey, newKey){
-    if(obj.hasOwnProperty(oldKey)){
-        obj[newKey] = obj[oldKey];
-        delete obj[oldKey];
-    }
-    return obj;
-}
+
 function safeCheck(arr, ev) {
   try {
     return checkIfEventIsAlreadyStored(arr, ev);

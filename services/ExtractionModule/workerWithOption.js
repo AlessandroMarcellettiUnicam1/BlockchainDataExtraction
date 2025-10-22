@@ -26,9 +26,8 @@ const {decodeTransactionInputs,getEvents,iterateInternalForEvent,decodeInputs,sa
  * @returns 
  */
 async function processTransaction(tx, mainContract, contractTree, contractAddress, smartContract,extractionType,option,networkData) {
-    if (contractTree?.contractAbi && (typeof contractTree.contractAbi !== 'object' || Object.keys(contractTree.contractAbi).length > 0)) {
-        decodeTransactionInputs(tx, contractTree.contractAbi);
-    }
+    decodeInput(tx, contractTree)
+    
     try{
         console.log(`Processing transaction: ${tx.hash}`);
         let transactionLog=await createTransactionLog(tx, mainContract, contractTree, smartContract,extractionType,contractAddress,option,networkData);
@@ -39,7 +38,19 @@ async function processTransaction(tx, mainContract, contractTree, contractAddres
         if (global.gc) global.gc();
     }
 }
-
+/**
+ * Function used to decode the input and the methd name of a public trasaction
+ * If the input is equal to "0x" means that it is a Transfer
+ * @param {*} tx 
+ * @param {*} contractTree 
+ */
+function decodeInput(tx,contractTree){
+    if (tx.input == "0x") {
+        tx.methodId = "Tranfer";
+    } else if (contractTree?.contractAbi && (typeof contractTree.contractAbi !== 'object' || Object.keys(contractTree.contractAbi).length > 0)) {
+        decodeTransactionInputs(tx, contractTree.contractAbi);
+    }
+}
 /**
  * This method involves the debugging of the transaction to extract the storage state.
  * The debugging is handled by the Hardhat environment configured in the file "hardhat.config.js"
@@ -152,11 +163,11 @@ async function getEventForTransaction(transactionLog,hash,blockNumber,contractAd
         transactionLog.events = await getEvents(hash, blockNumber, contractAddress, web3, contractTree.contractAbi);
     }
     if (transactionLog.internalTxs && transactionLog.internalTxs.length > 0) {
-        let internalResult = await iterateInternalForEvent(hash, blockNumber, transactionLog.internalTxs, option, networkData, web3);
-        internalResult = internalResult.filter(element => !safeCheck(transactionLog.events, element));
+        await iterateInternalForEvent(hash, blockNumber, transactionLog.internalTxs, option, networkData, web3);
+       /* internalResult = internalResult.filter(element => !safeCheck(transactionLog.events, element));
         internalResult.forEach((element) => {
             transactionLog.events.push(element)
-        })
+        })*/
     }
 }
 /**
@@ -308,7 +319,7 @@ async function getTraceStorage(traceDebugged, networkData, functionName, transac
         }
         let internalTxs=[]
         if(extractionOption.internalTransaction==0){
-            internalTxs=await decodeInternalTransaction(internalCalls,networkData.apiKey,smartContract,networkData.endpoint,web3,networkData.networkName,networkData.web3Endpoint)
+            internalTxs=await decodeInternalTransaction(internalCalls,smartContract,web3,networkData)
         }else if(extractionOption.internalTransaction==1){
             internalTxs=await newDecodedInternalTransaction(transactionHash, smartContract, networkData, web3);
         }

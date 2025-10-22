@@ -14,7 +14,7 @@ const InputDataDecoder = require("ethereum-input-data-decoder");
  */
 async function decodeInternalTransaction(internalCalls, smartContract, web3,networkData) {
     if (!smartContract) {
-        await connectDB(networkName);
+        await connectDB(networkData.networkName);
         for (const element of internalCalls) {
             let addressTo = element.to;
             let query = { contractAddress: addressTo.toLowerCase() };
@@ -65,7 +65,6 @@ async function handleAbiFetch(element, addressTo, apiKey, endpoint, web3) {
                 abi: callForAbi.data.result[0].ABI,
             };
             await saveAbi(storeAbi);
-
             if (!storeAbi.abi.includes("Contract source code not verified")) {
                 decodeInputs(element, storeAbi.abi, web3, callForAbi.data.result[0].ContractName);
             } else {

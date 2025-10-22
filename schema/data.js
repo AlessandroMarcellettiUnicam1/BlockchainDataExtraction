@@ -13,6 +13,11 @@ const storageStateSchema = new mongoose.Schema({
     variableRawValue: {type: String}
 }, { _id : false });
 
+const eventSchema = new mongoose.Schema({
+    eventName: {type: String},
+    eventValues: {type: mongoose.Schema.Types.Mixed}
+}, { _id : false });
+
 const internalTxSchema = new mongoose.Schema({
     callType: {type: String},
     callId:{type:String},
@@ -33,13 +38,12 @@ const internalTxSchema = new mongoose.Schema({
     activity: {type: String, required: false},
     contractCalledName: {type: String, required: false},
     input: {type: String, required: false}, // Raw input data
-    calls: [mongoose.Schema.Types.Mixed] // Nested calls
+    calls: [mongoose.Schema.Types.Mixed], // Nested calls
+    events: [
+        eventSchema
+    ]
 }, { _id : false });
 
-const eventSchema = new mongoose.Schema({
-    eventName: {type: String},
-    eventValues: {type: mongoose.Schema.Types.Mixed}
-}, { _id : false });
 
 const transactionSchema = new mongoose.Schema({
     functionName: {type: String},
