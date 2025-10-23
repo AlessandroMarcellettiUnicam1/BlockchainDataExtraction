@@ -205,7 +205,6 @@ async function cleanupResources() {
         }
         
         // Clean up web3 instance
-        web3 = null;
 
         // Clean up hardhat
         if (hre && hre.network && hre.network.provider) {
