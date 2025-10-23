@@ -229,7 +229,7 @@ async function newDecodedInternalTransaction(transactionHash, smartContract,netw
     let internalCalls=await debugInteralTransaction(transactionHash,networkData.web3Endpoint);
     if (!smartContract && internalCalls) {
         await connectDB(networkData.networkName);
-        await decodeInternalRecursive(internalCalls, smartContract, networkData, web3,0);
+        await decodeInternalRecursive(internalCalls, smartContract, networkData, web3,0,"0");
     } else {
         console.log("smart contract uploaded manually");
     }
@@ -245,18 +245,17 @@ async function newDecodedInternalTransaction(transactionHash, smartContract,netw
  * @param {*} web3 
  * @param {*} depth 
  */
-async function decodeInternalRecursive(internalCalls, smartContract,networkData, web3,depth) {
+async function decodeInternalRecursive(internalCalls, smartContract,networkData, web3,depth,callId) {
+        let idDepth=1;
         for (const element of internalCalls) {
                 let addressTo = element.to;
                 let query = { contractAddress: addressTo.toLowerCase() };
-                element.callId = "0_1";
+                element.callId =callId+"_"+idDepth;
                 element.depth=depth;
                 element.gas=web3.utils.hexToNumber(element.gas);
                 element.gasUsed=web3.utils.hexToNumber(element.gasUsed);
                 element.value=element.value?web3.utils.hexToNumber(element.value):0;
-                for(let i=0;i<element.depth;i++){
-                    element.callId += "_1";
-                }
+                idDepth++;
                 const response = await searchAbi(query);
                 if (!response) {
                     await handleAbiFetch(element, addressTo, networkData.apiKey, networkData.endpoint, web3);
@@ -271,7 +270,7 @@ async function decodeInternalRecursive(internalCalls, smartContract,networkData,
                     delete element.input;
                 }
                 if( element.calls && element.calls.length > 0) {
-                    await decodeInternalRecursive(element.calls, smartContract, networkData, web3,depth+1);
+                    await decodeInternalRecursive(element.calls, smartContract, networkData, web3,depth+1,element.callId);
                 }
         }
 }
