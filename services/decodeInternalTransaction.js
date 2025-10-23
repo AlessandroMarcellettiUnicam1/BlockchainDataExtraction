@@ -107,7 +107,7 @@ async function tryMethodSignature(element,web3){
                 try{
                     valueDecoded=web3.eth.abi.decodeParameters(valueTypes,element.input.slice(10));
                 }catch(err){
-                    console.log("errore in decoding element the method: ",element)
+                    console.log("errore in decoding element the method: ",element.callId)
                     continue;
                 }
                 
