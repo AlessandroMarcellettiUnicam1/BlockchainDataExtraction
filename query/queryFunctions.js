@@ -1,4 +1,5 @@
 import { fetchTransactions } from "./transactionQuery.js";
+import {getAllTransactions} from "./flattenTransaction.js";
 
 export async function getTransactions(query) {
     return fetchTransactions(query);
@@ -24,8 +25,13 @@ export async function getGasUsage(query) {
 			activityGasMap[activity].gasUsed += Number(tx.gasUsed) || 0;
 			activityGasMap[activity].count += 1;
 		});
+        let txs = transactions;
+        if(query.hasOwnProperty("internalTxs")){
+            txs = txs.filter((tx)=>!tx.hasOwnProperty("depth"));
+        }
 
-        return Object.values(activityGasMap);
+        return {gasUsed: Object.values(activityGasMap),
+            transaction: txs};
 	} catch (error) {
 		console.error("Error fetching gas usage:", error);
 		throw new Error(error.message);
@@ -134,7 +140,6 @@ export async function getInputsData(query) {
                     timestamp: transaction.timestamp,
                     inputName: transaction.inputs[i]?.inputName || transaction.inputs[i].name || "unknown",
                     inputType: transaction.inputs[i]?.type || "unknown",
-                    //inputValue: transaction.inputs[i]?.inputValue || transaction.inputs[i].value || "unknown"
                     inputValue: value
                 });
             }
@@ -212,9 +217,17 @@ export async function getCallsData(query) {
                 }
             });
         }
+        let txsFiltered = transactions;
+        if(!internalTxs)
+            txsFiltered = await getAllTransactions(transactions);
+        txsFiltered = txsFiltered.filter((tx)=>tx.hasOwnProperty("depth"))
+                                    .map((tx)=>({
+                                        ...tx,
+                                        transactionHash: tx.transactionHash.split("-")[0]
+                                    }));
 
-
-		return Object.values(callsData);
+		return {call: Object.values(callsData),
+            dataGrid: txsFiltered};
 	} catch (error) {
 		console.error("Error fetching calls data:", error);
 		throw new Error(error.message);
@@ -473,6 +486,81 @@ export function formatInternalTransactionsForTreeView(
         label: `Transaction : ${transaction.transactionHash}`,
         children: children,
     }]
+}
+
+export function formatCallForTreeView(transaction,depth,to,from,activity){
+    if(activity==="null")
+        activity = null;
+    const children = [];
+    children.push({
+        id: `${transaction.transactionHash}`,
+        label: `Transaction: ${transaction.transactionHash}`
+    });
+    children.push({
+        id: `${transaction.transactionHash}-${transaction.functionName || transaction.activity}`,
+        label: `Function Name: ${transaction.functionName || transaction.activity}`,
+    });
+    children.push({
+        id: `${transaction.transactionHash}-${transaction.sender || transaction.from}`,
+        label: `Sender: ${transaction.sender || transaction.from}`,
+    });
+    children.push({
+        id: `${transaction.transactionHash}-${transaction.contractAddress || transaction.to}`,
+        label: `Contract Address: ${transaction.contractAddress || transaction.to}`,
+    });
+
+    if(transaction.inputs && Array.isArray(transaction.inputs) && transaction.inputs.length > 0) {
+        const inputsChildren = transaction.inputs.map((input, inputIndex) => {
+            let inputValue = input.inputValue;
+            if (typeof inputValue === "object" && inputValue.$numberLong) {
+                inputValue = inputValue.$numberLong;
+            }
+            if (typeof inputValue === "number" && inputValue > 1e18) {
+                inputValue = inputValue.toExponential(2);
+            }
+            return {
+                id: `${transaction.transactionHash}-input-${inputIndex}`,
+                label: `${input.inputName} (${input.type}): ${inputValue}`,
+            };
+        });
+        children.push({
+            id: `${transaction.transactionHash}-input`,
+            label: `Inputs (Decoded): `,
+            children: inputsChildren,
+        })
+    }
+    if(transaction.internalTxs && Array.isArray(transaction.internalTxs) && transaction.internalTxs.length > 0) {
+        const internalTxsChildren = findInternalCall(transaction.internalTxs,parseInt(depth),to,from,activity,transaction.transactionHash);
+        console.log(internalTxsChildren);
+        children.push({
+            id: `${transaction.transactionHash}-internalTxs`,
+            label: `Internal Txs: `,
+            children: internalTxsChildren
+        });
+    }
+    return [{
+        id: `${transaction.transactionHash}-transaction`,
+        label: `Transaction : ${transaction.transactionHash}`,
+        children: children,
+    }]
+
+}
+
+function findInternalCall(transactions,depth,to,from,activity,txHash) {
+    for(const transaction of transactions) {
+        if(transaction.depth===depth &&
+            transaction.from===from &&
+            transaction.to===to &&
+            transaction.activity===activity
+        )
+            return expandInternal([transaction],[],txHash);
+        else if(transaction.calls &&  Array.isArray(transaction.calls) && transaction.calls.length>0) {
+            const result = findInternalCall(transaction.calls, depth, to, from, activity, txHash);
+            if(result){
+                return result;
+            }
+        }
+    }
 }
 
 function expandInternal(transactions,parentIndex,txHash){

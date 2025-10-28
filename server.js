@@ -53,7 +53,8 @@ const {
 	extractEventDataAsJson,
 	formatStorageHistoryForVisualization,
 	formatCallsForTreeView,
-    formatInternalTransactionsForTreeView
+    formatInternalTransactionsForTreeView,
+    formatCallForTreeView
 } = require("./query/queryFunctions");
 
 app.post("/api/generateGraph", (req, res) => {
@@ -823,18 +824,29 @@ app.post("/api/data/events", async (req, res) => {
 	}
 });
 
-app.post("/api/data/transactions",async (req,res)=>{
+app.post("/api/data/internalTxs",async (req, res) => {
+    const query = req.body;
+    const {txHash,depth,to,from,activity,page=0,limit=20} = req.query;
     try{
-        const query = req.body.query;
         await connectDB("Mainnet");
         const txs = await fetchTransactions(query);
+        const tx = txs.find((tx)=> tx.transactionHash === txHash);
+        const formattedTransaction = formatCallForTreeView(tx,depth,to,from,activity);
+        const startIndex = parseInt(page) * parseInt(limit);
+        const endIndex = startIndex + parseInt(limit);
+        const paginatedCalls = formattedTransaction.slice(startIndex, endIndex);
         await mongoose.disconnect();
-        return res.json(txs);
+        return res.json({
+            items: paginatedCalls,
+            total: formattedTransaction.length,
+            page: parseInt(page),
+            totalPages: Math.ceil(formattedTransaction.length / parseInt(limit)),
+        });
     } catch (error) {
         console.error("Error fetching activity data:", error);
         res.status(500).json({ error: error.message });
     }
-});
+})
 
 app.post("/api/data/internalTxsTree", async (req,res)=>{
     const {txHash,page,limit} = req.query;

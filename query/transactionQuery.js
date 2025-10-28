@@ -15,7 +15,7 @@ export async function fetchTransactions(query) {
 		if (Date.now() - timestamp < CACHE_TTL) return data;
 	}
 
-	const { contractAddress, dateFrom, dateTo, fromBlock, toBlock, internalTxs, minOccurrences } = query;
+	const { contractAddress, dateFrom, dateTo, fromBlock, toBlock, internalTxs, minOccurrences, txHash } = query;
 	const queryFilter = {};
 
 	if (contractAddress) {
@@ -49,6 +49,9 @@ export async function fetchTransactions(query) {
 			$lte: Number(toBlock),
 		};
 	}
+    if(txHash){
+        queryFilter.transactionHash = txHash;
+    }
 
 	let results = [];
 
