@@ -28,6 +28,9 @@ function decodeTransactionInputs(tx,contractAbi,web3) {
  * @param {*} contractAbi 
  * @returns 
  */
+
+//TODO basta che giro per gli address dei contratti una volta sola che tanto con il metodo get event prendo tutti gli eventi generati in quella trasazione
+
 async function getEvents(transactionHash, block, contractAddress,web3,contractAbi) {
     let myContract = new web3.eth.Contract(JSON.parse(contractAbi), contractAddress);
     let filteredEvents = [];
@@ -42,12 +45,40 @@ async function getEvents(transactionHash, block, contractAddress,web3,contractAb
                 }
                 const event = {
                     eventName: element.event,
-                    eventValues: element.returnValues
+                    eventValues: element.returnValues,
+                    eventFrom:contractAddress.toLowerCase(),
+                    eventSignature:element.logIndex.toString()
                 };
                 filteredEvents.push(event);
         }
     })
     return filteredEvents;
+}
+
+async function getEventFromErigon(transactionHash,networkData){
+    const body = {
+    jsonrpc: "2.0",
+    method: "eth_getTransactionReceipt",
+    params: [transactionHash],
+    id: 1
+  };
+  try {
+    const response = await fetch(networkData.web3Endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body)
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! Status: ${response.status}`);
+    }
+
+    const data = await response.json();
+    return data.result.logs; 
+  } catch (err) {
+    console.error("Error fetching transaction receipt:", err);
+    throw err;
+  }
 }
 
 /**
@@ -59,69 +90,74 @@ async function getEvents(transactionHash, block, contractAddress,web3,contractAb
  * @param {*} web3 
  * @returns 
  */
-async function getEventsFromInternal(transactionHash,block,contractAddress,networkData,web3){
+async function getEventsFromInternal(transactionHash, block, contractAddress, networkData, web3) {
     let filteredEvents = [];
     let query = { contractAddress: contractAddress };
     let response = await searchAbi(query);
-    if(!(response && !response.abi.includes("Contract source code not verified"))){
-        response = await handleAbiFetch(contractAddress,networkData.apiKey,networkData.endpoint)
+    let abiFromDb;
+    if (!response ) {
+        response={abi:await handleAbiFetch(contractAddress,networkData.apiKey,networkData.endpoint)};
     }
-    if(response && !response.abi.includes("Contract source code not verified")){
-        let abiFromDb = JSON.parse(response.abi);
-        let internalContract= new web3.eth.Contract(abiFromDb, contractAddress);
-        const pastEvents=await internalContract.getPastEvents("allEvents", {fromBlock: block, toBlock: block});
-        myContract=null;
-        pastEvents.forEach((element)=>{
-            if(transactionHash==element.transactionHash){
-                    for (const value in element.returnValues) {
-                        if (typeof element.returnValues[value] === "bigint") {
-                            element.returnValues[value] = Number(element.returnValues[value]);
-                        }
+    //The event are done after the internal so I don't have to redo the fetch 
+    if (response && !response.abi.includes("Contract source code not verified")) {
+        abiFromDb = JSON.parse(response.abi);
+        let internalContract = new web3.eth.Contract(abiFromDb, contractAddress);
+        const pastEvents = await internalContract.getPastEvents("allEvents", { fromBlock: block, toBlock: block });
+        pastEvents.forEach((element) => {
+            if (transactionHash == element.transactionHash) {
+                for (const value in element.returnValues) {
+                    if (typeof element.returnValues[value] === "bigint") {
+                        element.returnValues[value] = Number(element.returnValues[value]);
                     }
-                    const event = {
-                        eventName: element.event,
-                        eventValues: element.returnValues
-                    };
-                    if(event.eventName){
-                        filteredEvents.push(event);
-                    }else{
-                        let undefinedEvent={
-                            elementName:"undefined",
-                            eventValues:element.topics
-                        }
-                        filteredEvents.push(undefinedEvent)
+                }
+                const event = {
+                    eventName: element.event,
+                    eventValues: element.returnValues,
+                    eventFrom:contractAddress.toLowerCase(),
+                    eventSignature:element.logIndex.toString()
+                };
+                if (event.eventName) {
+                    filteredEvents.push(event);
+                } else {
+                    let undefinedEvent = {
+                        eventName: "undefined",
+                        eventValues: element.topics,
+                        eventFrom:contractAddress.toLowerCase(),
+                        eventSignature:element.logIndex.toString()
                     }
-                   
+                    filteredEvents.push(undefinedEvent)
+                }
             }
         })
+    } else{
     }
-  
     return filteredEvents;
 }
+/**
+ * 
+ * @param {*} addressTo 
+ * @param {*} apiKey 
+ * @param {*} endpoint 
+ * @returns 
+ */
 async function handleAbiFetch(addressTo, apiKey, endpoint) {
-    let success = false;
-    let storeAbi;
-    while (!success) {
-        await new Promise((resolve) => setTimeout(resolve, 5000));
-        let callForAbi = await axios.get(`${endpoint}&module=contract&action=getsourcecode&address=${addressTo}&apikey=${apiKey}`);
-        if(!callForAbi.data.message.includes("NOTOK")) {
-            storeAbi = {
-                contractName: callForAbi.data.result[0].ContractName,
-                contractAddress: addressTo,
-                abi: callForAbi.data.result[0].ABI,
-            };
-            await saveAbi(storeAbi);
-
-            if (!storeAbi.abi.includes("Contract source code not verified")) {
-                return storeAbi;
-            } else {
-                
-            }
-            success = true;
-        }
+    const callForAbi = await axios.get(
+        `${endpoint}&module=contract&action=getsourcecode&address=${addressTo}&apikey=${apiKey}`
+    );
+    const proxyImplementation = '';
+    const storeAbi = {
+        contractName: callForAbi.data.result[0].ContractName,
+        abi: callForAbi.data.result[0].ABI,
+        proxy: callForAbi.data.result[0].Proxy,
+        proxyImplementation: proxyImplementation,
+        contractAddress: addressTo,
+    };
+    if (!callForAbi.data.message.includes("NOTOK")) {
+        await saveAbi(storeAbi);
     }
-    return storeAbi;
+    return storeAbi.abi
 }
+
 /**
  * 
  * @param {*} transactionHash 
@@ -132,15 +168,41 @@ async function handleAbiFetch(addressTo, apiKey, endpoint) {
  * @param {*} web3 
  * @returns 
  */
-async function iterateInternalForEvent(transactionHash,block,internalTxs,option,networkData,web3){
-    if(option.internalTransaction==1){
-        //flattenInternalTransaction=flattenInternalTransactions(internalTxs,transactionHash);
-        await assignEventToInternal(transactionHash,block,internalTxs,networkData,web3);
-    }else{
+async function iterateInternalForEvent(transactionHash, block, internalTxs, option, networkData, web3) {
+    let eventArray = [];
+    if (option.internalTransaction == 1) {
+        let resultEvents=[];
+        await assignEventToInternal(transactionHash, block, internalTxs, networkData, web3, resultEvents);
+        if (resultEvents.length > 0) {
+            resultEvents.forEach(ele => {
+                eventArray.push(ele);
+            })
+        }
+
+    } else {
         for (const element of internalTxs) {
-            element.events = await getEventsFromInternal(transactionHash, block, option.internalTransaction == 1 ? element["contractAddress"] : element["to"], networkData, web3);
-        }   
+            let resultEvents = await getEventsFromInternal(transactionHash, block, option.internalTransaction == 1 ? element["contractAddress"] : element["to"], networkData, web3);
+            if (resultEvents.length > 0) {
+                resultEvents.forEach(ele => {
+                    eventArray.push(ele);
+                })
+
+            }
+        }
     }
+    return eventArray;
+}
+/**
+ * 
+ * @param {*} transactionHash 
+ * @param {*} block 
+ * @param {*} networkData 
+ * @param {*} web3 
+ * @returns 
+ */
+async function getEventFromErigonLogs(transactionHash,block,networkData,web3){
+    let events=getEventFromEring(transactionHash,networkData)
+    return events;
 }
 /**
  * 
@@ -150,11 +212,19 @@ async function iterateInternalForEvent(transactionHash,block,internalTxs,option,
  * @param {*} networkData 
  * @param {*} web3 
  */
-async function assignEventToInternal(transactionHash,block,internalTxs,networkData,web3){
+async function assignEventToInternal(transactionHash,block,internalTxs,networkData,web3,resultEvents){
     for(const transaction of internalTxs) {
-        transaction.events=await getEventsFromInternal(transactionHash, block, transaction.to, networkData,web3);
+        let eventFromInternalContract = await getEventsFromInternal(transactionHash, block, transaction.to, networkData, web3);
+        if(eventFromInternalContract.length==0){
+            eventFromInternalContract = await getEventsFromInternal(transactionHash, block, transaction.from, networkData, web3);
+        }
+        if (eventFromInternalContract.length > 0) {
+            eventFromInternalContract.forEach((element) => {
+                resultEvents.push(element)
+            })
+        }
         if(transaction.calls){
-            await assignEventToInternal(transactionHash,block,transaction.calls,networkData,web3);
+            await assignEventToInternal(transactionHash,block,transaction.calls,networkData,web3,resultEvents);
         }
     }
 }
@@ -168,9 +238,26 @@ function safeCheck(arr, ev) {
     return false; 
   }
 }
-function checkIfEventIsAlreadyStored(events, eventToCheck) {
 
-  return events.some(el => JSON.stringify(el) === JSON.stringify(eventToCheck));
+function checkIfEventIsAlreadyStored(events, eventToCheck) {
+  return events.some(el => deepEqual(el,eventToCheck));
+}
+function deepEqual(a, b, seen = new WeakMap()) {
+  if (a === b) return true;
+  if (typeof a !== 'object' || typeof b !== 'object' || a == null || b == null) return false;
+
+  if (seen.has(a)) return seen.get(a) === b;
+  seen.set(a, b);
+
+  const keysA = Object.keys(a);
+  const keysB = Object.keys(b);
+  if (keysA.length !== keysB.length) return false;
+
+  for (const key of keysA) {
+    if (!Object.prototype.hasOwnProperty.call(b, key)) return false;
+    if (!deepEqual(a[key], b[key], seen)) return false;
+  }
+  return true;
 }
 
 /**
@@ -210,5 +297,6 @@ module.exports={
     iterateInternalForEvent,
     decodeInputs,
     checkIfEventIsAlreadyStored,
-    safeCheck
+    safeCheck,
+    getEventFromErigon
 }

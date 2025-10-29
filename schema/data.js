@@ -15,7 +15,8 @@ const storageStateSchema = new mongoose.Schema({
 
 const eventSchema = new mongoose.Schema({
     eventName: {type: String},
-    eventValues: {type: mongoose.Schema.Types.Mixed}
+    eventValues: {type: mongoose.Schema.Types.Mixed},
+    eventFrom:{type:String}
 }, { _id : false });
 
 const internalTxSchema = new mongoose.Schema({
@@ -87,8 +88,10 @@ const extractionLogSchema = new mongoose.Schema({
 }, {versionKey: false});
 
 const extractionAbiSchema = new mongoose.Schema({
-    contractName: {type: String},
+    abi:{type:String},
+    contractName:{type:String},
+    proxy: {type: String},
+    proxyImplementation:{type:String},
     contractAddress: {type: String},
-    abi: {type: String}
 })
 module.exports = {transactionSchema, extractionLogSchema,extractionAbiSchema};

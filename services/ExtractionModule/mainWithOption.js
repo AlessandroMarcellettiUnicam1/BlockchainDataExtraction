@@ -316,18 +316,15 @@ async function getStorageData(contractTransactions, mainContract, contractTree, 
     }
     
 }
-function runWorkerForTx(tx, mainContract, contractTree, contractAddress, smartContract,option,networkData) {
+function runWorkerForTx(tx, mainContract, contractTree, contractAddress, smartContract, option, networkData) {
     const workerPath = path.join(__dirname, 'workerWithOption.js');
+    
     return new Promise((resolve, reject) => {
         const worker = fork(workerPath, [], {
-            // Increase memory limit for worker
-            execArgv: ['--max-old-space-size=1024', '--expose-gc']
+            execArgv: ['--max-old-space-size=4096', '--expose-gc']
         });
-        // Set timeout for worker (optional)
-        const timeout = setTimeout(() => {
-            worker.kill('SIGKILL');
-            reject(new Error('Worker timeout'));
-        }, 3000000); // 5 minutes timeout
+
+        // Send data to the worker
         worker.send({
             tx,
             mainContract,
@@ -338,8 +335,8 @@ function runWorkerForTx(tx, mainContract, contractTree, contractAddress, smartCo
             networkData
         });
 
+        // Listen for messages
         worker.on("message", (msg) => {
-            clearTimeout(timeout);
             if (msg === "done") {
                 resolve();
             } else if (msg.error) {
@@ -347,17 +344,17 @@ function runWorkerForTx(tx, mainContract, contractTree, contractAddress, smartCo
             }
         });
 
+        // Handle worker exit
         worker.on("exit", (code, signal) => {
-            clearTimeout(timeout);
-            if (code !== 0 && signal !== 'SIGKILL') {
+            if (code !== 0) {
                 reject(new Error(`Worker exited with code ${code} and signal ${signal}`));
-            } else if (code === 0) {
+            } else {
                 resolve();
             }
         });
 
+        // Handle worker error
         worker.on("error", (err) => {
-            clearTimeout(timeout);
             reject(err);
         });
     });
