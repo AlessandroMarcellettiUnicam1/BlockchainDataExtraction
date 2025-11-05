@@ -125,7 +125,21 @@ export async function getTimeData(query) {
 export async function getInputsData(query) {
 	try {
 		const transactions = await fetchTransactions(query);
-
+        const inputsData = {};
+        transactions.forEach((tx) => {
+            if(tx.inputs && Array.isArray(tx.inputs) && tx.inputs.length > 0) {
+                tx.inputs.forEach((input) => {
+                    const type = input.type || "unknown";
+                    if(!inputsData[type]){
+                        inputsData[type] = {
+                            type: input.type,
+                            count:0
+                        }
+                    }
+                    inputsData[type].count += 1;
+                })
+            }
+        });
         let result = []
         for (const transaction of transactions) {
             for(let i = 0;i<transaction.inputs.length;i++) {
@@ -144,7 +158,8 @@ export async function getInputsData(query) {
                 });
             }
         }
-		return result;
+        const inputsChart = Object.values(inputsData)
+		return {inputsGrid: result, inputsChart: inputsChart};
 	} catch (error) {
 		console.error("Error fetching inputs data:", error);
 		throw new Error(error.message);
@@ -252,7 +267,6 @@ export async function getStorageStateData(query) {
 				});
 			}
 		});
-
 		return Object.values(storageStateData);
 	} catch (error) {
 		console.error("Error fetching storage state data:", error);
