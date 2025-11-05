@@ -11,7 +11,7 @@ const { decodeInternalTransaction,newDecodedInternalTransaction } = require('../
 const { optimizedDecodeValues } = require('../optimizedDecodeValues');
 const { saveTransaction } = require("../../databaseStore");
 const {searchTransaction} = require("../../query/query")
-const {decodeTransactionInputs,getEvents,iterateInternalForEvent,decodeInputs,getEventFromErigon} = require('../decodingUtils/utils')
+const {decodeTransactionInputs,getEvents,iterateInternalForEvent,decodeInputs,getEventFromErigon,getEventsFromInternal,getEventFromHardHat} = require('../decodingUtils/utils')
 
 const fs = require('fs');
 const path = require('path');
@@ -179,14 +179,16 @@ async function createTransactionLog(tx, mainContract, contractTree, smartContrac
                 const { stream, requiredTime } = await debugTransactionErigonStreaming(tx.hash,networkData.web3Endpoint);
                 try{
                     storageVal = await getTraceStorageFromErigon(stream, networkData,tx.inputDecoded?tx.inputDecoded.method:null,tx.hash,mainContract,contractTree,smartContract,option,web3);
-                    // storageVal.internalTxs=await newDecodedInternalTransaction(transactionHash, smartContract, networkData, web3);
+                    //storageVal.internalTxs=await newDecodedInternalTransaction(transactionLog.transactionHash, smartContract, networkData, web3);
                 }catch (err){
                     console.log(err);
                 }
             }else{
                 debugResult = await debugTransaction(tx.hash, tx.blockNumber,networkData);
                 try{
+                    
                     storageVal = await getTraceStorage(debugResult.response, networkData, tx.inputDecoded?tx.inputDecoded.method:null, tx.hash, mainContract, contractTree, smartContract,option,web3);
+                    
                 }catch(err){
                     console.log(err)
                 }
@@ -230,44 +232,152 @@ async function createTransactionLog(tx, mainContract, contractTree, smartContrac
  * @param {*} networkData : object representing the network data ( apiKey,endPoint, networkName,web3Endpoint)
  */
 async function getEventForTransaction(transactionLog, hash, blockNumber, contractAddress, web3, contractTree, option, networkData) {
-    //if to get the event form the public transaction
-    let seenEvent = new Set();
-    if (contractTree && Object.keys(contractTree.contractAbi).length !== 0) {
+    if (option.default != 0) {
+        //if to get the event form the public transaction
+        let seenEvent = new Set();
+        if (contractTree && Object.keys(contractTree.contractAbi).length !== 0) {
 
-        let publicEvents = await getEvents(hash, blockNumber, contractAddress, web3, contractTree.contractAbi);
-        publicEvents.forEach((ele) => {
-            if (!seenEvent.has(ele.eventSignature)) {
-                transactionLog.events.push(ele)
-                seenEvent.add(ele.eventSignature)
+            let publicEvents = await getEvents(hash, blockNumber, contractAddress, web3, contractTree.contractAbi);
+            publicEvents.forEach((ele) => {
+                if (!seenEvent.has(ele.eventSignature)) {
+                    transactionLog.events.push(ele)
+                    seenEvent.add(ele.eventSignature)
+                }
+            })
+        }
+        //if to get the event from internal transaction
+        if (transactionLog.internalTxs && transactionLog.internalTxs.length > 0) {
+            let internalEvents = await iterateInternalForEvent(hash, blockNumber, transactionLog.internalTxs, option, networkData, web3);
+            internalEvents.forEach((ele) => {
+                if (!seenEvent.has(ele.eventSignature)) {
+                    transactionLog.events.push(ele)
+                    seenEvent.add(ele.eventSignature)
+                }
+            })
+            let allEventsFromReceipt = option.internalTransaction == 1
+                ? await getEventFromErigon(transactionLog.transactionHash, networkData)
+                : await getEventFromHardHat(transactionLog.transactionHash, networkData, hre,blockNumber);
+            if (allEventsFromReceipt.length > 0) {
+                for (const ele of allEventsFromReceipt) {
+                    let logIndex = web3.utils.hexToNumber(ele.logIndex).toString();
+                    if (!seenEvent.has(logIndex)) {
+                        let eventMissing = await getEventsFromInternal(transactionLog.transactionHash, blockNumber, ele.address.toLowerCase(), networkData, web3)
+                        if (eventMissing.length > 0) {
+                            let flag = true;
+                            eventMissing.forEach((event) => {
+                                if (!seenEvent.has(event.eventSignature)) {
+                                    flag = false;
+                                    transactionLog.events.push(event)
+                                    seenEvent.add(event.eventSignature)
+                                }
+                            })
+                            if (flag) {
+                                transactionLog.events.push({
+                                    eventName: "undefined",
+                                    eventValues: ele.topics,
+                                    eventFrom: ele.address.toLowerCase(),
+                                })
+                                seenEvent.add(logIndex)
+                            }
+                        } else {
+                            transactionLog.events.push({
+                                eventName: "undefined",
+                                eventValues: ele.topics,
+                                eventFrom: ele.address.toLowerCase(),
+                            })
+                            seenEvent.add(logIndex)
+                        }
+                    }
+
+                }
             }
-        })
-    }
-    //if to get the event from internal transaction
-    if (transactionLog.internalTxs && transactionLog.internalTxs.length > 0) {
-        let internalEvents = await iterateInternalForEvent(hash, blockNumber, transactionLog.internalTxs, option, networkData, web3);
-        // internalEvents = internalEvents.filter(element => !safeCheck(transactionLog.events, element));
-        internalEvents.forEach((ele) => {
-            if (!seenEvent.has(ele.eventSignature)) {
-                transactionLog.events.push(ele)
-                seenEvent.add(ele.eventSignature)
-            }
-        })
-        let allEventsFromErigon=await getEventFromErigon(transactionLog.transactionHash,networkData);
-        if (allEventsFromErigon.length > 0) {
+        }
+    } else {
+        //if to get the event form the public transaction
+        let seenEvent = new Set();
+        if (contractTree && Object.keys(contractTree.contractAbi).length !== 0) {
+
+            let publicEvents = await getEvents(hash, blockNumber, contractAddress, web3, contractTree.contractAbi);
+            publicEvents.forEach((ele) => {
+                if (!seenEvent.has(ele.eventSignature)) {
+                    transactionLog.events.push(ele)
+                    seenEvent.add(ele.eventSignature)
+                }
+            })
+        }
+        //if to get the event from internal transaction
+        // transactionLog.internalTxs && transactionLog.internalTxs.length > 0
+        if (option.internalTransaction == 1) {
+            let allEventsFromErigon = await getEventFromErigon(transactionLog.transactionHash, networkData);
             for (const ele of allEventsFromErigon) {
                 let logIndex = web3.utils.hexToNumber(ele.logIndex).toString();
                 if (!seenEvent.has(logIndex)) {
-                    transactionLog.events.push({
-                        eventName: "undefined",
-                        eventValues: ele.topics,
-                        eventFrom: ele.address.toLowerCase(),
-                    })
-                    seenEvent.add(logIndex)
+                    let result = await getEventsFromInternal(transactionLog.transactionHash, blockNumber, ele.address, networkData, web3);
+                    if (result.length > 0) {
+                        let flag = true;
+                        result.forEach((event) => {
+                            if (!seenEvent.has(event.eventSignature)) {
+                                transactionLog.events.push(event);
+                                seenEvent.add(event.eventSignature)
+                                flag = false;
+                            }
+                        })
+                        if (flag) {
+                            transactionLog.events.push({
+                                eventName: "undefined",
+                                eventValues: ele.topics,
+                                eventFrom: ele.address.toLowerCase(),
+                            })
+                            seenEvent.add(logIndex)
+                        }
+
+                    } else {
+                        //se sono qui è perché per quell'logindex non sono riuscito a decodificare l'evento
+                        transactionLog.events.push({
+                            eventName: "undefined",
+                            eventValues: ele.topics,
+                            eventFrom: ele.address.toLowerCase(),
+                        })
+                        seenEvent.add(logIndex)
+                    }
+                }
+
+            }
+        } else {
+            let allEventsFromErigon = await getEventFromHardHat(transactionLog.transactionHash, networkData, hre,blockNumber)
+            for (const ele of allEventsFromErigon) {
+                let logIndex = web3.utils.hexToNumber(ele.logIndex).toString();
+                if (!seenEvent.has(logIndex)) {
+                    let result = await getEventsFromInternal(transactionLog.transactionHash, blockNumber, ele.address, networkData, web3);
+                    if (result.length > 0) {
+                        let flag = true
+                        result.forEach((event) => {
+                            if (!seenEvent.has(event.eventSignature)) {
+                                transactionLog.events.push(event);
+                                seenEvent.add(event.eventSignature)
+                                flag = false;
+                            }
+                        })
+                        if (flag) {
+                            transactionLog.events.push({
+                                eventName: "undefined",
+                                eventValues: ele.topics,
+                                eventFrom: ele.address.toLowerCase(),
+                            })
+                            seenEvent.add(logIndex)
+                        }
+                    } else {
+                        transactionLog.events.push({
+                            eventName: "undefined",
+                            eventValues: ele.topics,
+                            eventFrom: ele.address.toLowerCase(),
+                        })
+                        seenEvent.add(logIndex)
+                    }
                 }
             }
         }
     }
-
 }
 /**
  *

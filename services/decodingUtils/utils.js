@@ -3,6 +3,7 @@ const { searchAbi}= require('../../query/query')
 const { Web3 } = require('web3');
 const axios = require("axios");
 const {saveAbi}= require("../../databaseStore")
+const hre = require("hardhat");
 /**
  * Decodes the input data of all transactions using the contract ABI.
  *
@@ -80,6 +81,20 @@ async function getEventFromErigon(transactionHash,networkData){
     throw err;
   }
 }
+/**
+ * 
+ * @param {*} transactionHash 
+ * @param {*} networkData 
+ * @param {*} hardhat 
+ * @returns 
+ */
+async function getEventFromHardHat(transactionHash,networkData,hardhat,blockNumber){
+    // Use the same provider that Hardhat uses
+    await hre.changeNetwork(networkData.networkName, blockNumber)
+    // Get the transaction receipt (same as eth_getTransactionReceipt)
+    const receipt = await hre.network.provider.send("eth_getTransactionReceipt", [transactionHash]);
+    return receipt.logs;
+}
 
 /**
  * 
@@ -91,47 +106,48 @@ async function getEventFromErigon(transactionHash,networkData){
  * @returns 
  */
 async function getEventsFromInternal(transactionHash, block, contractAddress, networkData, web3) {
-    let filteredEvents = [];
-    let query = { contractAddress: contractAddress };
-    let response = await searchAbi(query);
-    let abiFromDb;
-    if (!response ) {
-        response={abi:await handleAbiFetch(contractAddress,networkData.apiKey,networkData.endpoint)};
+  let filteredEvents = [];
+  let targetAbi;
+  let targetAddress = contractAddress;
+  // Fetch ABI
+  let proxyInfo = await searchAbi({ contractAddress });
+  if (!proxyInfo) {
+    proxyInfo = { abi: await handleAbiFetch(contractAddress, networkData.apiKey, networkData.endpoint) };
+  }
+  let implInfo;
+  // Handle proxy logic
+  if (proxyInfo.proxy === '1' && proxyInfo.proxyImplementation) {
+    implInfo = await searchAbi({ contractAddress: proxyInfo.proxyImplementation });
+    if (implInfo && !implInfo.abi.includes("Contract source code not verified")) {
+      targetAbi = JSON.parse(implInfo.abi);
     }
-    //The event are done after the internal so I don't have to redo the fetch 
-    if (response && !response.abi.includes("Contract source code not verified")) {
-        abiFromDb = JSON.parse(response.abi);
-        let internalContract = new web3.eth.Contract(abiFromDb, contractAddress);
-        const pastEvents = await internalContract.getPastEvents("allEvents", { fromBlock: block, toBlock: block });
-        pastEvents.forEach((element) => {
-            if (transactionHash == element.transactionHash) {
-                for (const value in element.returnValues) {
-                    if (typeof element.returnValues[value] === "bigint") {
-                        element.returnValues[value] = Number(element.returnValues[value]);
-                    }
-                }
-                const event = {
-                    eventName: element.event,
-                    eventValues: element.returnValues,
-                    eventFrom:contractAddress.toLowerCase(),
-                    eventSignature:element.logIndex.toString()
-                };
-                if (event.eventName) {
-                    filteredEvents.push(event);
-                } else {
-                    let undefinedEvent = {
-                        eventName: "undefined",
-                        eventValues: element.topics,
-                        eventFrom:contractAddress.toLowerCase(),
-                        eventSignature:element.logIndex.toString()
-                    }
-                    filteredEvents.push(undefinedEvent)
-                }
-            }
-        })
-    } else{
+  } else if (proxyInfo && !proxyInfo.abi.includes("Contract source code not verified")) {
+    targetAbi = JSON.parse(proxyInfo.abi);
+  }
+
+  if (!targetAbi) return [];
+
+  // Decode events
+  const contract = new web3.eth.Contract(targetAbi, targetAddress);
+  const pastEvents = await contract.getPastEvents("allEvents", { fromBlock: block, toBlock: block });
+
+  for (const e of pastEvents) {
+    if (e.transactionHash === transactionHash && e.event) {
+      const eventValues = Object.fromEntries(
+        Object.entries(e.returnValues).map(([k, v]) => [k, typeof v === 'bigint' ? Number(v) : v])
+      );
+      if(e.event){
+        filteredEvents.push({
+            eventName: e.event,
+            eventValues,
+            eventFrom: contractAddress.toLowerCase(),
+            eventSignature: e.logIndex.toString(),
+            });
+        }
     }
-    return filteredEvents;
+  }
+
+  return filteredEvents;
 }
 /**
  * 
@@ -141,17 +157,17 @@ async function getEventsFromInternal(transactionHash, block, contractAddress, ne
  * @returns 
  */
 async function handleAbiFetch(addressTo, apiKey, endpoint) {
+   
     const callForAbi = await axios.get(
         `${endpoint}&module=contract&action=getsourcecode&address=${addressTo}&apikey=${apiKey}`
     );
-    const proxyImplementation = '';
     const storeAbi = {
         contractName: callForAbi.data.result[0].ContractName,
         abi: callForAbi.data.result[0].ABI,
         proxy: callForAbi.data.result[0].Proxy,
-        proxyImplementation: proxyImplementation,
+        proxyImplementation: '',
         contractAddress: addressTo,
-    };
+    }
     if (!callForAbi.data.message.includes("NOTOK")) {
         await saveAbi(storeAbi);
     }
@@ -192,18 +208,7 @@ async function iterateInternalForEvent(transactionHash, block, internalTxs, opti
     }
     return eventArray;
 }
-/**
- * 
- * @param {*} transactionHash 
- * @param {*} block 
- * @param {*} networkData 
- * @param {*} web3 
- * @returns 
- */
-async function getEventFromErigonLogs(transactionHash,block,networkData,web3){
-    let events=getEventFromEring(transactionHash,networkData)
-    return events;
-}
+
 /**
  * 
  * @param {*} transactionHash 
@@ -212,22 +217,21 @@ async function getEventFromErigonLogs(transactionHash,block,networkData,web3){
  * @param {*} networkData 
  * @param {*} web3 
  */
-async function assignEventToInternal(transactionHash,block,internalTxs,networkData,web3,resultEvents){
-    for(const transaction of internalTxs) {
+async function assignEventToInternal(transactionHash, block, internalTxs, networkData, web3, resultEvents) {
+    for (const transaction of internalTxs) {
         let eventFromInternalContract = await getEventsFromInternal(transactionHash, block, transaction.to, networkData, web3);
-        if(eventFromInternalContract.length==0){
+        if (eventFromInternalContract.length == 0) {
             eventFromInternalContract = await getEventsFromInternal(transactionHash, block, transaction.from, networkData, web3);
         }
-        if (eventFromInternalContract.length > 0) {
-            eventFromInternalContract.forEach((element) => {
-                resultEvents.push(element)
-            })
-        }
-        if(transaction.calls){
-            await assignEventToInternal(transactionHash,block,transaction.calls,networkData,web3,resultEvents);
+        eventFromInternalContract.forEach((event)=>{
+            resultEvents.push(event)
+        })
+        if (transaction.calls) {
+            await assignEventToInternal(transactionHash, block, transaction.calls, networkData, web3, resultEvents);
         }
     }
 }
+
 
 
 function safeCheck(arr, ev) {
@@ -298,5 +302,7 @@ module.exports={
     decodeInputs,
     checkIfEventIsAlreadyStored,
     safeCheck,
-    getEventFromErigon
+    getEventFromErigon,
+    getEventFromHardHat,
+    getEventsFromInternal,
 }
