@@ -351,9 +351,96 @@ function regroupShatrace(finalShaTraces){
       );
 }
 
+/**
+ * Analizza il JSON delle trace e crea una mappa gerarchica
+ * transazione padre -> tutte le sue chiamate interne
+ */
+async function buildTransactionHierarchy(traceJson,networkData) {
+    let traces;
+    try{
+        const rpcUrl = networkData.web3Endpoint;
+        const payload = {
+            jsonrpc: "2.0",
+            method: "trace_filter",
+            params: [{
+                fromBlock: "0x11d4fbF", 
+                toBlock: "0x11d4fbf", 
+                fromAddress: ["0x902f09715b6303d4173037652fa7377e5b98089e"],
+                toAddress: ["0x902f09715b6303d4173037652fa7377e5b98089e"]
+            }
+            ],
+            after: 1000,
+            count: 100,
+            id: 1
+        };
+         const response = await axios.post(rpcUrl, payload, {
+            headers: { "Content-Type": "application/json" }
+        });
+        console.log(response.data);
+        traces = response.data.result;
+    } catch(err){
+        console.error("debugInteralTransaction error:", err.message);
+        throw err;
+    }
+    const txMap = new Map();
+    
+    traces.forEach(trace => {
+        const txHash = trace.transactionHash;
+        
+        if (!txMap.has(txHash)) {
+            txMap.set(txHash, {
+                hash: txHash,
+                from: trace.action?.from,
+                to: trace.action?.to,
+                value: trace.action?.value,
+                gasUsed: trace.result?.gasUsed,
+                input: trace.action?.input,
+                blockNumber: trace.action?.blockNumber,
+                timestamp: 1729938432
+            });
+        }
+        
+        // const txData = txMap.get(txHash);
+        // const isMainCall = !trace.traceAddress || trace.traceAddress.length === 0;
+        
+       /* if (isMainCall) {
+            txData.parentCall = {
+                from: trace.action?.from,
+                to: trace.action?.to,
+                value: trace.action?.value,
+                gas: trace.action?.gas,
+                input: trace.action?.input,
+                callType: trace.action?.callType || trace.type,
+                gasUsed: trace.result?.gasUsed,
+                output: trace.result?.output
+            };
+        } else {
+            txData.internalCalls.push({
+                from: trace.action?.from,
+                to: trace.action?.to,
+                value: trace.action?.value,
+                gas: trace.action?.gas,
+                input: trace.action?.input,
+                callType: trace.action?.callType || trace.type,
+                traceAddress: trace.traceAddress,
+                depth: trace.traceAddress.length,
+                gasUsed: trace.result?.gasUsed,
+                output: trace.result?.output,
+                subtraces: trace.subtraces
+            });
+        }*/
+    });
+
+    let txMapArr = Array.from(txMap.values());
+    console.log(txMapArr);
+    return txMapArr;
+    
+}
+
 module.exports={
     assignEventToInternal,
     getEventFromErigon,
     debugTransactionErigonStreaming,
-    getTraceStorageFromErigon
+    getTraceStorageFromErigon,
+    buildTransactionHierarchy
 }
