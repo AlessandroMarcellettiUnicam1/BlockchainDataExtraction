@@ -13,7 +13,7 @@ const JSONStream = require("JSONStream");
 async function getEventFromErigon(transactionHash,networkData){
     const body = {
     jsonrpc: "2.0",
-    method: "eth_getTransactionReceipt",
+    method: "eth_getTransactionByHash",
     params: [transactionHash],
     id: 1
   };
@@ -29,7 +29,39 @@ async function getEventFromErigon(transactionHash,networkData){
     }
 
     const data = await response.json();
-    return data.result.logs; 
+    return data.result; 
+  } catch (err) {
+    console.error("Error fetching transaction receipt:", err);
+    throw err;
+  }
+}
+
+/**
+ * Function used to get all the logs from a specific transaction
+ * @param {*} transactionHash 
+ * @param {*} networkData 
+ * @returns 
+ */
+async function getBlockFromErigon(transactionHash,networkData,fullTrace){
+    const body = {
+    jsonrpc: "2.0",
+    method: "eth_getBlockByHash",
+    params: [transactionHash,fullTrace],
+    id: 1
+  };
+  try {
+    const response = await fetch(networkData.web3Endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body)
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! Status: ${response.status}`);
+    }
+
+    const data = await response.json();
+    return data.result; 
   } catch (err) {
     console.error("Error fetching transaction receipt:", err);
     throw err;
@@ -355,7 +387,7 @@ function regroupShatrace(finalShaTraces){
  * Analizza il JSON delle trace e crea una mappa gerarchica
  * transazione padre -> tutte le sue chiamate interne
  */
-async function buildTransactionHierarchy(traceJson,networkData) {
+async function buildTransactionHierarchy(contractAddressesFrom, contractAddressesTo, fromBlock, toBlock, networkData) {
     let traces;
     try{
         const rpcUrl = networkData.web3Endpoint;
@@ -363,10 +395,10 @@ async function buildTransactionHierarchy(traceJson,networkData) {
             jsonrpc: "2.0",
             method: "trace_filter",
             params: [{
-                fromBlock: "0x11d4fbF", 
-                toBlock: "0x11d4fbf", 
-                fromAddress: ["0x902f09715b6303d4173037652fa7377e5b98089e"],
-                toAddress: ["0x902f09715b6303d4173037652fa7377e5b98089e"]
+                fromBlock: "0x" + parseInt(fromBlock).toString(16),
+                toBlock: "0x" + parseInt(toBlock).toString(16),
+                fromAddress: contractAddressesFrom,
+                toAddress: contractAddressesTo
             }
             ],
             after: 1000,
@@ -384,19 +416,20 @@ async function buildTransactionHierarchy(traceJson,networkData) {
     }
     const txMap = new Map();
     
-    traces.forEach(trace => {
+    traces.forEach(async trace => {
         const txHash = trace.transactionHash;
+        let publicTransaction = getEventFromErigon(txHash, networkData);
         
         if (!txMap.has(txHash)) {
             txMap.set(txHash, {
                 hash: txHash,
-                from: trace.action?.from,
-                to: trace.action?.to,
-                value: trace.action?.value,
-                gasUsed: trace.result?.gasUsed,
-                input: trace.action?.input,
-                blockNumber: trace.action?.blockNumber,
-                timestamp: 1729938432
+                from: publicTransaction.from,
+                to: publicTransaction.to,
+                value: publicTransaction.value,
+                gasUsed: publicTransaction.gasUsed,
+                input: publicTransaction.input,
+                blockNumber: publicTransaction.blockNumber,
+                timestamp: await getBlockFromErigon(txHash, networkData, true)
             });
         }
         

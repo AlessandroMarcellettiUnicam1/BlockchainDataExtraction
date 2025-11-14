@@ -293,98 +293,105 @@ app.post("/api/uploadDataInDb",async (req,res)=>{
 });
 // Route: Home Page
 app.post("/submit", upload.single("file"), async (req, res) => {
-	const contractAddress = req.body.contractAddress; // Get data from input1
-	const implementationContractAddress = req.body.implementationContractAddress; // Get data from input1
-	const contractName = req.body.contractName; // Get data from input2
-	const fromBlock = req.body.fromBlock; // Get 'Start Block' value from form
-	const toBlock = req.body.toBlock; // Get 'End Block' value from form
-	const network = req.body.network;
-	const filters = JSON.parse(req.body.filters);
-	const extractionType = req.body.extractionType;
-	// const transactionFlag=req.body.transactionFlag;
-	//TODO
-	//const option=req.body.option
-	let option;
-	switch(extractionType){
-		case ("0"):
-			option={
-					default:1,
-					internalStorage:1,
-					internalTransaction:1
-			}
-			break;
-		case("1"):
-			option={
-					default:1,
-					internalStorage:1,
-					internalTransaction:0
-				}
-			break;
-		case("2"):
-			
-			option={
-				default:0,
-				internalStorage:1,
-				internalTransaction:1
-			}
-			break;
-	}
-	// Perform actions based on the received data
-	console.log(`Start Block: ${fromBlock}`);
-	console.log(`End Block: ${toBlock}`);
-	// Perform actions with the received data (you can customize this part)
-	console.log(`contract Address: ${contractAddress}`);
-	console.log(
-		`implementation contract Address: ${implementationContractAddress}`
-	);
-	console.log(`Contract name: ${contractName}`);
-	let logs = [];
-	if (req.file) {
-		fs.readFile(req.file.path, "utf-8", async (err, data) => {
-			if (err) {
-				console.error(err);
-				return res.status(500).send("Error reading file");
-			}
-			logs = await getAllTransactions(
-					contractName,
-					contractAddress,
-					implementationContractAddress,
-					fromBlock,
-					toBlock,
-					network,
-					filters,
-					data,
-					option
-			);
-			fs.unlink(req.file.path, (err) => {
-				if (err) {
-					console.error(err);
-				}
-				if (logs instanceof Error) {
-					res.status(404).send(logs.message);
-				} else {
-					res.send(logs);
-				}
-			});
-		});
-	} else {
-			logs = await getAllTransactions(
-				contractName,
-				contractAddress,
-				implementationContractAddress,
-				fromBlock,
-				toBlock,
-				network,
-				filters,
-				null,
-				option
-			);
-		if (logs instanceof Error) {
-			res.status(404).send(logs.message);
-		} else {
-			res.send(logs);
-		}
-	}
+    // Old parameters (standard) con option incluso
+    const oldParams = {
+        contractName: req.body.contractName,
+        contractAddress: req.body.contractAddress,
+        implementationContractAddress: req.body.implementationContractAddress,
+        fromBlock: req.body.fromBlock,
+        toBlock: req.body.toBlock,
+        network: req.body.network,
+        filters: JSON.parse(req.body.filters),
+        extractionType: req.body.extractionType,
+        option: {}  // poi verra valorizzato sotto
+    };
+
+    // Nuova gestione option in base a extractionType
+    switch(oldParams.extractionType){
+        case ("0"):
+            oldParams.option = {
+                default:1,
+                internalStorage:1,
+                internalTransaction:1
+            };
+            break;
+        case("1"):
+            oldParams.option = {
+                default:1,
+                internalStorage:1,
+                internalTransaction:0
+            };
+            break;
+        case("2"):
+            oldParams.option = {
+                default:0,
+                internalStorage:1,
+                internalTransaction:1
+            };
+            break;
+        default:
+            oldParams.option = {};
+    }
+    console.log(`Start Block: ${oldParams.fromBlock}`);
+    console.log(`End Block: ${oldParams.toBlock}`);
+    console.log(`contract Address: ${oldParams.contractAddress}`);
+    console.log(`implementation contract Address: ${oldParams.implementationContractAddress}`);
+    console.log(`Contract name: ${oldParams.contractName}`);
+
+    let smartContractData = null;
+    if (req.file) {
+        smartContractData = await fs.promises.readFile(req.file.path, "utf-8");
+        await fs.promises.unlink(req.file.path);
+    }
+
+    oldParams.smartContract = smartContractData;
+
+    try {
+        const logs = await getAllTransactions(oldParams, null);
+        res.send(logs);
+    } catch(e) {
+        console.error(e);
+        res.status(500).send(e.message || "Internal Error");
+    }
+});
+
+app.post("/submitInternal", upload.single("file"), async (req, res) => {
+    const newParams = {
+        contractAddressesFrom: JSON.parse(req.body.contractAddressesFrom || "[]"),
+        contractAddressesTo: JSON.parse(req.body.contractAddressesTo || "[]"),
+        fromBlock: req.body.fromBlock,
+        toBlock: req.body.toBlock,
+        network: req.body.network,
+        filters: JSON.parse(req.body.filters), // se ti serve lato interno, altrimenti rimuovi
+        contractName: req.body.contractName,
+        implementationContractAddress: req.body.implementationContractAddress
+    };
+
+    if (!newParams.contractAddressesFrom.length || !newParams.contractAddressesTo.length) {
+        return res.status(400).json({ message: "Devi fornire almeno un indirizzo nei campi contractAddressesFrom e contractAddressesTo." });
+    }
+
+    console.log("Start Block:", newParams.fromBlock);
+    console.log("End Block:", newParams.toBlock);
+    console.log("contractAddressesFrom:", newParams.contractAddressesFrom);
+    console.log("contractAddressesTo:", newParams.contractAddressesTo);
+    console.log("Contract name:", newParams.contractName);
+
+    let smartContractData = null;
+    if (req.file) {
+        smartContractData = await fs.promises.readFile(req.file.path, "utf-8");
+        await fs.promises.unlink(req.file.path);
+    }
+
+    newParams.smartContract = smartContractData;
+
+    try {
+        const logs = await getAllTransactions(null, newParams);
+        res.send(logs);
+    } catch(e) {
+        console.error(e);
+        res.status(500).send(e.message || "Internal Error");
+    }
 });
 
 app.post("/json-download", (req, res) => {
