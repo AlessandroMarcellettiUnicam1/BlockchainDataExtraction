@@ -15,6 +15,7 @@ const path = require('path');
 const { fork } = require("child_process");
 
 const {ethers} = require("hardhat");
+const {buildTransactionHierarchy} = require("../Erigon/erigonApi");
 
 
 
@@ -46,8 +47,8 @@ async function getAllTransactions(oldParams, newParams) {
     try{
         switch (network) {
         case "Mainnet":
-                networkData.web3Endpoint = process.env.WEB3_ALCHEMY_MAINNET_URL,
-                networkData.apiKey = process.env.API_KEY_ETHERSCAN,
+                networkData.web3Endpoint = process.env.WEB3_ALCHEMY_MAINNET_URL
+                networkData.apiKey = process.env.API_KEY_ETHERSCAN
                 networkData.endpoint = process.env.ETHERSCAN_MAINNET_ENDPOINT
             break
         case "Sepolia":
@@ -92,10 +93,9 @@ async function getAllTransactions(oldParams, newParams) {
         let contractTree;
         let result;
 
-        if(!oldParams){
-            transactionList = await buildTransactionHierarchy(newParams.contractAddressesFrom, newParams.contractAddressesTo, newParams.fromBlock, newParams.toBlock, networkData);
-        }
-        else{
+        if(!oldParams && newParams){
+            result = await buildTransactionHierarchy(newParams.contractAddressesFrom, newParams.contractAddressesTo, newParams.fromBlock, newParams.toBlock, networkData);
+        } else {
             contractTree = await getContractTree(oldParams.smartContract, oldParams.implementationContractAddress, networkData.endpoint, networkData.apiKey, oldParams.contractName);
             transactionList = await getTransactionFromContract(networkData, oldParams.contractAddress, oldParams.fromBlock, oldParams.toBlock);
             result = await getStorageData(transactionList, oldParams.contractName, contractTree, oldParams.contractAddress, oldParams.filters, oldParams.smartContract, oldParams.option, networkData);

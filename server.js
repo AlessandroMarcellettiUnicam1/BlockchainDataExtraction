@@ -292,7 +292,7 @@ app.post("/api/uploadDataInDb",async (req,res)=>{
 	}
 });
 // Route: Home Page
-app.post("/submit", upload.single("file"), async (req, res) => {
+/*app.post("/submit", upload.single("file"), async (req, res) => {
     // Old parameters (standard) con option incluso
     const oldParams = {
         contractName: req.body.contractName,
@@ -389,6 +389,74 @@ app.post("/submitInternal", upload.single("file"), async (req, res) => {
         const logs = await getAllTransactions(null, newParams);
         res.send(logs);
     } catch(e) {
+        console.error(e);
+        res.status(500).send(e.message || "Internal Error");
+    }
+});*/
+
+app.post("/submit", upload.single("file"), async (req, res) => {
+    try {
+        if (req.body.contractAddress) {
+            const params = {
+                contractName: req.body.contractName,
+                contractAddress: req.body.contractAddress,
+                implementationContractAddress: req.body.implementationContractAddress,
+                fromBlock: req.body.fromBlock,
+                toBlock: req.body.toBlock,
+                network: req.body.network,
+                filters: JSON.parse(req.body.filters),
+                extractionType: req.body.extractionType,
+                option: {},
+                smartContract: null
+            };
+
+            switch (params.extractionType) {
+                case "0":
+                    params.option = { default: 1, internalStorage: 1, internalTransaction: 1 };
+                    break;
+                case "1":
+                    params.option = { default: 1, internalStorage: 1, internalTransaction: 0 };
+                    break;
+                case "2":
+                    params.option = { default: 0, internalStorage: 1, internalTransaction: 1 };
+                    break;
+                default:
+                    params.option = {};
+            }
+
+            if (req.file) {
+                params.smartContract = await fs.promises.readFile(req.file.path, "utf-8");
+                await fs.promises.unlink(req.file.path);
+            }
+
+            const logs = await getAllTransactions(params, null);
+            return res.send(logs);
+
+        } else if (req.body.contractAddressesFrom) {
+            const params = {
+                contractAddressesFrom: JSON.parse(req.body.contractAddressesFrom || "[]"),
+                contractAddressesTo: JSON.parse(req.body.contractAddressesTo || "[]"),
+                fromBlock: req.body.fromBlock,
+                toBlock: req.body.toBlock,
+                network: req.body.network,
+                filters: JSON.parse(req.body.filters),
+                contractName: req.body.contractName,
+                implementationContractAddress: req.body.implementationContractAddress,
+                smartContract: null
+            };
+
+            if (req.file) {
+                params.smartContract = await fs.promises.readFile(req.file.path, "utf-8");
+                await fs.promises.unlink(req.file.path);
+            }
+
+            const logs = await getAllTransactions(null, params);
+            return res.send(logs);
+
+        } else {
+            return res.status(400).send("Parameters are not given correctly");
+        }
+    } catch (e) {
         console.error(e);
         res.status(500).send(e.message || "Internal Error");
     }

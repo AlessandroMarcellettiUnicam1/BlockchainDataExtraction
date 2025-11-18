@@ -3,6 +3,7 @@ const {newDecodedInternalTransaction,decodeInternalTransaction}=require("../deco
 const {getEventsFromInternal}=require("../decodingUtils/utils")
 const {optimizedDecodeValues}=require("../optimizedDecodeValues")
 const JSONStream = require("JSONStream");
+const axios = require("axios");
 
 /**
  * Function used to get all the logs from a specific transaction
@@ -416,10 +417,11 @@ async function buildTransactionHierarchy(contractAddressesFrom, contractAddresse
     }
     const txMap = new Map();
     
-    traces.forEach(async trace => {
+    for (const trace of traces) {
         const txHash = trace.transactionHash;
-        let publicTransaction = getEventFromErigon(txHash, networkData);
-        
+        const publicTransaction = await getEventFromErigon(txHash, networkData);
+        const timestamp = await getBlockFromErigon(txHash, networkData, true);
+
         if (!txMap.has(txHash)) {
             txMap.set(txHash, {
                 hash: txHash,
@@ -429,13 +431,13 @@ async function buildTransactionHierarchy(contractAddressesFrom, contractAddresse
                 gasUsed: publicTransaction.gasUsed,
                 input: publicTransaction.input,
                 blockNumber: publicTransaction.blockNumber,
-                timestamp: await getBlockFromErigon(txHash, networkData, true)
+                timestamp: timestamp
             });
         }
-        
+
         // const txData = txMap.get(txHash);
         // const isMainCall = !trace.traceAddress || trace.traceAddress.length === 0;
-        
+
        /* if (isMainCall) {
             txData.parentCall = {
                 from: trace.action?.from,
@@ -462,7 +464,7 @@ async function buildTransactionHierarchy(contractAddressesFrom, contractAddresse
                 subtraces: trace.subtraces
             });
         }*/
-    });
+    }
 
     let txMapArr = Array.from(txMap.values());
     console.log(txMapArr);
