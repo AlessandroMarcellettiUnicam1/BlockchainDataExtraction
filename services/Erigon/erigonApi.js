@@ -431,7 +431,7 @@ async function buildTransactionHierarchy(contractAddressesFrom, contractAddresse
                 gasUsed: publicTransaction.gasUsed,
                 input: publicTransaction.input,
                 blockNumber: publicTransaction.blockNumber,
-                timestamp: timestamp
+                timestamp: timestamp.timestamp
             });
         }
 
