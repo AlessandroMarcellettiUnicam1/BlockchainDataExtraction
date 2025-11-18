@@ -15,6 +15,7 @@ const path = require('path');
 const { fork } = require("child_process");
 
 const {ethers} = require("hardhat");
+const {buildTransactionHierarchy} = require("../Erigon/erigonApi");
 
 
 
@@ -35,7 +36,8 @@ const {ethers} = require("hardhat");
  * @returns {Promise<*|*[]>} - the blockchain log with the extracted data
  */
 
-async function getAllTransactions(mainContract, contractAddress, impl_contract, fromBlock, toBlock, network, filters, smartContract,option) {
+async function getAllTransactions(oldParams, newParams) {
+    const network = (oldParams ? oldParams.network : null) || (newParams ? newParams.network : null);
     let networkData={
         web3Endpoint:"",
         apiKey:"",
@@ -45,8 +47,8 @@ async function getAllTransactions(mainContract, contractAddress, impl_contract, 
     try{
         switch (network) {
         case "Mainnet":
-                networkData.web3Endpoint = process.env.WEB3_ALCHEMY_MAINNET_URL,
-                networkData.apiKey = process.env.API_KEY_ETHERSCAN,
+                networkData.web3Endpoint = process.env.WEB3_ALCHEMY_MAINNET_URL
+                networkData.apiKey = process.env.API_KEY_ETHERSCAN
                 networkData.endpoint = process.env.ETHERSCAN_MAINNET_ENDPOINT
             break
         case "Sepolia":
@@ -69,7 +71,7 @@ async function getAllTransactions(mainContract, contractAddress, impl_contract, 
         }
         //contractAddress = proxy address in which storage and txs are made
         //mainContract = implementationContract name
-        const userLog = {
+       /* const userLog = {
             networkUsed: networkData.networkName,
             proxyContract: contractAddress,
             implementationContract: impl_contract,
@@ -86,16 +88,19 @@ async function getAllTransactions(mainContract, contractAddress, impl_contract, 
         }
         
         await connectDB(networkData.networkName);
-        await saveExtractionLog(userLog,networkData.networkName)
-        let contractTree=await getContractTree(smartContract,impl_contract,networkData.endpoint,networkData.apiKey,mainContract);
-
-        //in this case I get the list of a transaction for a block range of a smart contract 
-        let transactionList = await getTransactionFromContract(networkData,contractAddress,fromBlock,toBlock)
-
+        await saveExtractionLog(userLog,networkData.networkName)*/
+        let transactionList;
+        let contractTree;
         let result;
-        result=await getStorageData(transactionList, mainContract, contractTree, contractAddress, filters, smartContract, option, networkData);
 
-
+        if(!oldParams && newParams){
+            result = await buildTransactionHierarchy(newParams.contractAddressesFrom, newParams.contractAddressesTo, newParams.fromBlock, newParams.toBlock, networkData);
+        } else {
+            contractTree = await getContractTree(oldParams.smartContract, oldParams.implementationContractAddress, networkData.endpoint, networkData.apiKey, oldParams.contractName);
+            transactionList = await getTransactionFromContract(networkData, oldParams.contractAddress, oldParams.fromBlock, oldParams.toBlock);
+            result = await getStorageData(transactionList, oldParams.contractName, contractTree, oldParams.contractAddress, oldParams.filters, oldParams.smartContract, oldParams.option, networkData);
+        }
+                
         console.log("Extraction finished");
         await mongoose.disconnect();
 
