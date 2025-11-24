@@ -826,12 +826,12 @@ app.post("/api/data/events", async (req, res) => {
 
 app.post("/api/data/internalTxs",async (req, res) => {
     const query = req.body;
-    const {txHash,depth,to,from,activity,page=0,limit=20} = req.query;
+    const {txHash,callId,page=0,limit=20} = req.query;
     try{
         await connectDB("Mainnet");
         const txs = await fetchTransactions(query);
         const tx = txs.find((tx)=> tx.transactionHash === txHash);
-        const formattedTransaction = formatCallForTreeView(tx,depth,to,from,activity);
+        const formattedTransaction = formatCallForTreeView(tx,callId);
         const startIndex = parseInt(page) * parseInt(limit);
         const endIndex = startIndex + parseInt(limit);
         const paginatedCalls = formattedTransaction.slice(startIndex, endIndex);

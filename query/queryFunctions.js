@@ -129,14 +129,14 @@ export async function getInputsData(query) {
         transactions.forEach((tx) => {
             if(tx.inputs && Array.isArray(tx.inputs) && tx.inputs.length > 0) {
                 tx.inputs.forEach((input) => {
-                    const type = input.type || "unknown";
-                    if(!inputsData[type]){
-                        inputsData[type] = {
-                            type: input.type,
+                    const name = input.name ||input.inputName || "unknown";
+                    if(!inputsData[name]){
+                        inputsData[name] = {
+                            name: name,
                             count:0
                         }
                     }
-                    inputsData[type].count += 1;
+                    inputsData[name].count += 1;
                 })
             }
         });
@@ -502,9 +502,7 @@ export function formatInternalTransactionsForTreeView(
     }]
 }
 
-export function formatCallForTreeView(transaction,depth,to,from,activity){
-    if(activity==="null")
-        activity = null;
+export function formatCallForTreeView(transaction,callId){
     const children = [];
     children.push({
         id: `${transaction.transactionHash}`,
@@ -544,8 +542,7 @@ export function formatCallForTreeView(transaction,depth,to,from,activity){
         })
     }
     if(transaction.internalTxs && Array.isArray(transaction.internalTxs) && transaction.internalTxs.length > 0) {
-        const internalTxsChildren = findInternalCall(transaction.internalTxs,parseInt(depth),to,from,activity,transaction.transactionHash);
-        console.log(internalTxsChildren);
+        const internalTxsChildren = findInternalCall(transaction.internalTxs,callId,transaction.transactionHash);
         children.push({
             id: `${transaction.transactionHash}-internalTxs`,
             label: `Internal Txs: `,
@@ -560,21 +557,22 @@ export function formatCallForTreeView(transaction,depth,to,from,activity){
 
 }
 
-function findInternalCall(transactions,depth,to,from,activity,txHash) {
+function findInternalCall(transactions,callId,txHash,counter={value:0}) {
+    const results = [];
     for(const transaction of transactions) {
-        if(transaction.depth===depth &&
-            transaction.from===from &&
-            transaction.to===to &&
-            transaction.activity===activity
-        )
-            return expandInternal([transaction],[],txHash);
+        if(transaction.callId===callId) {
+            const expanded = expandInternal([transaction], [counter.value], txHash);
+            counter.value++;
+            results.push(...expanded);
+        }
         else if(transaction.calls &&  Array.isArray(transaction.calls) && transaction.calls.length>0) {
-            const result = findInternalCall(transaction.calls, depth, to, from, activity, txHash);
-            if(result){
-                return result;
+            const nested = findInternalCall(transaction.calls,callId,txHash,counter);
+            if(nested){
+                results.push(...nested);
             }
         }
     }
+    return results;
 }
 
 function expandInternal(transactions,parentIndex,txHash){
