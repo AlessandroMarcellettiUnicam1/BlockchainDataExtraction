@@ -409,7 +409,8 @@ async function buildTransactionHierarchy(contractAddressesFrom, contractAddresse
          const response = await axios.post(rpcUrl, payload, {
             headers: { "Content-Type": "application/json" }
         });
-        console.log(response.data);
+        console.log(response.data.result);
+        //console.log(JSON.stringify(traces, null, 2))
         traces = response.data.result;
     } catch(err){
         console.error("debugInteralTransaction error:", err.message);
@@ -420,7 +421,7 @@ async function buildTransactionHierarchy(contractAddressesFrom, contractAddresse
     for (const trace of traces) {
         const txHash = trace.transactionHash;
         const publicTransaction = await getEventFromErigon(txHash, networkData);
-        const timestamp = await getBlockFromErigon(txHash, networkData, true);
+        const timestamp = await getBlockFromErigon(publicTransaction.blockNumber, networkData, true);
 
         if (!txMap.has(txHash)) {
             txMap.set(txHash, {
