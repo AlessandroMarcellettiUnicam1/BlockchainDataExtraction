@@ -411,7 +411,7 @@ app.post("/submit", upload.single("file"), async (req, res) => {
                 option: {},
                 smartContract: null
             };
-
+			console.log("chiamata dal server")
             switch (params.extractionType) {
                 case "0":
                     params.option = { default: 1, internalStorage: 1, internalTransaction: 1 };
@@ -423,7 +423,7 @@ app.post("/submit", upload.single("file"), async (req, res) => {
                     params.option = { default: 0, internalStorage: 1, internalTransaction: 1 };
                     break;
                 default:
-                    params.option = {};
+                    params.option = { default: 1, internalStorage: 1, internalTransaction: 1 };
             }
 
             if (req.file) {
@@ -444,7 +444,8 @@ app.post("/submit", upload.single("file"), async (req, res) => {
                 filters: JSON.parse(req.body.filters),
                 contractName: req.body.contractName,
                 implementationContractAddress: req.body.implementationContractAddress,
-                smartContract: null
+                smartContract: null,
+				option : { default: 1, internalStorage: 1, internalTransaction: 1 }
             };
 
             if (req.file) {

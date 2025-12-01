@@ -44,12 +44,14 @@ async function getEventFromErigon(transactionHash,networkData){
  * @returns 
  */
 async function getBlockFromErigon(transactionHash,networkData,fullTrace){
+
     const body = {
     jsonrpc: "2.0",
     method: "eth_getBlockByHash",
     params: [transactionHash,fullTrace],
     id: 1
   };
+
   try {
     const response = await fetch(networkData.web3Endpoint, {
       method: "POST",
@@ -409,7 +411,7 @@ async function buildTransactionHierarchy(contractAddressesFrom, contractAddresse
          const response = await axios.post(rpcUrl, payload, {
             headers: { "Content-Type": "application/json" }
         });
-        console.log(response.data);
+        
         traces = response.data.result;
     } catch(err){
         console.error("debugInteralTransaction error:", err.message);
@@ -420,15 +422,15 @@ async function buildTransactionHierarchy(contractAddressesFrom, contractAddresse
     for (const trace of traces) {
         const txHash = trace.transactionHash;
         const publicTransaction = await getEventFromErigon(txHash, networkData);
-        const timestamp = await getBlockFromErigon(txHash, networkData, true);
-
+        const timestamp = await getBlockFromErigon(trace.blockHash, networkData, true);
+        
         if (!txMap.has(txHash)) {
             txMap.set(txHash, {
                 hash: txHash,
                 from: publicTransaction.from,
                 to: publicTransaction.to,
                 value: publicTransaction.value,
-                gasUsed: publicTransaction.gasUsed,
+                gasUsed: publicTransaction.gas,
                 input: publicTransaction.input,
                 blockNumber: publicTransaction.blockNumber,
                 timestamp: timestamp.timestamp
@@ -467,7 +469,6 @@ async function buildTransactionHierarchy(contractAddressesFrom, contractAddresse
     }
 
     let txMapArr = Array.from(txMap.values());
-    console.log(txMapArr);
     return txMapArr;
     
 }

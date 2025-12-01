@@ -156,6 +156,9 @@ function makeRpcCallStreaming(url, method, params) {
  */
 async function createTransactionLog(tx, mainContract, contractTree, smartContract,extractionType,contractAddress,networkData,option) {
     let web3=new Web3(networkData.web3Endpoint)
+    if(tx.timestamp.includes("0x")){
+        tx.timeStamp=web3.utils.hexToNumber(tx.timestamp);
+    }
     let transactionLog = {
         functionName:tx.inputDecoded?tx.inputDecoded.method:tx.methodId,
         transactionHash: tx.hash,
