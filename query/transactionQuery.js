@@ -18,8 +18,8 @@ export async function fetchTransactions(query) {
 	const { contractAddress, dateFrom, dateTo, fromBlock, toBlock, internalTxs, minOccurrences, txHash } = query;
 	const queryFilter = {};
 
-	if (contractAddress) {
-		queryFilter.contractAddress = contractAddress;
+	if (contractAddress && Array.isArray(contractAddress) && contractAddress.length > 0) {
+		queryFilter.contractAddress = {$in: contractAddress};
 	}
 
 	if (dateFrom) {
