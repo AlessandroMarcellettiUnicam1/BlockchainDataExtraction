@@ -103,7 +103,6 @@ async function getAllTransactions(oldParams, newParams) {
                 contractTree=await getContractTree(tx.to, null, networkData.endpoint, networkData.apiKey,contractName);
                 let temp=[];
                 temp.push(tx)
-                console.log(tx)
                 result = await getStorageData(temp, contractName, contractTree, tx.to, newParams.filters, newParams.smartContract, newParams.option, networkData);
                 
             }

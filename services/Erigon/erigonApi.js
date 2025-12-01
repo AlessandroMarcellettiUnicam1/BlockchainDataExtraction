@@ -37,6 +37,31 @@ async function getEventFromErigon(transactionHash,networkData){
   }
 }
 
+async function getTransactionReceipt(transactionHash,networkData){
+    const body = {
+    jsonrpc: "2.0",
+    method: "eth_getTransactionReceipt",
+    params: [transactionHash],
+    id: 1
+  };
+  try {
+    const response = await fetch(networkData.web3Endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body)
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! Status: ${response.status}`);
+    }
+
+    const data = await response.json();
+    return data.result; 
+  } catch (err) {
+    console.error("Error fetching transaction receipt:", err);
+    throw err;
+  }
+}
 /**
  * Function used to get all the logs from a specific transaction
  * @param {*} transactionHash 
@@ -423,12 +448,16 @@ async function buildTransactionHierarchy(contractAddressesFrom, contractAddresse
         const txHash = trace.transactionHash;
         const publicTransaction = await getEventFromErigon(txHash, networkData);
         const timestamp = await getBlockFromErigon(trace.blockHash, networkData, true);
-        
+        let contractAddress=publicTransaction.to;
+        if(!publicTransaction.to){
+            let receipt=await getTransactionReceipt(txHash,networkData);
+            contractAddress=receipt.contractAddress;
+        }
         if (!txMap.has(txHash)) {
             txMap.set(txHash, {
                 hash: txHash,
                 from: publicTransaction.from,
-                to: publicTransaction.to,
+                to: contractAddress ,
                 value: publicTransaction.value,
                 gasUsed: publicTransaction.gas,
                 input: publicTransaction.input,
