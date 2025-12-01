@@ -87,14 +87,26 @@ async function getAllTransactions(oldParams, newParams) {
             timestampLog: new Date().toISOString()
         }
         
-        await connectDB(networkData.networkName);
+        
         await saveExtractionLog(userLog,networkData.networkName)*/
         let transactionList;
         let contractTree;
         let result;
-
+        await connectDB(networkData.networkName);
         if(!oldParams && newParams){
             result = await buildTransactionHierarchy(newParams.contractAddressesFrom, newParams.contractAddressesTo, newParams.fromBlock, newParams.toBlock, networkData);
+            for(let tx of result){
+                const anotherCallForAbi = await axios.get(
+                    `${networkData.endpoint}&module=contract&action=getsourcecode&address=${tx.to}&apikey=${networkData.apiKey}`
+                );
+                let contractName=anotherCallForAbi.data.result[0].ContractName;
+                contractTree=await getContractTree(tx.to, null, networkData.endpoint, networkData.apiKey,contractName);
+                let temp=[];
+                temp.push(tx)
+                console.log(tx)
+                result = await getStorageData(temp, contractName, contractTree, tx.to, newParams.filters, newParams.smartContract, newParams.option, networkData);
+                
+            }
         } else {
             contractTree = await getContractTree(oldParams.smartContract, oldParams.implementationContractAddress, networkData.endpoint, networkData.apiKey, oldParams.contractName);
             transactionList = await getTransactionFromContract(networkData, oldParams.contractAddress, oldParams.fromBlock, oldParams.toBlock);
