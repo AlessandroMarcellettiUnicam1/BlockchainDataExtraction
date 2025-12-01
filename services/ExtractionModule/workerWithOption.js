@@ -10,7 +10,7 @@ const axios = require("axios");
 const { decodeInternalTransaction,newDecodedInternalTransaction } = require('../decodeInternalTransaction');
 const { optimizedDecodeValues } = require('../optimizedDecodeValues');
 const { saveTransaction } = require("../../databaseStore");
-const {searchTransaction} = require("../../query/query")
+const {searchAbi} = require("../../query/query")
 const {decodeTransactionInputs,getEvents,iterateInternalForEvent,decodeInputs,getEventFromErigon,getEventsFromInternal,getEventFromHardHat} = require('../decodingUtils/utils')
 
 const fs = require('fs');
@@ -156,7 +156,7 @@ function makeRpcCallStreaming(url, method, params) {
  */
 async function createTransactionLog(tx, mainContract, contractTree, smartContract,extractionType,contractAddress,networkData,option) {
     let web3=new Web3(networkData.web3Endpoint)
-    if(tx.timestamp.includes("0x")){
+    if(tx.timestamp && tx.timestamp.includes("0x")){
         tx.timeStamp=web3.utils.hexToNumber(tx.timestamp);
     }
     let transactionLog = {
@@ -189,15 +189,40 @@ async function createTransactionLog(tx, mainContract, contractTree, smartContrac
             }else{
                 debugResult = await debugTransaction(tx.hash, tx.blockNumber,networkData);
                 try{
-                    
                     storageVal = await getTraceStorage(debugResult.response, networkData, tx.inputDecoded?tx.inputDecoded.method:null, tx.hash, mainContract, contractTree, smartContract,option,web3);
-                    
                 }catch(err){
                     console.log(err)
                 }
             }
             transactionLog.storageState =storageVal ? storageVal.decodedValues:[];
             transactionLog.internalTxs =storageVal ? storageVal.internalTxs:[];
+            if(transactionLog.functionName==null && transactionLog.internalTxs && transactionLog.internalTxs.length>0){
+                if(transactionLog.internalTxs[0].type=="DELEGATECALL"){
+                    const addressTo = transactionLog.internalTxs[0].to;
+                    const query = { contractAddress: addressTo.toLowerCase() };
+                    const response = await searchAbi(query);
+                    if(response){
+                        const decoder = new InputDataDecoder(response.abi);
+                        const inputData = tx.input;
+                        const tempResult = decoder.decodeData(inputData);
+                        transactionLog.functionName = tempResult.method;
+                        if (transactionLog.inputs.length< 1) {
+                            transactionLog.inputs = tempResult.inputs.map((input, i) => {
+                                let value = input;
+                                if (input._isBigNumber) {
+                                    value = Number(web3.utils.hexToNumber(input._hex));
+                                }
+                                return {
+                                    name: tempResult.names[i],
+                                    type: tempResult.types[i],
+                                    value: value,
+                                };
+                            });
+                        }
+                    }
+                }
+                
+            }
         }
         await getEventForTransaction(transactionLog,tx.hash,Number(tx.blockNumber),contractAddress,web3,contractTree,option,networkData);
         await saveTransaction(transactionLog, tx.to!=''?tx.to:tx.from);
