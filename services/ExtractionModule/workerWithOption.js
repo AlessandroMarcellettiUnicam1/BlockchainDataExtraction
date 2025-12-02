@@ -437,7 +437,7 @@ async function getTraceStorage(traceDebugged, networkData, functionName, transac
             tempInternalCallArray  = traceDebugged.structLogs.filter((step) =>CALL_OPCODES.includes(step.op));
 
             for (const trace of traceDebugged.structLogs) {
-                if (trace.op === "KECCAK256") {
+                if (trace.op === "KECCAK256" && trace.depth==1) {
                     bufferPC = trace.pc;
                     const stackLength = trace.stack.length;
                     const memoryLocation = trace.stack[stackLength - 1];
@@ -446,11 +446,11 @@ async function getTraceStorage(traceDebugged, networkData, functionName, transac
                     const hexKey = trace.memory[numberLocation];
                     const hexStorageIndex = trace.memory[storageIndexLocation];
                     trackBuffer[index] = { hexKey, hexStorageIndex };
-                } else if (trace.op === "STOP") {
+                } else if (trace.op === "STOP" && trace.depth==1) {
                     for (const slot in trace.storage) {
                         functionStorage[slot] = trace.storage[slot];
                     }
-                } else if (trace.pc === (bufferPC + 1)) {
+                } else if (trace.pc === (bufferPC + 1) && trace.depth==1) {
                     keccakBeforeAdd = trackBuffer[index];
                     bufferPC = -10;
                     trackBuffer[index].finalKey = trace.stack[trace.stack.length - 1];
@@ -469,7 +469,7 @@ async function getTraceStorage(traceDebugged, networkData, functionName, transac
                         }
                         trackBuffer[index - 1].indexSum = trace.stack[trace.stack.length - 2];
                     }
-                } else if (trace.op === "SSTORE") {
+                } else if (trace.op === "SSTORE" && trace.depth==1) {
                     sstoreOptimization.push(trace.stack);
                     sstoreBuffer.push(trace.stack[trace.stack.length - 1]);
                 } else if (trace.op === "CALL" || trace.op === "DELEGATECALL" || trace.op === "STATICCALL") {
@@ -664,7 +664,7 @@ async function getTraceStorageFromErigon(httpStream, networkData,functionName,tr
     });
 
     function processTrace(trace, nextTrace) {
-        if (trace.op === "KECCAK256") {
+        if (trace.op === "KECCAK256" && trace.depth==1) {
             bufferPC = trace.pc;
             const stackLength = trace.stack.length;
             const memoryLocation = trace.stack[stackLength - 1];
@@ -674,12 +674,12 @@ async function getTraceStorageFromErigon(httpStream, networkData,functionName,tr
             const hexStorageIndex = trace.memory[storageIndexLocation];
             trackBuffer[index] = { hexKey, hexStorageIndex };
             
-        } else if (trace.op === "STOP") {
+        } else if (trace.op === "STOP" && trace.depth==1) {
             for (const slot in trace.storage) {
                 functionStorage[slot] = trace.storage[slot];
             }
             
-        } else if (trace.pc === (bufferPC + 1)) {
+        } else if (trace.pc === (bufferPC + 1) && trace.depth==1) {
             keccakBeforeAdd = trackBuffer[index];
             bufferPC = -10;
             trackBuffer[index].finalKey = trace.stack[trace.stack.length - 1];
@@ -702,7 +702,7 @@ async function getTraceStorageFromErigon(httpStream, networkData,functionName,tr
                 trackBuffer[index - 1].indexSum = trace.stack[trace.stack.length - 2];
             }
             
-        } else if (trace.op === "SSTORE") {
+        } else if (trace.op === "SSTORE" && trace.depth==1) {
             sstoreOptimization.push(trace.stack);
             sstoreBuffer.push(trace.stack[trace.stack.length - 1]);
             //I'm interested in the main contract storage so the depth is 1
@@ -733,7 +733,7 @@ async function getTraceStorageFromErigon(httpStream, networkData,functionName,tr
             );
             call.inputsCall = stringMemory;
             internalCalls.push(call);
-        }else if(trace.op=="SLOAD"){
+        }else if(trace.op=="SLOAD" && trace.depth==1){
             if(trace.depth==1){
                 for(const slot in trace.storage){
                     functionStorage[slot]=trace.storage[slot]

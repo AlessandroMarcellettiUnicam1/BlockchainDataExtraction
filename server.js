@@ -411,7 +411,6 @@ app.post("/submit", upload.single("file"), async (req, res) => {
                 option: {},
                 smartContract: null
             };
-			console.log("chiamata dal server")
             switch (params.extractionType) {
                 case "0":
                     params.option = { default: 1, internalStorage: 1, internalTransaction: 1 };
