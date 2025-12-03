@@ -26,7 +26,7 @@ export async function getGasUsage(query) {
 			activityGasMap[activity].count += 1;
 		});
         let txs = transactions;
-        if(query.hasOwnProperty("internalTxs")){
+        if(query.hasOwnProperty("internalTxs") && query.internalTxs==="public+internal"){
             txs = txs.filter((tx)=>!tx.hasOwnProperty("depth"));
         }
 
@@ -233,7 +233,7 @@ export async function getCallsData(query) {
             });
         }
         let txsFiltered = transactions;
-        if(!internalTxs)
+        if(internalTxs==="public")
             txsFiltered = await getAllTransactions(transactions);
         txsFiltered = txsFiltered.filter((tx)=>tx.hasOwnProperty("depth"))
                                     .map((tx)=>({

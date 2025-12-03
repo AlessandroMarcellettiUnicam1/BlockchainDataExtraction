@@ -69,8 +69,17 @@ export async function fetchTransactions(query) {
 			results = results.concat(transactions);
 		}
 
-        if(internalTxs)
+        if(internalTxs && internalTxs!=="public") {
             results = await getAllTransactions(results);
+
+            if(internalTxs==="internal")
+                results = results.filter((tx)=>tx.hasOwnProperty("depth"))
+                    .map((tx)=>({
+                    ...tx,
+                    transactionHash: tx.transactionHash.split("-")[0],
+                        functionName: tx.activity
+                }));
+        }
 
         if(minOccurrences)
             results = await filterOccurrences(results, minOccurrences);
