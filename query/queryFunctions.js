@@ -203,7 +203,7 @@ export async function getCallsData(query) {
 		const callsData = {};
 
         const {internalTxs} = query;
-        if(internalTxs) {
+        if(internalTxs && internalTxs!=="public") {
             for (const transaction of transactions) {
                 if (transaction.hasOwnProperty("type")) {
                     if (!callsData[transaction.type]) {
@@ -233,7 +233,7 @@ export async function getCallsData(query) {
             });
         }
         let txsFiltered = transactions;
-        if(internalTxs==="public")
+        if(internalTxs==="public" || !internalTxs)
             txsFiltered = await getAllTransactions(transactions);
         txsFiltered = txsFiltered.filter((tx)=>tx.hasOwnProperty("depth"))
                                     .map((tx)=>({
