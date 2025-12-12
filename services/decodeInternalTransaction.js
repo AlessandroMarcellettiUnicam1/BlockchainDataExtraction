@@ -235,6 +235,19 @@ async function handleAbiFetch(element, addressTo, apiKey, endpoint, web3) {
                 } else {
                     await handleUnverifiedContract(element, web3);
                 }
+            }else{
+                if (!callForAbi.data.result[0].ABI.includes("Contract source code not verified")) {
+                    decodeInputs(element, callForAbi.data.result[0].ABI, web3, callForAbi.data.result[0].ContractName);
+                    
+                    if (!element.activity && element.activity==null) {
+                        await tryMethodSignature(element, web3);
+                    } else {
+                        storeAbi.proxyImplementation = nextElement.to;
+                        await saveAbi(implementationAbi);
+                    }
+                } else {
+                    await handleUnverifiedContract(element, web3);
+                }
             }
             
             await saveAbi(storeAbi);
@@ -268,8 +281,6 @@ async function handleAbiFromDbErigon(element, response, web3) {
         await handleUnverifiedContract(element, web3);
         return;
     }
-    
-
     if (response.proxy === '1' && response.proxyImplementation!='') {
         let query = { contractAddress: response.proxyImplementation.toLowerCase() };
         let responseImplementation = await searchAbi(query);
@@ -283,20 +294,21 @@ async function handleAbiFromDbErigon(element, response, web3) {
         } else {
             await tryMethodSignature(element, web3);
         }
-    }
-    const abiFromDb = JSON.parse(response.abi);
-    if(response.abi!='[]'){
-        decodeInputs(element, abiFromDb, web3, response.contractName);  
-    }
-    
-    
-    if (!element.activity) {
-        await tryMethodSignature(element, web3);
-    }
-    
-    // Final fallback
-    if (!element.activity) {
-        await handleUnverifiedContract(element, web3);
+    }else{
+        const abiFromDb = JSON.parse(response.abi);
+        if(response.abi!='[]'){
+            decodeInputs(element, abiFromDb, web3, response.contractName);  
+        }
+        
+        
+        if (!element.activity) {
+            await tryMethodSignature(element, web3);
+        }
+        
+        // Final fallback
+        if (!element.activity) {
+            await handleUnverifiedContract(element, web3);
+        }
     }
 }
 
@@ -330,11 +342,11 @@ async function handleAbiFetchErigon(element, addressTo, apiKey, endpoint, web3) 
         // Handle proxy contracts using DELEGATECALL pattern
         if (callForAbi.data.result[0].Proxy === '1') {
             const nextElement = element.calls?.[0];
-            
+            let input=element.input?element.input:element.inputsCall;
             if (nextElement && 
                 nextElement.type === "DELEGATECALL" && 
                 nextElement.from === element.to && 
-                nextElement.input === element.input) {
+                nextElement.input === input) {
                 
                 const anotherCallForAbi = await axios.get(
                     `${endpoint}&module=contract&action=getsourcecode&address=${nextElement.to}&apikey=${apiKey}`
@@ -352,12 +364,22 @@ async function handleAbiFetchErigon(element, addressTo, apiKey, endpoint, web3) 
                     decodeInputs(element, anotherCallForAbi.data.result[0].ABI, web3, 
                         anotherCallForAbi.data.result[0].ContractName);
                     
-                    if (!element.activity) {
+                    if (!element.activity && element.activity==null) {
                         await tryMethodSignature(element, web3);
                     } else {
                         storeAbi.proxyImplementation = nextElement.to;
                         await saveAbi(implementationAbi);
                     }
+                } else {
+                    await handleUnverifiedContract(element, web3);
+                }
+            }else{
+                if (!callForAbi.data.result[0].ABI.includes("Contract source code not verified")) {
+                    decodeInputs(element, callForAbi.data.result[0].ABI, web3, callForAbi.data.result[0].ContractName);
+                    
+                    if (!element.activity && element.activity==null) {
+                        await tryMethodSignature(element, web3);
+                    } 
                 } else {
                     await handleUnverifiedContract(element, web3);
                 }
@@ -371,13 +393,15 @@ async function handleAbiFetchErigon(element, addressTo, apiKey, endpoint, web3) 
                     decodeInputs(element, callForAbi.data.result[0].ABI, web3, 
                         callForAbi.data.result[0].ContractName);
                     
-                    if (!element.activity) {
+                    if (!element.activity && element.activity==null) {
                         await tryMethodSignature(element, web3);
                     } else {
                         await saveAbi(storeAbi);
                     }
                 } else {
-                    await handleUnverifiedContract(element, web3);
+                    if(!element.activity){
+                        await handleUnverifiedContract(element, web3);
+                    }
                 }
             
             success = true;
