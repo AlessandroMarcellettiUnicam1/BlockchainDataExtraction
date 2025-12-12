@@ -596,7 +596,8 @@ async function getTraceStorage(traceDebugged, networkData, functionName, transac
 }
 function retriveImplementationContract(trace,nextTrace,web3){
     let possibleImplementation;
-    if(trace.op=="CALL" && nextTrace.op=="DELEGATECALL" && trace.depth<nextTrace.depth){
+    // trace.op=="CALL" && nextTrace.op=="DELEGATECALL" && trace.depth<nextTrace.depth
+    if((trace.op=="CALL" || trace.op=="STATICCALL") && nextTrace.op=="DELEGATECALL" && trace.depth<nextTrace.depth){
         const offsetBytes = nextTrace.stack[nextTrace.op === "CALL" ? nextTrace.stack.length - 4 : nextTrace.stack.length - 3];
         const lengthBytes = nextTrace.stack[nextTrace.op === "CALL" ? nextTrace.stack.length - 5 : nextTrace.stack.length - 4];
         possibleImplementation={
@@ -610,7 +611,7 @@ function retriveImplementationContract(trace,nextTrace,web3){
             web3.utils.hexToNumber("0x" + offsetBytes) * 2,
             web3.utils.hexToNumber("0x" + offsetBytes) * 2 + web3.utils.hexToNumber("0x" + lengthBytes) * 2
         );
-        possibleImplementation.input = stringMemory;
+        possibleImplementation.input = "0x"+stringMemory;
     }
     return possibleImplementation;
 }

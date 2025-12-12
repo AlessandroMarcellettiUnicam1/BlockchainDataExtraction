@@ -21,12 +21,10 @@ async function handleUnverifiedContract(element, web3) {
     if (element.input === "0x") {
         element.activity = "transfer";
         element.value = element.value || "0x";
-        element.name = "undefined";
-        element.type = "undefined";
     } else {
         await tryMethodSignature(element, web3);
         if (!element.activity) {
-            element.activity = "undefined";
+            element.activity = element.input?.slice(0, 10) || element.inputsCall?.slice(0, 10);
         }
     }
     
@@ -46,8 +44,6 @@ async function tryMethodSignature(element, web3) {
         element.activity = "Transfer*";
         element.value = element.value;
         element.inputs = element.input;
-        element.name = "undefined";
-        element.type = "undefined";
         return false;
     }
 
@@ -208,11 +204,13 @@ async function handleAbiFetch(element, addressTo, apiKey, endpoint, web3) {
         // Handle proxy contracts using DELEGATECALL pattern
         if (callForAbi.data.result[0].Proxy === '1') {
             const nextElement = element.possibleImplementation;
+            
+            let input=element.input?element.input:element.inputsCall;
             if (nextElement && 
                 nextElement.type === "DELEGATECALL" && 
                 nextElement.from === element.to && 
-                nextElement.input === element.input) {
-                
+                nextElement.input === input) {
+                    
                 const anotherCallForAbi = await axios.get(
                     `${endpoint}&module=contract&action=getsourcecode&address=${nextElement.to}&apikey=${apiKey}`
                 );
