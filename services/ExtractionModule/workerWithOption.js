@@ -11,6 +11,7 @@ const { decodeInternalTransaction,newDecodedInternalTransaction } = require('../
 const { optimizedDecodeValues } = require('../optimizedDecodeValues');
 const { saveTransaction } = require("../../databaseStore");
 const {searchAbi} = require("../../query/query")
+const {saveAbi}=require("../../databaseStore")
 const {decodeTransactionInputs,getEvents,iterateInternalForEvent,decodeInputs,getEventFromErigon,getEventsFromInternal,getEventFromHardHat} = require('../decodingUtils/utils')
 
 const fs = require('fs');
@@ -196,12 +197,21 @@ async function createTransactionLog(tx, mainContract, contractTree, smartContrac
             }
             transactionLog.storageState =storageVal ? storageVal.decodedValues:[];
             transactionLog.internalTxs =storageVal ? storageVal.internalTxs:[];
+            let storeAbi = {
+                contractName: mainContract,
+                abi: contractTree.contractAbi,
+                proxy: '',
+                proxyImplementation: '',
+                contractAddress: tx.to,
+            };
             if(transactionLog.functionName==null && transactionLog.internalTxs && transactionLog.internalTxs.length>0){
                 if(transactionLog.internalTxs[0].type=="DELEGATECALL"){
                     const addressTo = transactionLog.internalTxs[0].to;
                     const query = { contractAddress: addressTo.toLowerCase() };
                     const response = await searchAbi(query);
                     if(response){
+                        storeAbi.proxy='1';
+                        storeAbi.proxyImplementation=query.contractAddress;
                         const decoder = new InputDataDecoder(response.abi);
                         const inputData = tx.input;
                         const tempResult = decoder.decodeData(inputData);
@@ -223,6 +233,7 @@ async function createTransactionLog(tx, mainContract, contractTree, smartContrac
                 }
                 
             }
+            await saveAbi(storeAbi);
         }
         await getEventForTransaction(transactionLog,tx.hash,Number(tx.blockNumber),contractAddress,web3,contractTree,option,networkData);
         await saveTransaction(transactionLog, tx.to!=''?tx.to:tx.from);
@@ -411,10 +422,10 @@ async function getEventForTransaction(transactionLog, hash, blockNumber, contrac
 
 function searchEventInInternal(internals,seenEvent){
     for(const internal of internals){
-        internal.events.forEach((event)=>{
+        internal.events?.forEach((event)=>{
             seenEvent.add(event.eventSignature);
         })
-        
+
         if (internal.calls) {
             searchEventInInternal(internal.calls,seenEvent);
         }

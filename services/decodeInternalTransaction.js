@@ -461,6 +461,7 @@ async function decodeInternalRecursive(internalCalls, smartContract, networkData
     let idDepth = 1;
     
     for (const element of internalCalls) {
+        element.events=[];
         const addressTo = element.to;
         const query = { contractAddress: addressTo.toLowerCase() };
         
@@ -480,6 +481,9 @@ async function decodeInternalRecursive(internalCalls, smartContract, networkData
             await handleAbiFromDbErigon(element, response, web3);
         }
         let eventInternal=await getEventsFromInternal(transactionHash,blockNumber,addressTo,networkData,web3);
+        if(eventInternal.length==0){
+            eventInternal=await getEventsFromInternal(transactionHash,blockNumber,element.from,networkData,web3);
+        }
         eventInternal.forEach((event)=>{
             if (!seenEvent.has(event.eventSignature)) {
                 element.events.push(event)
