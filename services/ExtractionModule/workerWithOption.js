@@ -181,7 +181,7 @@ async function createTransactionLog(tx, mainContract, contractTree, smartContrac
             if(option.internalTransaction==1){
                 const { stream, requiredTime } = await debugTransactionErigonStreaming(tx.hash,networkData.web3Endpoint);
                 try{
-                    storageVal = await getTraceStorageFromErigon(stream, networkData,tx.inputDecoded?tx.inputDecoded.method:null,tx.hash,mainContract,contractTree,smartContract,option,web3);
+                    storageVal = await getTraceStorageFromErigon(stream, networkData,tx.inputDecoded?tx.inputDecoded.method:null,tx.hash,mainContract,contractTree,smartContract,option,web3,transactionLog.blockNumber);
                     //storageVal.internalTxs=await newDecodedInternalTransaction(transactionLog.transactionHash, smartContract, networkData, web3);
                 }catch (err){
                     console.log(err);
@@ -189,7 +189,7 @@ async function createTransactionLog(tx, mainContract, contractTree, smartContrac
             }else{
                 debugResult = await debugTransaction(tx.hash, tx.blockNumber,networkData);
                 try{
-                    storageVal = await getTraceStorage(debugResult.response, networkData, tx.inputDecoded?tx.inputDecoded.method:null, tx.hash, mainContract, contractTree, smartContract,option,web3);
+                    storageVal = await getTraceStorage(debugResult.response, networkData, tx.inputDecoded?tx.inputDecoded.method:null, tx.hash, mainContract, contractTree, smartContract,option,web3,transactionLog.blockNumber);
                 }catch(err){
                     console.log(err)
                 }
@@ -263,6 +263,7 @@ async function getEventForTransaction(transactionLog, hash, blockNumber, contrac
     if (option.default != 0) {
         //if to get the event form the public transaction
         let seenEvent = new Set();
+        searchEventInInternal(transactionLog.internalTxs,seenEvent);
         if (contractTree && Object.keys(contractTree.contractAbi).length !== 0) {
 
             let publicEvents = await getEvents(hash, blockNumber, contractAddress, web3, contractTree.contractAbi);
@@ -278,7 +279,7 @@ async function getEventForTransaction(transactionLog, hash, blockNumber, contrac
             let internalEvents = await iterateInternalForEvent(hash, blockNumber, transactionLog.internalTxs, option, networkData, web3);
             internalEvents.forEach((ele) => {
                 if (!seenEvent.has(ele.eventSignature)) {
-                    transactionLog.events.push(ele)
+                    // transactionLog.events.push(ele)
                     seenEvent.add(ele.eventSignature)
                 }
             })
@@ -407,6 +408,18 @@ async function getEventForTransaction(transactionLog, hash, blockNumber, contrac
         }
     }
 }
+
+function searchEventInInternal(internals,seenEvent){
+    for(const internal of internals){
+        internal.events.forEach((event)=>{
+            seenEvent.add(event.eventSignature);
+        })
+        
+        if (internal.calls) {
+            searchEventInInternal(internal.calls,seenEvent);
+        }
+    }
+}
 /**
  *
  * @param traceDebugged - the debugged transaction with its opcodes
@@ -417,7 +430,7 @@ async function getEventForTransaction(transactionLog, hash, blockNumber, contrac
  * @param contractTree - the contract tree used to identify the contract variables with the 'mainContract'
  * @returns {Promise<{decodedValues: (*&{variableValue: string|string|*})[], internalCalls: *[]}>} - the decoded values of the storage state and the internal calls
  */
-async function getTraceStorage(traceDebugged, networkData, functionName, transactionHash, mainContract, contractTree,smartContract,extractionOption,web3) {
+async function getTraceStorage(traceDebugged, networkData, functionName, transactionHash, mainContract, contractTree,smartContract,extractionOption,web3,blockNumber) {
     //used to store the storage changed by the function. Used to compare the generated keys
     let functionStorage = {};
     //used to store all the keys potentially related to a dynamic structure
@@ -567,9 +580,9 @@ async function getTraceStorage(traceDebugged, networkData, functionName, transac
         }
         let internalTxs=[]
         if(extractionOption.internalTransaction==0){
-            internalTxs=await decodeInternalTransaction(internalCalls,smartContract,web3,networkData)
+            internalTxs=await decodeInternalTransaction(internalCalls,smartContract,web3,networkData,transactionHash,blockNumber)
         }else if(extractionOption.internalTransaction==1){
-            internalTxs=await newDecodedInternalTransaction(transactionHash, smartContract, networkData, web3);
+            internalTxs=await newDecodedInternalTransaction(transactionHash, smartContract, networkData, web3,blockNumber);
         }
         let result={
             decodedValues:internalStorage,
@@ -616,7 +629,7 @@ function retriveImplementationContract(trace,nextTrace,web3){
     return possibleImplementation;
 }
 // Modified getTraceStorage2 to accept a stream instead of reading from file
-async function getTraceStorageFromErigon(httpStream, networkData,functionName,transactionHash,mainContract,contractTree,smartContract,extractionOption,web3) {
+async function getTraceStorageFromErigon(httpStream, networkData,functionName,transactionHash,mainContract,contractTree,smartContract,extractionOption,web3,blockNumber) {
     let functionStorage = {};
     let index = 0;
     let trackBuffer = [];
@@ -788,9 +801,9 @@ async function getTraceStorageFromErigon(httpStream, networkData,functionName,tr
         
         let internalTxs = [];
         if (extractionOption.internalTransaction == 0) {
-            internalTxs = await decodeInternalTransaction(internalCalls, smartContract, web3, networkData);
+            internalTxs = await decodeInternalTransaction(internalCalls, smartContract, web3, networkData,transactionHash,blockNumber);
         } else if (extractionOption.internalTransaction == 1) {
-            internalTxs = await newDecodedInternalTransaction(transactionHash, smartContract, networkData, web3);
+            internalTxs = await newDecodedInternalTransaction(transactionHash, smartContract, networkData, web3,blockNumber);
         }
         
         let result = {

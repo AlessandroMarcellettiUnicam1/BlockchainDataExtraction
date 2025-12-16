@@ -2,6 +2,7 @@ const axios = require("axios");
 const { searchAbi } = require("../query/query");
 const { saveAbi } = require("../databaseStore");
 const { connectDB } = require("../config/db");
+const { getEventsFromInternal }= require("./decodingUtils/utils")
 const InputDataDecoder = require("ethereum-input-data-decoder");
 
 /**
@@ -417,11 +418,12 @@ async function handleAbiFetchErigon(element, addressTo, apiKey, endpoint, web3) 
  * @param {*} networkData 
  * @returns 
  */
-async function decodeInternalTransaction(internalCalls, smartContract, web3, networkData) {
+async function decodeInternalTransaction(internalCalls, smartContract, web3, networkData,transactionHash,blockNumber) {
     if (!smartContract) {
+        let seenEvent = new Set();
         await connectDB(networkData.networkName);
-        
         for (const element of internalCalls) {
+            element.events=[];
             const addressTo = element.to;
             const query = { contractAddress: addressTo.toLowerCase() };
             const response = await searchAbi(query);
@@ -431,6 +433,13 @@ async function decodeInternalTransaction(internalCalls, smartContract, web3, net
             } else {
                 await handleAbiFromDb(element, response, web3);
             }
+            let eventsOfTheInternal=await getEventsFromInternal(transactionHash,blockNumber,addressTo,networkData,web3);
+            eventsOfTheInternal.forEach((event)=>{
+                if (!seenEvent.has(event.eventSignature)) {
+                    element.events.push(event);
+                    seenEvent.add(event.eventSignature)
+                }
+            })
         }
     } else {
         console.log("smart contract uploaded manually");
@@ -448,7 +457,7 @@ async function decodeInternalTransaction(internalCalls, smartContract, web3, net
  * @param {*} depth 
  * @param {*} callId 
  */
-async function decodeInternalRecursive(internalCalls, smartContract, networkData, web3, depth, callId) {
+async function decodeInternalRecursive(internalCalls, smartContract, networkData, web3, depth, callId,transactionHash,blockNumber,seenEvent) {
     let idDepth = 1;
     
     for (const element of internalCalls) {
@@ -470,7 +479,13 @@ async function decodeInternalRecursive(internalCalls, smartContract, networkData
         } else {
             await handleAbiFromDbErigon(element, response, web3);
         }
-        
+        let eventInternal=await getEventsFromInternal(transactionHash,blockNumber,addressTo,networkData,web3);
+        eventInternal.forEach((event)=>{
+            if (!seenEvent.has(event.eventSignature)) {
+                element.events.push(event)
+                seenEvent.add(event.eventSignature)
+            }
+        })
         // Clean up input fields
         if (element.inputs && element.inputs.length > 0) {
             delete element.inputsCall;
@@ -483,7 +498,7 @@ async function decodeInternalRecursive(internalCalls, smartContract, networkData
         // Recursively process nested calls
         if (element.calls && element.calls.length > 0) {
             await decodeInternalRecursive(element.calls, smartContract, networkData, 
-                web3, depth + 1, element.callId);
+                web3, depth + 1, element.callId,transactionHash,blockNumber,seenEvent);
         }
     }
 }
@@ -524,12 +539,13 @@ async function debugInternalTransaction(transactionHash, web3Endpoint) {
  * @param {*} web3 
  * @returns 
  */
-async function newDecodedInternalTransaction(transactionHash, smartContract, networkData, web3) {
+async function newDecodedInternalTransaction(transactionHash, smartContract, networkData, web3,blockNumber) {
     const internalCalls = await debugInternalTransaction(transactionHash, networkData.web3Endpoint);
     
     if (!smartContract && internalCalls) {
+        let seenEvent = new Set();
         await connectDB(networkData.networkName);
-        await decodeInternalRecursive(internalCalls, smartContract, networkData, web3, 0, "0");
+        await decodeInternalRecursive(internalCalls, smartContract, networkData, web3, 0, "0",transactionHash,blockNumber,seenEvent);
     } else {
         console.log("smart contract uploaded manually");
     }
