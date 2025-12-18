@@ -1,5 +1,6 @@
 import mongoose from "mongoose";
 import {getAllTransactions} from "./flattenTransaction.js"
+import {filterOccurrences} from "./filter.js"
 
 // Cache setup
 const cache = new Map();
@@ -14,7 +15,7 @@ export async function fetchTransactions(query) {
 		if (Date.now() - timestamp < CACHE_TTL) return data;
 	}
 
-	const { contractAddress, dateFrom, dateTo, fromBlock, toBlock } = query;
+	const { contractAddress, dateFrom, dateTo, fromBlock, toBlock, internalTxs, minOccurrences, txHash } = query;
 	const queryFilter = {};
 
 	if (contractAddress) {
@@ -48,6 +49,9 @@ export async function fetchTransactions(query) {
 			$lte: Number(toBlock),
 		};
 	}
+    if(txHash){
+        queryFilter.transactionHash = txHash;
+    }
 
 	let results = [];
 
@@ -65,7 +69,12 @@ export async function fetchTransactions(query) {
 			results = results.concat(transactions);
 		}
 
-        results = await getAllTransactions(results);
+        if(internalTxs)
+            results = await getAllTransactions(results);
+
+        if(minOccurrences)
+            results = await filterOccurrences(results, minOccurrences);
+
 
 		const validTransactions = results.filter(
 			(tx) => tx && Object.keys(tx).length > 0 && tx.gasUsed !== undefined

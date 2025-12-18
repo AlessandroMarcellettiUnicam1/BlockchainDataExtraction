@@ -1,4 +1,10 @@
 import { fetchTransactions } from "./transactionQuery.js";
+import {getAllTransactions} from "./flattenTransaction.js";
+
+export async function getTransactions(query) {
+    return fetchTransactions(query);
+}
+
 
 export async function getGasUsage(query) {
 	try {
@@ -19,8 +25,13 @@ export async function getGasUsage(query) {
 			activityGasMap[activity].gasUsed += Number(tx.gasUsed) || 0;
 			activityGasMap[activity].count += 1;
 		});
+        let txs = transactions;
+        if(query.hasOwnProperty("internalTxs")){
+            txs = txs.filter((tx)=>!tx.hasOwnProperty("depth"));
+        }
 
-		return Object.values(activityGasMap);
+        return {gasUsed: Object.values(activityGasMap),
+            transaction: txs};
 	} catch (error) {
 		console.error("Error fetching gas usage:", error);
 		throw new Error(error.message);
@@ -43,7 +54,6 @@ export async function getActivityData(query) {
 			}
 			activityStats[activity].count += 1;
 		});
-
 		return Object.values(activityStats);
 	} catch (error) {
 		console.error("Error fetching activity data:", error);
@@ -115,7 +125,21 @@ export async function getTimeData(query) {
 export async function getInputsData(query) {
 	try {
 		const transactions = await fetchTransactions(query);
-
+        const inputsData = {};
+        transactions.forEach((tx) => {
+            if(tx.inputs && Array.isArray(tx.inputs) && tx.inputs.length > 0) {
+                tx.inputs.forEach((input) => {
+                    const name = input.name ||input.inputName || "unknown";
+                    if(!inputsData[name]){
+                        inputsData[name] = {
+                            name: name,
+                            count:0
+                        }
+                    }
+                    inputsData[name].count += 1;
+                })
+            }
+        });
         let result = []
         for (const transaction of transactions) {
             for(let i = 0;i<transaction.inputs.length;i++) {
@@ -130,23 +154,12 @@ export async function getInputsData(query) {
                     timestamp: transaction.timestamp,
                     inputName: transaction.inputs[i]?.inputName || transaction.inputs[i].name || "unknown",
                     inputType: transaction.inputs[i]?.type || "unknown",
-                    //inputValue: transaction.inputs[i]?.inputValue || transaction.inputs[i].value || "unknown"
                     inputValue: value
                 });
             }
         }
-		/*const formattedTransactions = transactions.map((tx) => {
-			return {
-				contractAddress: tx.contractAddress,
-				activity: tx.activity || tx.functionName || "unknown",
-				timestamp: tx.timestamp,
-				inputName: tx.inputs[0]?.inputName || "unknown",
-				inputType: tx.inputs[0]?.type || "unknown",
-				inputValue: tx.inputs[0]?.inputValue || "unknown",
-			};
-		});*/
-
-		return result;
+        const inputsChart = Object.values(inputsData)
+		return {inputsGrid: result, inputsChart: inputsChart};
 	} catch (error) {
 		console.error("Error fetching inputs data:", error);
 		throw new Error(error.message);
@@ -189,33 +202,47 @@ export async function getCallsData(query) {
 		const transactions = await fetchTransactions(query);
 		const callsData = {};
 
-        for(const transaction of transactions){
-            if(transaction.hasOwnProperty("type")){
-                if(!callsData[transaction.type]){
-                    callsData[transaction.type] = {
-                        callType : transaction.type,
-                        count : 0
-                    };
+        const {internalTxs} = query;
+        if(internalTxs) {
+            for (const transaction of transactions) {
+                if (transaction.hasOwnProperty("type")) {
+                    if (!callsData[transaction.type]) {
+                        callsData[transaction.type] = {
+                            callType: transaction.type,
+                            count: 0
+                        };
+                    }
+                    callsData[transaction.type].count += 1;
                 }
-                callsData[transaction.type].count += 1;
             }
         }
-		/*transactions.forEach((tx) => {
-			if (tx.internalTxs && tx.internalTxs.length > 0) {
-				tx.internalTxs.forEach((call) => {
-					const callType = call.callType || "unknown";
-					if (!callsData[callType]) {
-						callsData[callType] = {
-							callType: callType,
-							count: 0,
-						};
-					}
-					callsData[callType].count += 1;
-				});
-			}
-		});*/
+        else{
+            transactions.forEach((tx) => {
+                if (tx.internalTxs && tx.internalTxs.length > 0) {
+                    tx.internalTxs.forEach((call) => {
+                        const callType = call.type || "unknown";
+                        if (!callsData[callType]) {
+                            callsData[callType] = {
+                                callType: callType,
+                                count: 0,
+                            };
+                        }
+                        callsData[callType].count += 1;
+                    });
+                }
+            });
+        }
+        let txsFiltered = transactions;
+        if(!internalTxs)
+            txsFiltered = await getAllTransactions(transactions);
+        txsFiltered = txsFiltered.filter((tx)=>tx.hasOwnProperty("depth"))
+                                    .map((tx)=>({
+                                        ...tx,
+                                        transactionHash: tx.transactionHash.split("-")[0]
+                                    }));
 
-		return Object.values(callsData);
+		return {call: Object.values(callsData),
+            dataGrid: txsFiltered};
 	} catch (error) {
 		console.error("Error fetching calls data:", error);
 		throw new Error(error.message);
@@ -240,7 +267,6 @@ export async function getStorageStateData(query) {
 				});
 			}
 		});
-
 		return Object.values(storageStateData);
 	} catch (error) {
 		console.error("Error fetching storage state data:", error);
@@ -420,6 +446,189 @@ export function formatEventsForTreeView(tx) {
 	};
 }
 
+export function formatInternalTransactionsForTreeView(
+    transaction
+){
+    const children = [];
+    children.push({
+        id: `${transaction.transactionHash}`,
+        label: `Transaction: ${transaction.transactionHash}`
+    });
+    children.push({
+        id: `${transaction.transactionHash}-${transaction.functionName || transaction.activity}`,
+        label: `Function Name: ${transaction.functionName || transaction.activity}`,
+    });
+    children.push({
+        id: `${transaction.transactionHash}-${transaction.sender || transaction.from}`,
+        label: `Sender: ${transaction.sender || transaction.from}`,
+    });
+    children.push({
+        id: `${transaction.transactionHash}-${transaction.contractAddress || transaction.to}`,
+        label: `Contract Address: ${transaction.contractAddress || transaction.to}`,
+    });
+
+    if(transaction.inputs && Array.isArray(transaction.inputs) && transaction.inputs.length > 0) {
+        const inputsChildren = transaction.inputs.map((input, inputIndex) => {
+            let inputValue = input.inputValue;
+            if (typeof inputValue === "object" && inputValue.$numberLong) {
+                inputValue = inputValue.$numberLong;
+            }
+            if (typeof inputValue === "number" && inputValue > 1e18) {
+                inputValue = inputValue.toExponential(2);
+            }
+            return {
+                id: `${transaction.transactionHash}-input-${inputIndex}`,
+                label: `${input.inputName} (${input.type}): ${inputValue}`,
+            };
+        });
+        children.push({
+            id: `${transaction.transactionHash}-input`,
+            label: `Inputs (Decoded): `,
+            children: inputsChildren,
+        })
+    }
+    if(transaction.internalTxs && Array.isArray(transaction.internalTxs) && transaction.internalTxs.length > 0) {
+        const internalTxsChildren = expandInternal(transaction.internalTxs,[],transaction.transactionHash);
+        children.push({
+            id: `${transaction.transactionHash}-internalTxs`,
+            label: `Internal Txs: `,
+            children: internalTxsChildren
+        });
+    }
+    return [{
+        id: `${transaction.transactionHash}-transaction`,
+        label: `Transaction : ${transaction.transactionHash}`,
+        children: children,
+    }]
+}
+
+export function formatCallForTreeView(transaction,callId){
+    const children = [];
+    children.push({
+        id: `${transaction.transactionHash}`,
+        label: `Transaction: ${transaction.transactionHash}`
+    });
+    children.push({
+        id: `${transaction.transactionHash}-${transaction.functionName || transaction.activity}`,
+        label: `Function Name: ${transaction.functionName || transaction.activity}`,
+    });
+    children.push({
+        id: `${transaction.transactionHash}-${transaction.sender || transaction.from}`,
+        label: `Sender: ${transaction.sender || transaction.from}`,
+    });
+    children.push({
+        id: `${transaction.transactionHash}-${transaction.contractAddress || transaction.to}`,
+        label: `Contract Address: ${transaction.contractAddress || transaction.to}`,
+    });
+
+    if(transaction.inputs && Array.isArray(transaction.inputs) && transaction.inputs.length > 0) {
+        const inputsChildren = transaction.inputs.map((input, inputIndex) => {
+            let inputValue = input.inputValue;
+            if (typeof inputValue === "object" && inputValue.$numberLong) {
+                inputValue = inputValue.$numberLong;
+            }
+            if (typeof inputValue === "number" && inputValue > 1e18) {
+                inputValue = inputValue.toExponential(2);
+            }
+            return {
+                id: `${transaction.transactionHash}-input-${inputIndex}`,
+                label: `${input.inputName} (${input.type}): ${inputValue}`,
+            };
+        });
+        children.push({
+            id: `${transaction.transactionHash}-input`,
+            label: `Inputs (Decoded): `,
+            children: inputsChildren,
+        })
+    }
+    if(transaction.internalTxs && Array.isArray(transaction.internalTxs) && transaction.internalTxs.length > 0) {
+        const internalTxsChildren = findInternalCall(transaction.internalTxs,callId,transaction.transactionHash);
+        children.push({
+            id: `${transaction.transactionHash}-internalTxs`,
+            label: `Internal Txs: `,
+            children: internalTxsChildren
+        });
+    }
+    return [{
+        id: `${transaction.transactionHash}-transaction`,
+        label: `Transaction : ${transaction.transactionHash}`,
+        children: children,
+    }]
+
+}
+
+function findInternalCall(transactions,callId,txHash,counter={value:0}) {
+    const results = [];
+    for(const transaction of transactions) {
+        if(transaction.callId===callId) {
+            const expanded = expandInternal([transaction], [counter.value], txHash);
+            counter.value++;
+            results.push(...expanded);
+        }
+        else if(transaction.calls &&  Array.isArray(transaction.calls) && transaction.calls.length>0) {
+            const nested = findInternalCall(transaction.calls,callId,txHash,counter);
+            if(nested){
+                results.push(...nested);
+            }
+        }
+    }
+    return results;
+}
+
+function expandInternal(transactions,parentIndex,txHash){
+    const parentId = parentIndex.join("-");
+    if(!transactions || !Array.isArray(transactions) || transactions.length === 0) return [];
+    return transactions.map((tx, index) => {
+        const children = [];
+        children.push({
+            id: `${txHash}-${tx.functionName || tx.activity}-${parentId}-${index}`,
+            label: `Function Name: ${tx.functionName || tx.activity}`,
+        });
+        children.push({
+            id: `${txHash}-${tx.sender || tx.from}-${parentId}-${index}`,
+            label: `From: ${tx.sender || tx.from}`,
+        });
+        children.push({
+            id: `${txHash}-${tx.contractAddress || tx.to}-${parentId}-${index}`,
+            label: `To: ${tx.contractAddress || tx.to}`,
+        });
+
+        if (tx.inputs && Array.isArray(tx.inputs) && tx.inputs.length > 0) {
+            const inputsChildren = tx.inputs.map((input, inputIndex) => {
+                let inputValue = input.value;
+                if (typeof inputValue === "object" && inputValue.$numberLong) {
+                    inputValue = inputValue.$numberLong;
+                }
+                if (typeof inputValue === "number" && inputValue > 1e18) {
+                    inputValue = inputValue.toExponential(2);
+                }
+                return {
+                    id: `${txHash}-${parentId}-${index}-input-${inputIndex}`,
+                    label: `${input.name} (${input.type}): ${inputValue}`,
+                };
+            });
+            children.push({
+                id: `${txHash}-${parentId}-${index}-input`,
+                label: `Inputs (Decoded): `,
+                children: inputsChildren
+            })
+        }
+        if (tx.calls && Array.isArray(tx.calls) && tx.calls.length > 0) {
+            const callChildren = expandInternal(tx.calls,parentIndex.concat(index),txHash);
+            children.push({
+                id: `${txHash}-${parentId}-${index}-call`,
+                label: `Calls: `,
+                children: callChildren
+            })
+        }
+        return {
+            id: `${txHash}-${parentId}-${index}-calls`,
+            label: `Calls: `,
+            children: children
+        }
+    });
+}
+
 export function formatCallsForTreeView(
 	callType,
 	transactions,
@@ -429,9 +638,9 @@ export function formatCallsForTreeView(
 	const callsOfType = [];
 
 	transactions.forEach((tx) => {
-		if (tx.internalTxs && tx.internalTxs.length > 0) {
+		if (tx.internalTxs && tx.internalTxs.length > 0){
 			tx.internalTxs.forEach((call, callIndex) => {
-				if (call.callType === callType) {
+				if (call.type === callType) {
 					callsOfType.push({
 						...call,
 						transactionHash: tx.transactionHash,
@@ -440,6 +649,17 @@ export function formatCallsForTreeView(
 				}
 			});
 		}
+        if(tx.calls && tx.calls.length > 0) {
+            tx.calls.forEach((call,callIndex)=>{
+                if (call.type === callType) {
+                    callsOfType.push({
+                        ...call,
+                        transactionHash: tx.transactionHash,
+                        callIndex: callIndex,
+                    });
+                }
+            })
+        }
 	});
 
 	const startIndex = page * (limit || callsOfType.length);
@@ -448,18 +668,17 @@ export function formatCallsForTreeView(
 
 	return paginatedCalls.map((call, index) => {
 		const children = [];
-
-		children.push({
-			id: `${call.transactionHash}-${call.callIndex}-callType`,
-			label: `Call Type: ${call.callType}`,
+        children.push({
+			id: `${call.transactionHash}-${call.callIndex}-${index}-callType`,
+			label: `Call Type: ${call.type}`,
 		});
 
 		children.push({
-			id: `${call.transactionHash}-${call.callIndex}-to`,
+			id: `${call.transactionHash}-${call.callIndex}-${index}-to`,
 			label: `To: ${call.to}`,
 		});
 
-		if (call.inputsCall && call.inputsCall.length > 0) {
+		if (call.inputsCall && Array.isArray(call.inputsCall) && call.inputsCall.length > 0) {
 			const inputsCallChildren = call.inputsCall.map(
 				(inputCall, inputIndex) => ({
 					id: `${call.transactionHash}-${call.callIndex}-inputCall-${inputIndex}`,
@@ -484,20 +703,20 @@ export function formatCallsForTreeView(
 					inputValue = inputValue.toExponential(2);
 				}
 				return {
-					id: `${call.transactionHash}-${call.callIndex}-input-${inputIndex}`,
+					id: `${call.transactionHash}-${call.callIndex}-${index}-input-${inputIndex}`,
 					label: `${input.name} (${input.type}): ${inputValue}`,
 				};
 			});
 
 			children.push({
-				id: `${call.transactionHash}-${call.callIndex}-inputs`,
+				id: `${call.transactionHash}-${call.callIndex}-${index}-inputs`,
 				label: "Inputs (Decoded)",
 				children: inputsChildren,
 			});
 		}
 
 		return {
-			id: `${call.transactionHash}-${call.callIndex}-call`,
+			id: `${call.transactionHash}-${call.callIndex}-${index}-call`,
 			label: `Call ${startIndex + index + 1} - Tx: ${call.transactionHash}...`,
 			children: children,
 		};

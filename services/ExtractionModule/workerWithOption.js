@@ -10,7 +10,8 @@ const axios = require("axios");
 const { decodeInternalTransaction,newDecodedInternalTransaction } = require('../decodeInternalTransaction');
 const { optimizedDecodeValues } = require('../optimizedDecodeValues');
 const { saveTransaction } = require("../../databaseStore");
-const {searchTransaction} = require("../../query/query")
+const {searchAbi} = require("../../query/query")
+const {saveAbi}=require("../../databaseStore")
 const {decodeTransactionInputs,getEvents,iterateInternalForEvent,decodeInputs,getEventFromErigon,getEventsFromInternal,getEventFromHardHat} = require('../decodingUtils/utils')
 
 const fs = require('fs');
@@ -156,6 +157,9 @@ function makeRpcCallStreaming(url, method, params) {
  */
 async function createTransactionLog(tx, mainContract, contractTree, smartContract,extractionType,contractAddress,networkData,option) {
     let web3=new Web3(networkData.web3Endpoint)
+    if(tx.timestamp && tx.timestamp.includes("0x")){
+        tx.timeStamp=web3.utils.hexToNumber(tx.timestamp);
+    }
     let transactionLog = {
         functionName:tx.inputDecoded?tx.inputDecoded.method:tx.methodId,
         transactionHash: tx.hash,
@@ -178,7 +182,7 @@ async function createTransactionLog(tx, mainContract, contractTree, smartContrac
             if(option.internalTransaction==1){
                 const { stream, requiredTime } = await debugTransactionErigonStreaming(tx.hash,networkData.web3Endpoint);
                 try{
-                    storageVal = await getTraceStorageFromErigon(stream, networkData,tx.inputDecoded?tx.inputDecoded.method:null,tx.hash,mainContract,contractTree,smartContract,option,web3);
+                    storageVal = await getTraceStorageFromErigon(stream, networkData,tx.inputDecoded?tx.inputDecoded.method:null,tx.hash,mainContract,contractTree,smartContract,option,web3,transactionLog.blockNumber);
                     //storageVal.internalTxs=await newDecodedInternalTransaction(transactionLog.transactionHash, smartContract, networkData, web3);
                 }catch (err){
                     console.log(err);
@@ -186,15 +190,50 @@ async function createTransactionLog(tx, mainContract, contractTree, smartContrac
             }else{
                 debugResult = await debugTransaction(tx.hash, tx.blockNumber,networkData);
                 try{
-                    
-                    storageVal = await getTraceStorage(debugResult.response, networkData, tx.inputDecoded?tx.inputDecoded.method:null, tx.hash, mainContract, contractTree, smartContract,option,web3);
-                    
+                    storageVal = await getTraceStorage(debugResult.response, networkData, tx.inputDecoded?tx.inputDecoded.method:null, tx.hash, mainContract, contractTree, smartContract,option,web3,transactionLog.blockNumber);
                 }catch(err){
                     console.log(err)
                 }
             }
             transactionLog.storageState =storageVal ? storageVal.decodedValues:[];
             transactionLog.internalTxs =storageVal ? storageVal.internalTxs:[];
+            let storeAbi = {
+                contractName: mainContract,
+                abi: contractTree.contractAbi,
+                proxy: '',
+                proxyImplementation: '',
+                contractAddress: tx.to,
+            };
+            if(transactionLog.functionName==null && transactionLog.internalTxs && transactionLog.internalTxs.length>0){
+                if(transactionLog.internalTxs[0].type=="DELEGATECALL"){
+                    const addressTo = transactionLog.internalTxs[0].to;
+                    const query = { contractAddress: addressTo.toLowerCase() };
+                    const response = await searchAbi(query);
+                    if(response){
+                        storeAbi.proxy='1';
+                        storeAbi.proxyImplementation=query.contractAddress;
+                        const decoder = new InputDataDecoder(response.abi);
+                        const inputData = tx.input;
+                        const tempResult = decoder.decodeData(inputData);
+                        transactionLog.functionName = tempResult.method;
+                        if (transactionLog.inputs.length< 1) {
+                            transactionLog.inputs = tempResult.inputs.map((input, i) => {
+                                let value = input;
+                                if (input._isBigNumber) {
+                                    value = Number(web3.utils.hexToNumber(input._hex));
+                                }
+                                return {
+                                    name: tempResult.names[i],
+                                    type: tempResult.types[i],
+                                    value: value,
+                                };
+                            });
+                        }
+                    }
+                }
+                
+            }
+            await saveAbi(storeAbi);
         }
         await getEventForTransaction(transactionLog,tx.hash,Number(tx.blockNumber),contractAddress,web3,contractTree,option,networkData);
         await saveTransaction(transactionLog, tx.to!=''?tx.to:tx.from);
@@ -235,6 +274,7 @@ async function getEventForTransaction(transactionLog, hash, blockNumber, contrac
     if (option.default != 0) {
         //if to get the event form the public transaction
         let seenEvent = new Set();
+        searchEventInInternal(transactionLog.internalTxs,seenEvent);
         if (contractTree && Object.keys(contractTree.contractAbi).length !== 0) {
 
             let publicEvents = await getEvents(hash, blockNumber, contractAddress, web3, contractTree.contractAbi);
@@ -250,7 +290,7 @@ async function getEventForTransaction(transactionLog, hash, blockNumber, contrac
             let internalEvents = await iterateInternalForEvent(hash, blockNumber, transactionLog.internalTxs, option, networkData, web3);
             internalEvents.forEach((ele) => {
                 if (!seenEvent.has(ele.eventSignature)) {
-                    transactionLog.events.push(ele)
+                    // transactionLog.events.push(ele)
                     seenEvent.add(ele.eventSignature)
                 }
             })
@@ -379,6 +419,18 @@ async function getEventForTransaction(transactionLog, hash, blockNumber, contrac
         }
     }
 }
+
+function searchEventInInternal(internals,seenEvent){
+    for(const internal of internals){
+        internal.events?.forEach((event)=>{
+            seenEvent.add(event.eventSignature);
+        })
+
+        if (internal.calls) {
+            searchEventInInternal(internal.calls,seenEvent);
+        }
+    }
+}
 /**
  *
  * @param traceDebugged - the debugged transaction with its opcodes
@@ -389,7 +441,7 @@ async function getEventForTransaction(transactionLog, hash, blockNumber, contrac
  * @param contractTree - the contract tree used to identify the contract variables with the 'mainContract'
  * @returns {Promise<{decodedValues: (*&{variableValue: string|string|*})[], internalCalls: *[]}>} - the decoded values of the storage state and the internal calls
  */
-async function getTraceStorage(traceDebugged, networkData, functionName, transactionHash, mainContract, contractTree,smartContract,extractionOption,web3) {
+async function getTraceStorage(traceDebugged, networkData, functionName, transactionHash, mainContract, contractTree,smartContract,extractionOption,web3,blockNumber) {
     //used to store the storage changed by the function. Used to compare the generated keys
     let functionStorage = {};
     //used to store all the keys potentially related to a dynamic structure
@@ -409,7 +461,7 @@ async function getTraceStorage(traceDebugged, networkData, functionName, transac
             tempInternalCallArray  = traceDebugged.structLogs.filter((step) =>CALL_OPCODES.includes(step.op));
 
             for (const trace of traceDebugged.structLogs) {
-                if (trace.op === "KECCAK256") {
+                if (trace.op === "KECCAK256" && trace.depth==1) {
                     bufferPC = trace.pc;
                     const stackLength = trace.stack.length;
                     const memoryLocation = trace.stack[stackLength - 1];
@@ -418,11 +470,11 @@ async function getTraceStorage(traceDebugged, networkData, functionName, transac
                     const hexKey = trace.memory[numberLocation];
                     const hexStorageIndex = trace.memory[storageIndexLocation];
                     trackBuffer[index] = { hexKey, hexStorageIndex };
-                } else if (trace.op === "STOP") {
+                } else if (trace.op === "STOP" && trace.depth==1) {
                     for (const slot in trace.storage) {
                         functionStorage[slot] = trace.storage[slot];
                     }
-                } else if (trace.pc === (bufferPC + 1)) {
+                } else if (trace.pc === (bufferPC + 1) && trace.depth==1) {
                     keccakBeforeAdd = trackBuffer[index];
                     bufferPC = -10;
                     trackBuffer[index].finalKey = trace.stack[trace.stack.length - 1];
@@ -441,7 +493,7 @@ async function getTraceStorage(traceDebugged, networkData, functionName, transac
                         }
                         trackBuffer[index - 1].indexSum = trace.stack[trace.stack.length - 2];
                     }
-                } else if (trace.op === "SSTORE") {
+                } else if (trace.op === "SSTORE" && trace.depth==1) {
                     sstoreOptimization.push(trace.stack);
                     sstoreBuffer.push(trace.stack[trace.stack.length - 1]);
                 } else if (trace.op === "CALL" || trace.op === "DELEGATECALL" || trace.op === "STATICCALL") {
@@ -539,9 +591,9 @@ async function getTraceStorage(traceDebugged, networkData, functionName, transac
         }
         let internalTxs=[]
         if(extractionOption.internalTransaction==0){
-            internalTxs=await decodeInternalTransaction(internalCalls,smartContract,web3,networkData)
+            internalTxs=await decodeInternalTransaction(internalCalls,smartContract,web3,networkData,transactionHash,blockNumber)
         }else if(extractionOption.internalTransaction==1){
-            internalTxs=await newDecodedInternalTransaction(transactionHash, smartContract, networkData, web3);
+            internalTxs=await newDecodedInternalTransaction(transactionHash, smartContract, networkData, web3,blockNumber);
         }
         let result={
             decodedValues:internalStorage,
@@ -568,7 +620,8 @@ async function getTraceStorage(traceDebugged, networkData, functionName, transac
 }
 function retriveImplementationContract(trace,nextTrace,web3){
     let possibleImplementation;
-    if(trace.op=="CALL" && nextTrace.op=="DELEGATECALL" && trace.depth<nextTrace.depth){
+    // trace.op=="CALL" && nextTrace.op=="DELEGATECALL" && trace.depth<nextTrace.depth
+    if((trace.op=="CALL" || trace.op=="STATICCALL") && nextTrace.op=="DELEGATECALL" && trace.depth<nextTrace.depth){
         const offsetBytes = nextTrace.stack[nextTrace.op === "CALL" ? nextTrace.stack.length - 4 : nextTrace.stack.length - 3];
         const lengthBytes = nextTrace.stack[nextTrace.op === "CALL" ? nextTrace.stack.length - 5 : nextTrace.stack.length - 4];
         possibleImplementation={
@@ -582,12 +635,12 @@ function retriveImplementationContract(trace,nextTrace,web3){
             web3.utils.hexToNumber("0x" + offsetBytes) * 2,
             web3.utils.hexToNumber("0x" + offsetBytes) * 2 + web3.utils.hexToNumber("0x" + lengthBytes) * 2
         );
-        possibleImplementation.input = stringMemory;
+        possibleImplementation.input = "0x"+stringMemory;
     }
     return possibleImplementation;
 }
 // Modified getTraceStorage2 to accept a stream instead of reading from file
-async function getTraceStorageFromErigon(httpStream, networkData,functionName,transactionHash,mainContract,contractTree,smartContract,extractionOption,web3) {
+async function getTraceStorageFromErigon(httpStream, networkData,functionName,transactionHash,mainContract,contractTree,smartContract,extractionOption,web3,blockNumber) {
     let functionStorage = {};
     let index = 0;
     let trackBuffer = [];
@@ -636,7 +689,7 @@ async function getTraceStorageFromErigon(httpStream, networkData,functionName,tr
     });
 
     function processTrace(trace, nextTrace) {
-        if (trace.op === "KECCAK256") {
+        if (trace.op === "KECCAK256" && trace.depth==1) {
             bufferPC = trace.pc;
             const stackLength = trace.stack.length;
             const memoryLocation = trace.stack[stackLength - 1];
@@ -646,12 +699,12 @@ async function getTraceStorageFromErigon(httpStream, networkData,functionName,tr
             const hexStorageIndex = trace.memory[storageIndexLocation];
             trackBuffer[index] = { hexKey, hexStorageIndex };
             
-        } else if (trace.op === "STOP") {
+        } else if (trace.op === "STOP" && trace.depth==1) {
             for (const slot in trace.storage) {
                 functionStorage[slot] = trace.storage[slot];
             }
             
-        } else if (trace.pc === (bufferPC + 1)) {
+        } else if (trace.pc === (bufferPC + 1) && trace.depth==1) {
             keccakBeforeAdd = trackBuffer[index];
             bufferPC = -10;
             trackBuffer[index].finalKey = trace.stack[trace.stack.length - 1];
@@ -674,7 +727,7 @@ async function getTraceStorageFromErigon(httpStream, networkData,functionName,tr
                 trackBuffer[index - 1].indexSum = trace.stack[trace.stack.length - 2];
             }
             
-        } else if (trace.op === "SSTORE") {
+        } else if (trace.op === "SSTORE" && trace.depth==1) {
             sstoreOptimization.push(trace.stack);
             sstoreBuffer.push(trace.stack[trace.stack.length - 1]);
             //I'm interested in the main contract storage so the depth is 1
@@ -705,7 +758,7 @@ async function getTraceStorageFromErigon(httpStream, networkData,functionName,tr
             );
             call.inputsCall = stringMemory;
             internalCalls.push(call);
-        }else if(trace.op=="SLOAD"){
+        }else if(trace.op=="SLOAD" && trace.depth==1){
             if(trace.depth==1){
                 for(const slot in trace.storage){
                     functionStorage[slot]=trace.storage[slot]
@@ -759,9 +812,9 @@ async function getTraceStorageFromErigon(httpStream, networkData,functionName,tr
         
         let internalTxs = [];
         if (extractionOption.internalTransaction == 0) {
-            internalTxs = await decodeInternalTransaction(internalCalls, smartContract, web3, networkData);
+            internalTxs = await decodeInternalTransaction(internalCalls, smartContract, web3, networkData,transactionHash,blockNumber);
         } else if (extractionOption.internalTransaction == 1) {
-            internalTxs = await newDecodedInternalTransaction(transactionHash, smartContract, networkData, web3);
+            internalTxs = await newDecodedInternalTransaction(transactionHash, smartContract, networkData, web3,blockNumber);
         }
         
         let result = {

@@ -37,6 +37,31 @@ async function getEventFromErigon(transactionHash,networkData){
   }
 }
 
+async function getTransactionReceipt(transactionHash,networkData){
+    const body = {
+    jsonrpc: "2.0",
+    method: "eth_getTransactionReceipt",
+    params: [transactionHash],
+    id: 1
+  };
+  try {
+    const response = await fetch(networkData.web3Endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body)
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! Status: ${response.status}`);
+    }
+
+    const data = await response.json();
+    return data.result;
+  } catch (err) {
+    console.error("Error fetching transaction receipt:", err);
+    throw err;
+  }
+}
 /**
  * Function used to get all the logs from a specific transaction
  * @param {*} transactionHash 
@@ -409,8 +434,7 @@ async function buildTransactionHierarchy(contractAddressesFrom, contractAddresse
          const response = await axios.post(rpcUrl, payload, {
             headers: { "Content-Type": "application/json" }
         });
-        console.log(response.data.result);
-        //console.log(JSON.stringify(traces, null, 2))
+        console.log(response.data);
         traces = response.data.result;
     } catch(err){
         console.error("debugInteralTransaction error:", err.message);
@@ -421,7 +445,7 @@ async function buildTransactionHierarchy(contractAddressesFrom, contractAddresse
     for (const trace of traces) {
         const txHash = trace.transactionHash;
         const publicTransaction = await getEventFromErigon(txHash, networkData);
-        const timestamp = await getBlockFromErigon(publicTransaction.blockNumber, networkData, true);
+        const timestamp = await getBlockFromErigon(txHash, networkData, true);
 
         if (!txMap.has(txHash)) {
             txMap.set(txHash, {

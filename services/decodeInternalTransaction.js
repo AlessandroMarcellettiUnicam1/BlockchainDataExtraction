@@ -2,6 +2,7 @@ const axios = require("axios");
 const { searchAbi } = require("../query/query");
 const { saveAbi } = require("../databaseStore");
 const { connectDB } = require("../config/db");
+const { getEventsFromInternal }= require("./decodingUtils/utils")
 const InputDataDecoder = require("ethereum-input-data-decoder");
 
 /**
@@ -21,12 +22,10 @@ async function handleUnverifiedContract(element, web3) {
     if (element.input === "0x") {
         element.activity = "transfer";
         element.value = element.value || "0x";
-        element.name = "undefined";
-        element.type = "undefined";
     } else {
         await tryMethodSignature(element, web3);
         if (!element.activity) {
-            element.activity = "undefined";
+            element.activity = element.input?.slice(0, 10) || element.inputsCall?.slice(0, 10);
         }
     }
     
@@ -46,8 +45,6 @@ async function tryMethodSignature(element, web3) {
         element.activity = "Transfer*";
         element.value = element.value;
         element.inputs = element.input;
-        element.name = "undefined";
-        element.type = "undefined";
         return false;
     }
 
@@ -113,7 +110,7 @@ async function tryMethodSignature(element, web3) {
  */
 function decodeInputs(element, abi, web3, contractName) {
     const decoder = new InputDataDecoder(abi);
-    const inputData = element.inputsCall || element.input;
+    const inputData = element.input?element.input:element.inputsCall;
     const tempResult = decoder.decodeData(inputData);
 
     // Convert gas values if needed
@@ -208,11 +205,13 @@ async function handleAbiFetch(element, addressTo, apiKey, endpoint, web3) {
         // Handle proxy contracts using DELEGATECALL pattern
         if (callForAbi.data.result[0].Proxy === '1') {
             const nextElement = element.possibleImplementation;
+            
+            let input=element.input?element.input:element.inputsCall;
             if (nextElement && 
                 nextElement.type === "DELEGATECALL" && 
                 nextElement.from === element.to && 
-                nextElement.input === element.input) {
-                
+                nextElement.input === input) {
+                    
                 const anotherCallForAbi = await axios.get(
                     `${endpoint}&module=contract&action=getsourcecode&address=${nextElement.to}&apikey=${apiKey}`
                 );
@@ -227,6 +226,19 @@ async function handleAbiFetch(element, addressTo, apiKey, endpoint, web3) {
                 
                 if (!anotherCallForAbi.data.result[0].ABI.includes("Contract source code not verified")) {
                     decodeInputs(element, anotherCallForAbi.data.result[0].ABI, web3, anotherCallForAbi.data.result[0].ContractName);
+                    
+                    if (!element.activity && element.activity==null) {
+                        await tryMethodSignature(element, web3);
+                    } else {
+                        storeAbi.proxyImplementation = nextElement.to;
+                        await saveAbi(implementationAbi);
+                    }
+                } else {
+                    await handleUnverifiedContract(element, web3);
+                }
+            }else{
+                if (!callForAbi.data.result[0].ABI.includes("Contract source code not verified")) {
+                    decodeInputs(element, callForAbi.data.result[0].ABI, web3, callForAbi.data.result[0].ContractName);
                     
                     if (!element.activity && element.activity==null) {
                         await tryMethodSignature(element, web3);
@@ -270,8 +282,6 @@ async function handleAbiFromDbErigon(element, response, web3) {
         await handleUnverifiedContract(element, web3);
         return;
     }
-    
-
     if (response.proxy === '1' && response.proxyImplementation!='') {
         let query = { contractAddress: response.proxyImplementation.toLowerCase() };
         let responseImplementation = await searchAbi(query);
@@ -285,17 +295,21 @@ async function handleAbiFromDbErigon(element, response, web3) {
         } else {
             await tryMethodSignature(element, web3);
         }
-    }
-    const abiFromDb = JSON.parse(response.abi);
-    decodeInputs(element, abiFromDb, web3, response.contractName);
-    
-    if (!element.activity) {
-        await tryMethodSignature(element, web3);
-    }
-    
-    // Final fallback
-    if (!element.activity) {
-        await handleUnverifiedContract(element, web3);
+    }else{
+        const abiFromDb = JSON.parse(response.abi);
+        if(response.abi!='[]'){
+            decodeInputs(element, abiFromDb, web3, response.contractName);  
+        }
+        
+        
+        if (!element.activity) {
+            await tryMethodSignature(element, web3);
+        }
+        
+        // Final fallback
+        if (!element.activity) {
+            await handleUnverifiedContract(element, web3);
+        }
     }
 }
 
@@ -316,7 +330,7 @@ async function handleAbiFetchErigon(element, addressTo, apiKey, endpoint, web3) 
         const callForAbi = await axios.get(
             `${endpoint}&module=contract&action=getsourcecode&address=${addressTo}&apikey=${apiKey}`
         );
-        
+
         const proxyImplementation = '';
         const storeAbi = {
             contractName: callForAbi.data.result[0].ContractName,
@@ -325,15 +339,15 @@ async function handleAbiFetchErigon(element, addressTo, apiKey, endpoint, web3) 
             proxyImplementation: proxyImplementation,
             contractAddress: addressTo,
         };
-        
+
         // Handle proxy contracts using DELEGATECALL pattern
         if (callForAbi.data.result[0].Proxy === '1') {
             const nextElement = element.calls?.[0];
-            
+            let input=element.input?element.input:element.inputsCall;
             if (nextElement && 
                 nextElement.type === "DELEGATECALL" && 
                 nextElement.from === element.to && 
-                nextElement.input === element.input) {
+                nextElement.input === input) {
                 
                 const anotherCallForAbi = await axios.get(
                     `${endpoint}&module=contract&action=getsourcecode&address=${nextElement.to}&apikey=${apiKey}`
@@ -351,12 +365,22 @@ async function handleAbiFetchErigon(element, addressTo, apiKey, endpoint, web3) 
                     decodeInputs(element, anotherCallForAbi.data.result[0].ABI, web3, 
                         anotherCallForAbi.data.result[0].ContractName);
                     
-                    if (!element.activity) {
+                    if (!element.activity && element.activity==null) {
                         await tryMethodSignature(element, web3);
                     } else {
                         storeAbi.proxyImplementation = nextElement.to;
                         await saveAbi(implementationAbi);
                     }
+                } else {
+                    await handleUnverifiedContract(element, web3);
+                }
+            }else{
+                if (!callForAbi.data.result[0].ABI.includes("Contract source code not verified")) {
+                    decodeInputs(element, callForAbi.data.result[0].ABI, web3, callForAbi.data.result[0].ContractName);
+                    
+                    if (!element.activity && element.activity==null) {
+                        await tryMethodSignature(element, web3);
+                    } 
                 } else {
                     await handleUnverifiedContract(element, web3);
                 }
@@ -366,18 +390,20 @@ async function handleAbiFetchErigon(element, addressTo, apiKey, endpoint, web3) 
             success = true;
         } else if (!callForAbi.data.message.includes("NOTOK")) {
             // Regular contract
-            if (!callForAbi.data.result[0].ABI.includes("Contract source code not verified")) {
-                decodeInputs(element, callForAbi.data.result[0].ABI, web3, 
-                    callForAbi.data.result[0].ContractName);
-                
-                if (!element.activity) {
-                    await tryMethodSignature(element, web3);
+                if (storeAbi.abi!='[]' && !callForAbi.data.result[0].ABI.includes("Contract source code not verified")) {
+                    decodeInputs(element, callForAbi.data.result[0].ABI, web3, 
+                        callForAbi.data.result[0].ContractName);
+                    
+                    if (!element.activity && element.activity==null) {
+                        await tryMethodSignature(element, web3);
+                    } else {
+                        await saveAbi(storeAbi);
+                    }
                 } else {
-                    await saveAbi(storeAbi);
+                    if(!element.activity){
+                        await handleUnverifiedContract(element, web3);
+                    }
                 }
-            } else {
-                await handleUnverifiedContract(element, web3);
-            }
             
             success = true;
         }
@@ -392,11 +418,12 @@ async function handleAbiFetchErigon(element, addressTo, apiKey, endpoint, web3) 
  * @param {*} networkData 
  * @returns 
  */
-async function decodeInternalTransaction(internalCalls, smartContract, web3, networkData) {
+async function decodeInternalTransaction(internalCalls, smartContract, web3, networkData,transactionHash,blockNumber) {
     if (!smartContract) {
+        let seenEvent = new Set();
         await connectDB(networkData.networkName);
-        
         for (const element of internalCalls) {
+            element.events=[];
             const addressTo = element.to;
             const query = { contractAddress: addressTo.toLowerCase() };
             const response = await searchAbi(query);
@@ -406,6 +433,13 @@ async function decodeInternalTransaction(internalCalls, smartContract, web3, net
             } else {
                 await handleAbiFromDb(element, response, web3);
             }
+            let eventsOfTheInternal=await getEventsFromInternal(transactionHash,blockNumber,addressTo,networkData,web3);
+            eventsOfTheInternal.forEach((event)=>{
+                if (!seenEvent.has(event.eventSignature)) {
+                    element.events.push(event);
+                    seenEvent.add(event.eventSignature)
+                }
+            })
         }
     } else {
         console.log("smart contract uploaded manually");
@@ -423,10 +457,11 @@ async function decodeInternalTransaction(internalCalls, smartContract, web3, net
  * @param {*} depth 
  * @param {*} callId 
  */
-async function decodeInternalRecursive(internalCalls, smartContract, networkData, web3, depth, callId) {
+async function decodeInternalRecursive(internalCalls, smartContract, networkData, web3, depth, callId,transactionHash,blockNumber,seenEvent) {
     let idDepth = 1;
     
     for (const element of internalCalls) {
+        element.events=[];
         const addressTo = element.to;
         const query = { contractAddress: addressTo.toLowerCase() };
         
@@ -445,7 +480,16 @@ async function decodeInternalRecursive(internalCalls, smartContract, networkData
         } else {
             await handleAbiFromDbErigon(element, response, web3);
         }
-        
+        let eventInternal=await getEventsFromInternal(transactionHash,blockNumber,addressTo,networkData,web3);
+        if(eventInternal.length==0){
+            eventInternal=await getEventsFromInternal(transactionHash,blockNumber,element.from,networkData,web3);
+        }
+        eventInternal.forEach((event)=>{
+            if (!seenEvent.has(event.eventSignature)) {
+                element.events.push(event)
+                seenEvent.add(event.eventSignature)
+            }
+        })
         // Clean up input fields
         if (element.inputs && element.inputs.length > 0) {
             delete element.inputsCall;
@@ -458,7 +502,7 @@ async function decodeInternalRecursive(internalCalls, smartContract, networkData
         // Recursively process nested calls
         if (element.calls && element.calls.length > 0) {
             await decodeInternalRecursive(element.calls, smartContract, networkData, 
-                web3, depth + 1, element.callId);
+                web3, depth + 1, element.callId,transactionHash,blockNumber,seenEvent);
         }
     }
 }
@@ -499,12 +543,13 @@ async function debugInternalTransaction(transactionHash, web3Endpoint) {
  * @param {*} web3 
  * @returns 
  */
-async function newDecodedInternalTransaction(transactionHash, smartContract, networkData, web3) {
+async function newDecodedInternalTransaction(transactionHash, smartContract, networkData, web3,blockNumber) {
     const internalCalls = await debugInternalTransaction(transactionHash, networkData.web3Endpoint);
     
     if (!smartContract && internalCalls) {
+        let seenEvent = new Set();
         await connectDB(networkData.networkName);
-        await decodeInternalRecursive(internalCalls, smartContract, networkData, web3, 0, "0");
+        await decodeInternalRecursive(internalCalls, smartContract, networkData, web3, 0, "0",transactionHash,blockNumber,seenEvent);
     } else {
         console.log("smart contract uploaded manually");
     }
