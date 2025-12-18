@@ -13,7 +13,6 @@ const { getCompiledData, getContractCodeEtherscan } = require ('./contractUtils/
 //const cotractAddressAdidas = 0x28472a58A490c5e09A238847F66A68a47cC76f0f
 const hre = require("hardhat");
 const {saveTransaction, saveExtractionLog} = require("../databaseStore");
-const {getRemoteVersion, detectVersion} = require("./solcVersionManager");
 const {searchTransaction} = require("../query/query")
 const {connectDB} = require("../config/db");
 const mongoose = require("mongoose");
