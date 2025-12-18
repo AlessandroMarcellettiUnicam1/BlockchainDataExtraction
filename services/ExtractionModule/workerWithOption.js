@@ -197,21 +197,27 @@ async function createTransactionLog(tx, mainContract, contractTree, smartContrac
             }
             transactionLog.storageState =storageVal ? storageVal.decodedValues:[];
             transactionLog.internalTxs =storageVal ? storageVal.internalTxs:[];
-            let storeAbi = {
-                contractName: mainContract,
-                abi: contractTree.contractAbi,
-                proxy: '',
-                proxyImplementation: '',
-                contractAddress: tx.to,
-            };
+            let storeAbi;
+            if(contractTree){
+                storeAbi = {
+                    contractName: mainContract,
+                    abi: contractTree.contractAbi,
+                    proxy: '',
+                    proxyImplementation: '',
+                    contractAddress: tx.to,
+                };
+            }
             if(transactionLog.functionName==null && transactionLog.internalTxs && transactionLog.internalTxs.length>0){
                 if(transactionLog.internalTxs[0].type=="DELEGATECALL"){
                     const addressTo = transactionLog.internalTxs[0].to;
                     const query = { contractAddress: addressTo.toLowerCase() };
                     const response = await searchAbi(query);
                     if(response){
-                        storeAbi.proxy='1';
-                        storeAbi.proxyImplementation=query.contractAddress;
+                        if(contractTree){
+                            storeAbi.proxy='1';
+                            storeAbi.proxyImplementation=query.contractAddress;
+                        }
+                        
                         const decoder = new InputDataDecoder(response.abi);
                         const inputData = tx.input;
                         const tempResult = decoder.decodeData(inputData);
@@ -223,17 +229,21 @@ async function createTransactionLog(tx, mainContract, contractTree, smartContrac
                                     value = Number(web3.utils.hexToNumber(input._hex));
                                 }
                                 return {
-                                    name: tempResult.names[i],
+                                    inputName: tempResult.names[i],
                                     type: tempResult.types[i],
-                                    value: value,
+                                    inputValue: value,
                                 };
                             });
+                            
                         }
                     }
                 }
                 
             }
-            await saveAbi(storeAbi);
+            if(contractTree){
+                await saveAbi(storeAbi);
+            }
+            
         }
         await getEventForTransaction(transactionLog,tx.hash,Number(tx.blockNumber),contractAddress,web3,contractTree,option,networkData);
         await saveTransaction(transactionLog, tx.to!=''?tx.to:tx.from);
@@ -272,11 +282,13 @@ async function createTransactionLog(tx, mainContract, contractTree, smartContrac
  */
 async function getEventForTransaction(transactionLog, hash, blockNumber, contractAddress, web3, contractTree, option, networkData) {
     if (option.default != 0) {
-        //if to get the event form the public transaction
+        const duplicateEvents=process.env.DUPLICATE_EVENTS=="false";
         let seenEvent = new Set();
-        searchEventInInternal(transactionLog.internalTxs,seenEvent);
-        if (contractTree && Object.keys(contractTree.contractAbi).length !== 0) {
-
+        if(transactionLog.internalTxs && duplicateEvents){
+            searchEventInInternal(transactionLog.internalTxs,seenEvent);
+        }
+        
+        if (contractTree && contractTree.contractAbi && Object.keys(contractTree.contractAbi).length !== 0) {
             let publicEvents = await getEvents(hash, blockNumber, contractAddress, web3, contractTree.contractAbi);
             publicEvents.forEach((ele) => {
                 if (!seenEvent.has(ele.eventSignature)) {
@@ -290,7 +302,11 @@ async function getEventForTransaction(transactionLog, hash, blockNumber, contrac
             let internalEvents = await iterateInternalForEvent(hash, blockNumber, transactionLog.internalTxs, option, networkData, web3);
             internalEvents.forEach((ele) => {
                 if (!seenEvent.has(ele.eventSignature)) {
-                    // transactionLog.events.push(ele)
+                    //The negation of the flag because if we choose to duplicate the event so we se the flag to true in the 
+                    //env when we declare the variable we check if the flag is equal to false( standar case)
+                    if(!duplicateEvents){
+                        transactionLog.events.push(ele)
+                    }
                     seenEvent.add(ele.eventSignature)
                 }
             })
@@ -389,6 +405,9 @@ async function getEventForTransaction(transactionLog, hash, blockNumber, contrac
                 let logIndex = web3.utils.hexToNumber(ele.logIndex).toString();
                 if (!seenEvent.has(logIndex)) {
                     let result = await getEventsFromInternal(transactionLog.transactionHash, blockNumber, ele.address, networkData, web3);
+                    if(result.length==0){
+                        result=await getEventsFromInternal(transactionLog.transactionHash, blockNumber, transactionLog.sender, networkData, web3);
+                    }
                     if (result.length > 0) {
                         let flag = true
                         result.forEach((event) => {
