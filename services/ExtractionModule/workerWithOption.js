@@ -282,14 +282,13 @@ async function createTransactionLog(tx, mainContract, contractTree, smartContrac
  */
 async function getEventForTransaction(transactionLog, hash, blockNumber, contractAddress, web3, contractTree, option, networkData) {
     if (option.default != 0) {
-        //if to get the event form the public transaction
+        const duplicateEvents=process.env.DUPLICATE_EVENTS=="false";
         let seenEvent = new Set();
-        if(transactionLog.internalTxs){
+        if(transactionLog.internalTxs && duplicateEvents){
             searchEventInInternal(transactionLog.internalTxs,seenEvent);
         }
         
         if (contractTree && contractTree.contractAbi && Object.keys(contractTree.contractAbi).length !== 0) {
-
             let publicEvents = await getEvents(hash, blockNumber, contractAddress, web3, contractTree.contractAbi);
             publicEvents.forEach((ele) => {
                 if (!seenEvent.has(ele.eventSignature)) {
@@ -303,7 +302,11 @@ async function getEventForTransaction(transactionLog, hash, blockNumber, contrac
             let internalEvents = await iterateInternalForEvent(hash, blockNumber, transactionLog.internalTxs, option, networkData, web3);
             internalEvents.forEach((ele) => {
                 if (!seenEvent.has(ele.eventSignature)) {
-                    // transactionLog.events.push(ele)
+                    //The negation of the flag because if we choose to duplicate the event so we se the flag to true in the 
+                    //env when we declare the variable we check if the flag is equal to false( standar case)
+                    if(!duplicateEvents){
+                        transactionLog.events.push(ele)
+                    }
                     seenEvent.add(ele.eventSignature)
                 }
             })
