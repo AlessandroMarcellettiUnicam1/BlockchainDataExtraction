@@ -1,5 +1,6 @@
 const {getRemoteVersion, detectVersion} = require("../solcVersionManager");
 const axios = require("axios");
+
 /**
  * Returns the source code of the smart contract using the Etherscan APIs
  *
@@ -96,7 +97,6 @@ async function getCompiledData(contracts, contractName,compilerVerion) {
         input.sources[contractName].content = contracts;
         solidityVersion = await detectVersion(contracts)
     }
-    
     const solcSnapshot = await getRemoteVersion(compilerVerion)
     const output = solcSnapshot.compile(JSON.stringify(input));
     contractCompiled = output
@@ -191,7 +191,10 @@ async function getFunctionContractTree(source) {
     // let contractToIterate = [];
     let contractTree = {};
     for (const contract in source) {
-        for (const directive of source[contract].ast.nodes) {
+       
+       //console.log(source[contract])
+       if(source[contract].ast){
+            for (const directive of source[contract].ast.nodes) {
             //reads the nodes of the ast searching for the contract and not for the imports
             if (directive.nodeType === "ContractDefinition") {
                 // AST of the source code of the contracts
@@ -210,6 +213,8 @@ async function getFunctionContractTree(source) {
                 }
             }
         }
+       }
+        
     }
 
     return contractTree;

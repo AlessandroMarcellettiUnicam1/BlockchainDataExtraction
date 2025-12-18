@@ -284,8 +284,11 @@ async function getEventForTransaction(transactionLog, hash, blockNumber, contrac
     if (option.default != 0) {
         //if to get the event form the public transaction
         let seenEvent = new Set();
-        searchEventInInternal(transactionLog.internalTxs,seenEvent);
-        if (contractTree && Object.keys(contractTree.contractAbi).length !== 0) {
+        if(transactionLog.internalTxs){
+            searchEventInInternal(transactionLog.internalTxs,seenEvent);
+        }
+        
+        if (contractTree && contractTree.contractAbi && Object.keys(contractTree.contractAbi).length !== 0) {
 
             let publicEvents = await getEvents(hash, blockNumber, contractAddress, web3, contractTree.contractAbi);
             publicEvents.forEach((ele) => {
@@ -399,6 +402,9 @@ async function getEventForTransaction(transactionLog, hash, blockNumber, contrac
                 let logIndex = web3.utils.hexToNumber(ele.logIndex).toString();
                 if (!seenEvent.has(logIndex)) {
                     let result = await getEventsFromInternal(transactionLog.transactionHash, blockNumber, ele.address, networkData, web3);
+                    if(result.length==0){
+                        result=await getEventsFromInternal(transactionLog.transactionHash, blockNumber, transactionLog.sender, networkData, web3);
+                    }
                     if (result.length > 0) {
                         let flag = true
                         result.forEach((event) => {
