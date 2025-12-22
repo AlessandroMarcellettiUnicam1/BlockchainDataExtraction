@@ -118,10 +118,10 @@ async function getEventsFromInternal(transactionHash, block, contractAddress, ne
   // Handle proxy logic
   if (proxyInfo.proxy === '1' && proxyInfo.proxyImplementation) {
     implInfo = await searchAbi({ contractAddress: proxyInfo.proxyImplementation });
-    if (implInfo && !implInfo.abi.includes("Contract source code not verified")) {
+    if (implInfo && implInfo.abi && !implInfo.abi.includes("Contract source code not verified")) {
       targetAbi = JSON.parse(implInfo.abi);
     }
-  } else if (proxyInfo && !proxyInfo.abi.includes("Contract source code not verified")) {
+  } else if (proxyInfo && proxyInfo.abi && !proxyInfo.abi.includes("Contract source code not verified")) {
     targetAbi = JSON.parse(proxyInfo.abi);
   }
 
