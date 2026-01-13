@@ -15,6 +15,7 @@ const app = express();
 const upload = multer({ dest: "uploads/" });
 const port = 8000;
 const { setEventTypes } = require("./ocelMapping/eventTypes");
+const {queryJsonPath} = require("./jsonQuery/jsonQuery");
 app.use(cors());
 
 // Middleware: Logging for every request
@@ -73,6 +74,7 @@ app.post("/api/generateGraph", (req, res) => {
 				hidden: false,
 				label: label,
 				keyUsed: key,
+                cluster: key,
 				x: Math.random() * 100,
 				y: Math.random() * 100,
 				color: color,
@@ -113,13 +115,13 @@ app.post("/api/generateGraph", (req, res) => {
 	};
 
 	edges.forEach((edge) => {
-		let from = edge.from;
-		let to = edge.to;
+        let from = edge.from;
+        let to = edge.to;
 		const colorFrom = getRandomColor();
 		const colorTo = getRandomColor();
 		jsonData.forEach((tx) => {
-			let fromResults = jp.value(tx, `$..${from}`);
-			let toResults = jp.value(tx, `$..${to}`);
+            let fromResults = queryJsonPath(tx,from);
+            let toResults = queryJsonPath(tx,to);
 			const fromItems = Array.isArray(fromResults)
 				? fromResults
 				: [fromResults];
@@ -148,6 +150,7 @@ app.post("/api/generateGraph", (req, res) => {
 			details: obj.details,
 			keyUsed: obj.keyUsed,
 			color: obj.color,
+            cluster: obj.cluster,
 			x: obj.x,
 			y: obj.y,
 		},
