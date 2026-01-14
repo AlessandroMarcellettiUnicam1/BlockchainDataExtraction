@@ -100,16 +100,18 @@ async function getAllTransactions(oldParams, newParams) {
                     `${networkData.endpoint}&module=contract&action=getsourcecode&address=${tx.to}&apikey=${networkData.apiKey}`
                 );
                 let contractName=anotherCallForAbi.data.result[0].ContractName;
-                contractTree=await getContractTree(tx.to, null, networkData.endpoint, networkData.apiKey,contractName);
+                contractTree=await getContractTree(null, tx.to, networkData.endpoint, networkData.apiKey,contractName);
                 let temp=[];
                 temp.push(tx)
-                result = await getStorageData(temp, contractName, contractTree, tx.to, newParams.filters, newParams.smartContract, newParams.option, networkData);
+                
+                result = await getStorageData(temp, contractName, contractTree, tx.to, newParams.filters, newParams.smartContract, newParams.option, networkData,newParams.contractAddressesTo);
                 
             }
         } else {
             contractTree = await getContractTree(oldParams.smartContract, oldParams.implementationContractAddress, networkData.endpoint, networkData.apiKey, oldParams.contractName);
             transactionList = await getTransactionFromContract(networkData, oldParams.contractAddress, oldParams.fromBlock, oldParams.toBlock);
-            result = await getStorageData(transactionList, oldParams.contractName, contractTree, oldParams.contractAddress, oldParams.filters, oldParams.smartContract, oldParams.option, networkData);
+            
+            result = await getStorageData(transactionList, oldParams.contractName, contractTree, oldParams.contractAddress, oldParams.filters, oldParams.smartContract, oldParams.option, networkData,null);
         }
                 
         console.log("Extraction finished");
@@ -286,7 +288,7 @@ function applyFilters(contractTransactions, filters) {
  * @param {*} networkData 
  * @returns 
  */
-async function getStorageData(contractTransactions, mainContract, contractTree, contractAddress, filters, smartContract,option,networkData) {
+async function getStorageData(contractTransactions, mainContract, contractTree, contractAddress, filters, smartContract,option,networkData,addressRange) {
     let transactionsFiltered=null;
     try{
     // Apply filters to transactions
@@ -306,7 +308,7 @@ async function getStorageData(contractTransactions, mainContract, contractTree, 
                     console.log(`Transaction already processed: ${tx.hash}`);
                     const { _id, __v, ...transactionData } = response[0];
                 }else{
-                    await runWorkerForTx(tx, mainContract, contractTree, contractAddress, smartContract,option,networkData);
+                    await runWorkerForTx(tx, mainContract, contractTree, contractAddress, smartContract,option,networkData,addressRange);
                 }
 
             }catch (e){
@@ -332,7 +334,7 @@ async function getStorageData(contractTransactions, mainContract, contractTree, 
     }
     
 }
-function runWorkerForTx(tx, mainContract, contractTree, contractAddress, smartContract, option, networkData) {
+function runWorkerForTx(tx, mainContract, contractTree, contractAddress, smartContract, option, networkData,addressRange) {
     const workerPath = path.join(__dirname, 'workerWithOption.js');
     
     return new Promise((resolve, reject) => {
@@ -348,7 +350,8 @@ function runWorkerForTx(tx, mainContract, contractTree, contractAddress, smartCo
             contractAddress,
             smartContract,
             option,
-            networkData
+            networkData,
+            addressRange
         });
 
         // Listen for messages
