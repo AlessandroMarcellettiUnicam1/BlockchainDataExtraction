@@ -1,7 +1,7 @@
 const mongoose = require('mongoose');
 
 const inputSchema = new mongoose.Schema({
-    inputName: {type: String},
+    inputName: {type: mongoose.Schema.Types.Mixed},
     type: {type: mongoose.Schema.Types.Mixed},
     inputValue: {type: mongoose.Schema.Types.Mixed}
 }, { _id : false });

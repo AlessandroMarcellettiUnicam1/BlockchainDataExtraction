@@ -30,12 +30,12 @@ const http = require('http');
  * @param {*} networkData 
  * @returns 
  */
-async function processTransaction(tx, mainContract, contractTree, contractAddress, smartContract,extractionType,option,networkData) {
+async function processTransaction(tx, mainContract, contractTree, contractAddress, smartContract,extractionType,option,networkData,addressRange) {
     decodeInput(tx, contractTree)
     
     try{
         console.log(`Processing transaction: ${tx.hash}`);
-        let transactionLog=await createTransactionLog(tx, mainContract, contractTree, smartContract,extractionType,contractAddress,option,networkData);
+        let transactionLog=await createTransactionLog(tx, mainContract, contractTree, smartContract,extractionType,contractAddress,option,networkData,addressRange);
         
         return [];
         
@@ -155,7 +155,7 @@ function makeRpcCallStreaming(url, method, params) {
  * @param {*} option 
  * @returns 
  */
-async function createTransactionLog(tx, mainContract, contractTree, smartContract,extractionType,contractAddress,networkData,option) {
+async function createTransactionLog(tx, mainContract, contractTree, smartContract,extractionType,contractAddress,networkData,option,addressRange) {
     let web3=new Web3(networkData.web3Endpoint)
     if(tx.timestamp && tx.timestamp.includes("0x")){
         tx.timeStamp=web3.utils.hexToNumber(tx.timestamp);
@@ -246,7 +246,18 @@ async function createTransactionLog(tx, mainContract, contractTree, smartContrac
             
         }
         await getEventForTransaction(transactionLog,tx.hash,Number(tx.blockNumber),contractAddress,web3,contractTree,option,networkData);
-        await saveTransaction(transactionLog, tx.to!=''?tx.to:tx.from);
+        if(addressRange && addressRange.length>1){
+            let collectionName="";
+            for(let i=0; i<addressRange.length;i++){
+                collectionName+=addressRange[i].substring(0,5).toLowerCase(); 
+            }
+            await saveTransaction(transactionLog,collectionName)
+        }else if(addressRange && addressRange.length==1){
+            await saveTransaction(transactionLog,addressRange[0].toLowerCase());
+        }else{
+            await saveTransaction(transactionLog, tx.to!=''?tx.to:tx.from);
+        }
+        
 
     }finally{
         if (debugResult) {
@@ -869,7 +880,7 @@ function regroupShatrace(finalShaTraces){
 
 // Handle messages from main process
 process.on("message", async (data) => {
-    const { tx, mainContract, contractTree, contractAddress, smartContract,option, networkData,extractionType } = data;
+    const { tx, mainContract, contractTree, contractAddress, smartContract,option, networkData,extractionType,addressRange } = data;
     let transactionLog;
     try {
         
@@ -877,7 +888,7 @@ process.on("message", async (data) => {
         await connectDB(networkData.networkName);
         
         // Process the transaction
-        await processTransaction(tx, mainContract, contractTree, contractAddress, smartContract,extractionType,networkData,option);
+        await processTransaction(tx, mainContract, contractTree, contractAddress, smartContract,extractionType,networkData,option,addressRange);
 
         // Clean up
         // await mongoose.disconnect();
