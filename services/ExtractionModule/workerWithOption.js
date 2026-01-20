@@ -18,6 +18,45 @@ const fs = require('fs');
 const path = require('path');
 const https = require('https');
 const http = require('http');
+const util = require("util");
+
+function buildCallObjectFromTrace(trace, web3, possibleImplementation) {
+    // ATTENZIONE: per CALL il layout stack è diverso rispetto a DELEGATECALL/STATICCALL
+    const offsetBytes = trace.stack[trace.op === "CALL" ? trace.stack.length - 4 : trace.stack.length - 3];
+    const lengthBytes = trace.stack[trace.op === "CALL" ? trace.stack.length - 5 : trace.stack.length - 4];
+
+    let stringDepthConstruction = "";
+    for (let i = 0; i < trace.depth - 1; i++) stringDepthConstruction += "_1";
+
+    return {
+        callId: "0_1" + stringDepthConstruction,
+        callType: trace.op,
+        depth: trace.depth, // depth del CALL opcode (caller)
+        gas: web3.utils.hexToNumber("0x" + trace.stack[trace.stack.length - 1]),
+        to: "0x" + trace.stack[trace.stack.length - 2].slice(-40),
+        inputsCall: "",
+        possibleImplementation,
+        // NUOVO:
+        calleeDepth: trace.depth + 1,      // depth del callee
+        rawStorage: null,                 // snapshot storage al termine del callee
+        endOp: null                       // STOP/RETURN/REVERT/SELFDESTRUCT
+    };
+}
+
+function extractCallInputFromMemory(trace, web3) {
+    const offsetBytes = trace.stack[trace.op === "CALL" ? trace.stack.length - 4 : trace.stack.length - 3];
+    const lengthBytes = trace.stack[trace.op === "CALL" ? trace.stack.length - 5 : trace.stack.length - 4];
+
+    let stringMemory = trace.memory.join("");
+    return stringMemory.slice(
+        web3.utils.hexToNumber("0x" + offsetBytes) * 2,
+        web3.utils.hexToNumber("0x" + offsetBytes) * 2 + web3.utils.hexToNumber("0x" + lengthBytes) * 2
+    );
+}
+
+
+
+
 /**
  * 
  * @param {*} tx 
@@ -184,6 +223,8 @@ async function createTransactionLog(tx, mainContract, contractTree, smartContrac
                 try{
                     storageVal = await getTraceStorageFromErigon(stream, networkData,tx.inputDecoded?tx.inputDecoded.method:null,tx.hash,mainContract,contractTree,smartContract,option,web3,transactionLog.blockNumber);
                     //storageVal.internalTxs=await newDecodedInternalTransaction(transactionLog.transactionHash, smartContract, networkData, web3);
+                    console.log(util.inspect(storageVal, { depth: null, colors: true, maxArrayLength: null }));
+                    console.log(util.inspect(storageVal.internalCallsRaw, { depth: null, colors: true, maxArrayLength: null }));
                 }catch (err){
                     console.log(err);
                 }
@@ -191,12 +232,15 @@ async function createTransactionLog(tx, mainContract, contractTree, smartContrac
                 debugResult = await debugTransaction(tx.hash, tx.blockNumber,networkData);
                 try{
                     storageVal = await getTraceStorage(debugResult.response, networkData, tx.inputDecoded?tx.inputDecoded.method:null, tx.hash, mainContract, contractTree, smartContract,option,web3,transactionLog.blockNumber);
+                    console.log(util.inspect(storageVal, { depth: null, colors: true, maxArrayLength: null }));
+                    console.log(util.inspect(storageVal.internalCallsRaw, { depth: null, colors: true, maxArrayLength: null }));
                 }catch(err){
                     console.log(err)
                 }
             }
             transactionLog.storageState =storageVal ? storageVal.decodedValues:[];
             transactionLog.internalTxs =storageVal ? storageVal.internalTxs:[];
+            transactionLog.internalCallsRaw = storageVal ? storageVal.internalCallsRaw : [];
             let storeAbi;
             if(contractTree){
                 storeAbi = {
@@ -484,14 +528,30 @@ async function getTraceStorage(traceDebugged, networkData, functionName, transac
     let keccakBeforeAdd = {};
     let finalShaTraces = [];
     let tempInternalCallArray=[];
+    const CALL_OPCODES = ["CALL", "DELEGATECALL", "STATICCALL", "CALLCODE"];
+    const END_OPCODES = new Set(["STOP", "RETURN", "REVERT", "SELFDESTRUCT"]);
+    const callStackByDepth = new Map(); // key: calleeDepth -> array stack (supporta nested)
     try{
         if (traceDebugged.structLogs) {
-            const CALL_OPCODES = ["CALL", "DELEGATECALL", "STATICCALL", "CALLCODE"];
 
             tempInternalCallArray  = traceDebugged.structLogs.filter((step) =>CALL_OPCODES.includes(step.op));
 
             for (const trace of traceDebugged.structLogs) {
-                if (trace.op === "KECCAK256" && trace.depth==1) {
+                // --- (A) Cattura end-opcode e assegna storage alla call interna
+                if (END_OPCODES.has(trace.op) && trace.depth > 1) {
+                    const stackArr = callStackByDepth.get(trace.depth);
+                    if (stackArr && stackArr.length > 0) {
+                        const currentCall = stackArr[stackArr.length - 1];
+                        // snapshot dello storage visibile dal tracer a quella depth
+                        currentCall.rawStorage = trace.storage ? { ...trace.storage } : {};
+                        currentCall.endOp = trace.op;
+
+                        // pop: finita questa call depth
+                        stackArr.pop();
+                        if (stackArr.length === 0) callStackByDepth.delete(trace.depth);
+                    }
+                    // non fare return; continua, perché potresti voler processare altro
+                } else if (trace.op === "KECCAK256" && trace.depth==1) {
                     bufferPC = trace.pc;
                     const stackLength = trace.stack.length;
                     const memoryLocation = trace.stack[stackLength - 1];
@@ -526,35 +586,21 @@ async function getTraceStorage(traceDebugged, networkData, functionName, transac
                 } else if (trace.op === "SSTORE" && trace.depth==1) {
                     sstoreOptimization.push(trace.stack);
                     sstoreBuffer.push(trace.stack[trace.stack.length - 1]);
-                } else if (trace.op === "CALL" || trace.op === "DELEGATECALL" || trace.op === "STATICCALL") {
-                    const offsetBytes = trace.stack[trace.op === "CALL" ? trace.stack.length - 4 : trace.stack.length - 3];
-                    const lengthBytes = trace.stack[trace.op === "CALL" ? trace.stack.length - 5 : trace.stack.length - 4];
-                    let stringDepthConstruction = "";
-                    for (let i = 0; i < trace.depth - 1; i++) {
-                        stringDepthConstruction += "_1";
-                    }
-                    const nextTrace=tempInternalCallArray[tempInternalCallArray.indexOf(trace)+1];
-                    let possibleImplementation
-                    if(nextTrace){
-                        possibleImplementation=retriveImplementationContract(trace,nextTrace,web3)
-                    }
-                    let call = {
-                        callId: "0_1" + stringDepthConstruction,
-                        callType: trace.op,
-                        depth: trace.depth,
-                        gas: web3.utils.hexToNumber("0x" + trace.stack[trace.stack.length - 1]),
-                        to: "0x" + trace.stack[trace.stack.length - 2].slice(-40),
-                        inputsCall: "",
-                        possibleImplementation:possibleImplementation
-                    };
-                    let stringMemory = trace.memory.join("");
-                    stringMemory = stringMemory.slice(
-                        web3.utils.hexToNumber("0x" + offsetBytes) * 2,
-                        web3.utils.hexToNumber("0x" + offsetBytes) * 2 + web3.utils.hexToNumber("0x" + lengthBytes) * 2
-                    );
-                    call.inputsCall = stringMemory;
+                } else if (CALL_OPCODES.includes(trace.op)) {
+                    const nextTrace = tempInternalCallArray[tempInternalCallArray.indexOf(trace) + 1];
+
+                    let possibleImplementation;
+                    if (nextTrace) possibleImplementation = retriveImplementationContract(trace, nextTrace, web3);
+
+                    const call = buildCallObjectFromTrace(trace, web3, possibleImplementation);
+                    call.inputsCall = extractCallInputFromMemory(trace, web3);
+
                     internalCalls.push(call);
 
+                    // Push nello stack del calleeDepth (trace.depth + 1)
+                    const d = call.calleeDepth;
+                    if (!callStackByDepth.has(d)) callStackByDepth.set(d, []);
+                    callStackByDepth.get(d).push(call);
                 }
             }
         }
@@ -627,7 +673,8 @@ async function getTraceStorage(traceDebugged, networkData, functionName, transac
         }
         let result={
             decodedValues:internalStorage,
-            internalTxs:internalTxs
+            internalTxs:internalTxs,
+            internalCallsRaw: internalCalls
         }
         sstoreObject=null;
         return result;
@@ -680,6 +727,11 @@ async function getTraceStorageFromErigon(httpStream, networkData,functionName,tr
     let internalCalls = [];
     let keccakBeforeAdd = {};
     let finalShaTraces = [];
+
+    const CALL_OPCODES = ["CALL", "DELEGATECALL", "STATICCALL", "CALLCODE"];
+    const END_OPCODES = new Set(["STOP", "RETURN", "REVERT", "SELFDESTRUCT"]);
+    const callStackByDepth = new Map();
+
     // Parse the stream directly - no file I/O!
     const parser = JSONStream.parse("result.structLogs.*");
     httpStream.pipe(parser);
@@ -719,7 +771,18 @@ async function getTraceStorageFromErigon(httpStream, networkData,functionName,tr
     });
 
     function processTrace(trace, nextTrace) {
-        if (trace.op === "KECCAK256" && trace.depth==1) {
+        // END opcodes: assegna storage a call interna
+        if (END_OPCODES.has(trace.op) && trace.depth > 1) {
+            const stackArr = callStackByDepth.get(trace.depth);
+            if (stackArr && stackArr.length > 0) {
+                const currentCall = stackArr[stackArr.length - 1];
+                currentCall.rawStorage = trace.storage ? { ...trace.storage } : {};
+                currentCall.endOp = trace.op;
+
+                stackArr.pop();
+                if (stackArr.length === 0) callStackByDepth.delete(trace.depth);
+            }
+        } else if (trace.op === "KECCAK256" && trace.depth==1) {
             bufferPC = trace.pc;
             const stackLength = trace.stack.length;
             const memoryLocation = trace.stack[stackLength - 1];
@@ -765,30 +828,35 @@ async function getTraceStorageFromErigon(httpStream, networkData,functionName,tr
                 for(const slot in trace.storage){
                     functionStorage[slot]=trace.storage[slot]
                 }
-            }  
-        } else if (trace.op === "CALL" || trace.op === "DELEGATECALL" || trace.op === "STATICCALL") {
-            const offsetBytes = trace.stack[trace.op === "CALL" ? trace.stack.length - 4 : trace.stack.length - 3];
-            const lengthBytes = trace.stack[trace.op === "CALL" ? trace.stack.length - 5 : trace.stack.length - 4];
-            let stringDepthConstruction = "";
-            for (let i = 0; i < trace.depth - 1; i++) {
-                stringDepthConstruction += "_1";
             }
-            let call = {
-                callId: "0_1" + stringDepthConstruction,
+        } else if (CALL_OPCODES.includes(trace.op)) {
+            const call = {
+                callId: "0_1" + (trace.depth > 1 ? "_1".repeat(trace.depth - 1) : ""),
                 callType: trace.op,
                 depth: trace.depth,
                 gas: web3.utils.hexToNumber("0x" + trace.stack[trace.stack.length - 1]),
                 to: "0x" + trace.stack[trace.stack.length - 2].slice(-40),
-                inputsCall: ""
+                inputsCall: "",
+                calleeDepth: trace.depth + 1,
+                rawStorage: null,
+                endOp: null
             };
+
+            const offsetBytes = trace.stack[trace.op === "CALL" ? trace.stack.length - 4 : trace.stack.length - 3];
+            const lengthBytes = trace.stack[trace.op === "CALL" ? trace.stack.length - 5 : trace.stack.length - 4];
             let stringMemory = trace.memory.join("");
             stringMemory = stringMemory.slice(
                 web3.utils.hexToNumber("0x" + offsetBytes) * 2,
                 web3.utils.hexToNumber("0x" + offsetBytes) * 2 + web3.utils.hexToNumber("0x" + lengthBytes) * 2
             );
             call.inputsCall = stringMemory;
+
             internalCalls.push(call);
-        }else if(trace.op=="SLOAD" && trace.depth==1){
+
+            const d = call.calleeDepth;
+            if (!callStackByDepth.has(d)) callStackByDepth.set(d, []);
+            callStackByDepth.get(d).push(call);
+        } else if(trace.op=="SLOAD" && trace.depth==1){
             if(trace.depth==1){
                 for(const slot in trace.storage){
                     functionStorage[slot]=trace.storage[slot]
@@ -849,7 +917,8 @@ async function getTraceStorageFromErigon(httpStream, networkData,functionName,tr
         
         let result = {
             decodedValues: internalStorage,
-            internalTxs: internalTxs
+            internalTxs: internalTxs,
+            internalCallsRaw: internalCalls
         };
         sstoreObject = null;
         return result;

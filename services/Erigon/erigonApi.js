@@ -4,6 +4,7 @@ const {getEventsFromInternal}=require("../decodingUtils/utils")
 const {optimizedDecodeValues}=require("../optimizedDecodeValues")
 const JSONStream = require("JSONStream");
 const axios = require("axios");
+const util = require("util");
 
 /**
  * Function used to get all the logs from a specific transaction
@@ -409,6 +410,33 @@ function regroupShatrace(finalShaTraces){
       );
 }
 
+async function getBlockByNumberFromErigon(blockNumberHex, networkData, fullTrace) {
+    const body = {
+        jsonrpc: "2.0",
+        method: "eth_getBlockByNumber",
+        params: [blockNumberHex, fullTrace],
+        id: 1
+    };
+
+    try {
+        const response = await fetch(networkData.web3Endpoint, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body)
+        });
+
+        if (!response.ok) {
+            throw new Error(`HTTP error! Status: ${response.status}`);
+        }
+
+        const data = await response.json();
+        return data.result; // block object oppure null
+    } catch (err) {
+        console.error("Error fetching block by number:", err);
+        throw err;
+    }
+}
+
 /**
  * Analizza il JSON delle trace e crea una mappa gerarchica
  * transazione padre -> tutte le sue chiamate interne
@@ -434,7 +462,7 @@ async function buildTransactionHierarchy(contractAddressesFrom, contractAddresse
          const response = await axios.post(rpcUrl, payload, {
             headers: { "Content-Type": "application/json" }
         });
-        console.log(response.data);
+        console.log(util.inspect(response.data, { depth: null, colors: true, maxArrayLength: null }));
         traces = response.data.result;
     } catch(err){
         console.error("debugInteralTransaction error:", err.message);
@@ -445,7 +473,9 @@ async function buildTransactionHierarchy(contractAddressesFrom, contractAddresse
     for (const trace of traces) {
         const txHash = trace.transactionHash;
         const publicTransaction = await getEventFromErigon(txHash, networkData);
-        const timestamp = await getBlockFromErigon(txHash, networkData, true);
+        const blockNumberHex = "0x" + trace.blockNumber.toString(16);
+        const block = await getBlockByNumberFromErigon(blockNumberHex, networkData, false);
+        const blockTimestamp = block?.timestamp ?? null;
 
         if (!txMap.has(txHash)) {
             txMap.set(txHash, {
@@ -456,7 +486,7 @@ async function buildTransactionHierarchy(contractAddressesFrom, contractAddresse
                 gasUsed: publicTransaction.gasUsed,
                 input: publicTransaction.input,
                 blockNumber: publicTransaction.blockNumber,
-                timestamp: timestamp.timestamp
+                timestamp: blockTimestamp
             });
         }
 
@@ -492,7 +522,8 @@ async function buildTransactionHierarchy(contractAddressesFrom, contractAddresse
     }
 
     let txMapArr = Array.from(txMap.values());
-    console.log(txMapArr);
+    //console.log(txMapArr);
+    console.log(util.inspect(txMapArr, { depth: null, colors: true, maxArrayLength: null }));
     return txMapArr;
     
 }
