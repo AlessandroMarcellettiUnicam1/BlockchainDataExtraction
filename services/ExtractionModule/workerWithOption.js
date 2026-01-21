@@ -205,7 +205,7 @@ async function createTransactionLog(tx, mainContract, contractTree, smartContrac
         blockNumber: parseInt(tx.blockNumber),
         contractAddress: tx.to,
         sender: tx.from,
-        gasUsed: parseInt(tx.gasUsed),
+        gasUsed: (tx.gasUsed && !isNaN(parseInt(tx.gasUsed))) ? parseInt(tx.gasUsed) : 0,
         timestamp: new Date(tx.timeStamp * 1000).toISOString(),
         inputs: tx.inputDecoded?decodeInputs(tx.inputDecoded,web3):[],
         value:tx.value,
@@ -515,10 +515,8 @@ function searchEventInInternal(internals,seenEvent){
  * @param contractTree - the contract tree used to identify the contract variables with the 'mainContract'
  * @returns {Promise<{decodedValues: (*&{variableValue: string|string|*})[], internalCalls: *[]}>} - the decoded values of the storage state and the internal calls
  */
-async function getTraceStorage(traceDebugged, networkData, functionName, transactionHash, mainContract, contractTree,smartContract,extractionOption,web3,blockNumber) {
-    //used to store the storage changed by the function. Used to compare the generated keys
+async function getTraceStorage(traceDebugged, networkData, functionName, transactionHash, mainContract, contractTree, smartContract, extractionOption, web3, blockNumber) {
     let functionStorage = {};
-    //used to store all the keys potentially related to a dynamic structure
     let index = 0;
     let trackBuffer = [];
     let bufferPC = -10;
@@ -527,31 +525,44 @@ async function getTraceStorage(traceDebugged, networkData, functionName, transac
     let internalCalls = [];
     let keccakBeforeAdd = {};
     let finalShaTraces = [];
-    let tempInternalCallArray=[];
+    let tempInternalCallArray = [];
+
     const CALL_OPCODES = ["CALL", "DELEGATECALL", "STATICCALL", "CALLCODE"];
     const END_OPCODES = new Set(["STOP", "RETURN", "REVERT", "SELFDESTRUCT"]);
-    const callStackByDepth = new Map(); // key: calleeDepth -> array stack (supporta nested)
-    try{
-        if (traceDebugged.structLogs) {
+    const callStackByDepth = new Map();
 
-            tempInternalCallArray  = traceDebugged.structLogs.filter((step) =>CALL_OPCODES.includes(step.op));
+    //  NUOVO: accumulatore per SLOAD/SSTORE per ogni depth
+    const storageAccumulator = new Map(); // key = depth, value = { reads: {}, writes: {} }
+
+    try {
+        if (traceDebugged.structLogs) {
+            tempInternalCallArray = traceDebugged.structLogs.filter((step) => CALL_OPCODES.includes(step.op));
 
             for (const trace of traceDebugged.structLogs) {
-                // --- (A) Cattura end-opcode e assegna storage alla call interna
+                // --- (A) Cattura end-opcode e assegna storage accumulato
                 if (END_OPCODES.has(trace.op) && trace.depth > 1) {
                     const stackArr = callStackByDepth.get(trace.depth);
                     if (stackArr && stackArr.length > 0) {
                         const currentCall = stackArr[stackArr.length - 1];
-                        // snapshot dello storage visibile dal tracer a quella depth
-                        currentCall.rawStorage = trace.storage ? { ...trace.storage } : {};
+
+                        //  CAMBIATO: usa storage accumulato da SLOAD/SSTORE
+                        const accumulated = storageAccumulator.get(trace.depth) || { reads: {}, writes: {} };
+                        currentCall.rawStorage = {
+                            reads: accumulated.reads,
+                            writes: accumulated.writes
+                        };
                         currentCall.endOp = trace.op;
 
-                        // pop: finita questa call depth
+                        // Pulisci accumulatore
+                        storageAccumulator.delete(trace.depth);
+
                         stackArr.pop();
                         if (stackArr.length === 0) callStackByDepth.delete(trace.depth);
                     }
-                    // non fare return; continua, perché potresti voler processare altro
-                } else if (trace.op === "KECCAK256" && trace.depth==1) {
+                }
+
+                // KECCAK256 per depth 1 (invariato)
+                else if (trace.op === "KECCAK256" && trace.depth === 1) {
                     bufferPC = trace.pc;
                     const stackLength = trace.stack.length;
                     const memoryLocation = trace.stack[stackLength - 1];
@@ -560,11 +571,17 @@ async function getTraceStorage(traceDebugged, networkData, functionName, transac
                     const hexKey = trace.memory[numberLocation];
                     const hexStorageIndex = trace.memory[storageIndexLocation];
                     trackBuffer[index] = { hexKey, hexStorageIndex };
-                } else if (trace.op === "STOP" && trace.depth==1) {
+                }
+
+                // STOP per depth 1 (invariato)
+                else if (trace.op === "STOP" && trace.depth === 1) {
                     for (const slot in trace.storage) {
                         functionStorage[slot] = trace.storage[slot];
                     }
-                } else if (trace.pc === (bufferPC + 1) && trace.depth==1) {
+                }
+
+                // ADD dopo KECCAK (invariato)
+                else if (trace.pc === (bufferPC + 1) && trace.depth === 1) {
                     keccakBeforeAdd = trackBuffer[index];
                     bufferPC = -10;
                     trackBuffer[index].finalKey = trace.stack[trace.stack.length - 1];
@@ -583,10 +600,45 @@ async function getTraceStorage(traceDebugged, networkData, functionName, transac
                         }
                         trackBuffer[index - 1].indexSum = trace.stack[trace.stack.length - 2];
                     }
-                } else if (trace.op === "SSTORE" && trace.depth==1) {
+                }
+
+                //  NUOVO: cattura SLOAD per depth > 1
+                else if (trace.op === "SLOAD" && trace.depth > 1) {
+                    const slot = trace.stack[trace.stack.length - 1];
+                    if (!storageAccumulator.has(trace.depth)) {
+                        storageAccumulator.set(trace.depth, { reads: {}, writes: {} });
+                    }
+                    const acc = storageAccumulator.get(trace.depth);
+
+                    // Il valore letto sarà nello stack del trace successivo
+                    const nextTrace = traceDebugged.structLogs[traceDebugged.structLogs.indexOf(trace) + 1];
+                    if (nextTrace && nextTrace.stack && nextTrace.stack.length > 0) {
+                        acc.reads[slot] = nextTrace.stack[nextTrace.stack.length - 1];
+                    } else {
+                        acc.reads[slot] = null;
+                    }
+                }
+
+                // SSTORE per depth 1 (invariato)
+                else if (trace.op === "SSTORE" && trace.depth === 1) {
                     sstoreOptimization.push(trace.stack);
                     sstoreBuffer.push(trace.stack[trace.stack.length - 1]);
-                } else if (CALL_OPCODES.includes(trace.op)) {
+                }
+
+                // NUOVO: cattura SSTORE per depth > 1
+                else if (trace.op === "SSTORE" && trace.depth > 1) {
+                    const slot = trace.stack[trace.stack.length - 1];
+                    const value = trace.stack[trace.stack.length - 2];
+
+                    if (!storageAccumulator.has(trace.depth)) {
+                        storageAccumulator.set(trace.depth, { reads: {}, writes: {} });
+                    }
+                    const acc = storageAccumulator.get(trace.depth);
+                    acc.writes[slot] = value;
+                }
+
+                // CALL opcodes
+                else if (CALL_OPCODES.includes(trace.op)) {
                     const nextTrace = tempInternalCallArray[tempInternalCallArray.indexOf(trace) + 1];
 
                     let possibleImplementation;
@@ -597,54 +649,38 @@ async function getTraceStorage(traceDebugged, networkData, functionName, transac
 
                     internalCalls.push(call);
 
-                    // Push nello stack del calleeDepth (trace.depth + 1)
                     const d = call.calleeDepth;
                     if (!callStackByDepth.has(d)) callStackByDepth.set(d, []);
                     callStackByDepth.get(d).push(call);
+
+                    // NUOVO: inizializza accumulatore per la nuova call
+                    storageAccumulator.set(d, { reads: {}, writes: {} });
                 }
             }
         }
-        
-    
-    
-        
-        finalShaTraces=trackBuffer
-        // console.log('SSTOREBUFER',sstoreBuffer);
-        // console.log('TRACK BUFFER', trackBuffer);
-        // console.log('Track buffer length', trackBuffer.length);
+
+        // Resto del codice invariato
+        finalShaTraces = trackBuffer;
+
         for (let i = 0; i < trackBuffer.length; i++) {
-            // console.log("---sto iterando con indice i ---", i)
-            // console.log('trackBuffer[i].finalKey', trackBuffer[i].finalKey)
-            //check if the SHA3 key is contained in a SSTORE
             if (sstoreBuffer.includes(trackBuffer[i].finalKey)) {
-                // console.log("---sstore contiene finalKey---")
-                //create a final trace for that key
                 const trace = {
                     finalKey: trackBuffer[i].finalKey,
                     hexKey: trackBuffer[i].hexKey,
-                    indexSum:trackBuffer[i].indexSum,
-                    hexStorageIndex:trackBuffer[i].hexStorageIndex
+                    indexSum: trackBuffer[i].indexSum,
+                    hexStorageIndex: trackBuffer[i].hexStorageIndex
                 }
-                // console.log(trace)
                 let flag = false;
                 let test = i;
-                // console.log("testtttttttt", test);
-                //Iterate previous SHA3 looking for a simple integer slot index
+
                 while (flag === false) {
-                    //TODO non capisco questo controllo perché torna indietro anche se sono
-                    //con l'indice 0
-                    // console.log("---sono nel while cercando cose---")
-                    //if the storage key is not a standard number then check for the previous one
                     if (!(web3.utils.hexToNumber("0x" + trackBuffer[test].hexStorageIndex) < 300)) {
-                        if(test > 0){
+                        if (test > 0) {
                             test--;
-                        }else{
-                            flag=true;
+                        } else {
+                            flag = true;
                         }
-                        // console.log("non ho trovato uno slot semplice e vado indietro")
                     } else {
-                        //if the storage location is a simple one then save it in the final trace with the correct key
-    
                         trace.hexStorageIndex = trackBuffer[test].hexStorageIndex;
                         flag = true;
                         finalShaTraces.push(trace);
@@ -653,35 +689,37 @@ async function getTraceStorage(traceDebugged, networkData, functionName, transac
                 finalShaTraces.push(trace);
                 sstoreBuffer.splice(sstoreBuffer.indexOf(trackBuffer[i].finalKey), 1);
             }
-    
         }
-    
-    
-       
-        traceDebugged.structLogs.length=0;
-        let sstoreObject = {sstoreOptimization, sstoreBuffer}
-        finalShaTraces=regroupShatrace(finalShaTraces);
-        let internalStorage=[];
-        if(extractionOption.internalStorage!=0){
-            internalStorage=contractTree && contractTree.storageLayoutFlag?await optimizedDecodeValues(sstoreObject, contractTree.fullContractTree, finalShaTraces, functionStorage, functionName, mainContract,web3,contractTree.contractCompiled):[];
+
+        traceDebugged.structLogs.length = 0;
+        let sstoreObject = { sstoreOptimization, sstoreBuffer }
+        finalShaTraces = regroupShatrace(finalShaTraces);
+
+        let internalStorage = [];
+        if (extractionOption.internalStorage != 0) {
+            internalStorage = contractTree && contractTree.storageLayoutFlag
+                ? await optimizedDecodeValues(sstoreObject, contractTree.fullContractTree, finalShaTraces, functionStorage, functionName, mainContract, web3, contractTree.contractCompiled)
+                : [];
         }
-        let internalTxs=[]
-        if(extractionOption.internalTransaction==0){
-            internalTxs=await decodeInternalTransaction(internalCalls,smartContract,web3,networkData,transactionHash,blockNumber)
-        }else if(extractionOption.internalTransaction==1){
-            internalTxs=await newDecodedInternalTransaction(transactionHash, smartContract, networkData, web3,blockNumber);
+
+        let internalTxs = []
+        if (extractionOption.internalTransaction == 0) {
+            internalTxs = await decodeInternalTransaction(internalCalls, smartContract, web3, networkData, transactionHash, blockNumber)
+        } else if (extractionOption.internalTransaction == 1) {
+            internalTxs = await newDecodedInternalTransaction(transactionHash, smartContract, networkData, web3, blockNumber);
         }
-        let result={
-            decodedValues:internalStorage,
-            internalTxs:internalTxs,
+
+        let result = {
+            decodedValues: internalStorage,
+            internalTxs: internalTxs,
             internalCallsRaw: internalCalls
         }
-        sstoreObject=null;
+        sstoreObject = null;
         return result;
-    }catch (err){
-        console.log("errore ",err)
-    
-    }finally{
+
+    } catch (err) {
+        console.log("errore ", err)
+    } finally {
         functionStorage = null;
         trackBuffer.length = 0;
         trackBuffer = null;
@@ -689,7 +727,7 @@ async function getTraceStorage(traceDebugged, networkData, functionName, transac
         sstoreBuffer = null;
         sstoreOptimization.length = 0;
         sstoreOptimization = null;
-        traceDebugged=null;
+        traceDebugged = null;
         finalShaTraces.length = 0;
         finalShaTraces = null;
         if (global.gc) global.gc();
@@ -717,7 +755,7 @@ function retriveImplementationContract(trace,nextTrace,web3){
     return possibleImplementation;
 }
 // Modified getTraceStorage2 to accept a stream instead of reading from file
-async function getTraceStorageFromErigon(httpStream, networkData,functionName,transactionHash,mainContract,contractTree,smartContract,extractionOption,web3,blockNumber) {
+async function getTraceStorageFromErigon(httpStream, networkData, functionName, transactionHash, mainContract, contractTree, smartContract, extractionOption, web3, blockNumber) {
     let functionStorage = {};
     let index = 0;
     let trackBuffer = [];
@@ -732,10 +770,13 @@ async function getTraceStorageFromErigon(httpStream, networkData,functionName,tr
     const END_OPCODES = new Set(["STOP", "RETURN", "REVERT", "SELFDESTRUCT"]);
     const callStackByDepth = new Map();
 
-    // Parse the stream directly - no file I/O!
+    // NUOVO: accumulatore per SLOAD/SSTORE per ogni depth
+    const storageAccumulator = new Map(); // key = depth, value = { reads: {}, writes: {} }
+
+    // Parse the stream directly - no file IO!
     const parser = JSONStream.parse("result.structLogs.*");
     httpStream.pipe(parser);
-    
+
     let previousTrace = null;
 
     await new Promise((resolve, reject) => {
@@ -750,17 +791,13 @@ async function getTraceStorageFromErigon(httpStream, networkData,functionName,tr
                 });
                 trace.stack = tempArray;
             }
-            if (previousTrace) {
-                processTrace(previousTrace, trace);
-            }
 
+            if (previousTrace) processTrace(previousTrace, trace);
             previousTrace = trace;
         });
 
         parser.on("end", () => {
-            if (previousTrace) {
-                processTrace(previousTrace, null);
-            }
+            if (previousTrace) processTrace(previousTrace, null);
             resolve();
         });
 
@@ -771,18 +808,30 @@ async function getTraceStorageFromErigon(httpStream, networkData,functionName,tr
     });
 
     function processTrace(trace, nextTrace) {
-        // END opcodes: assegna storage a call interna
+        // END opcodes: assegna storage accumulato a call interna
         if (END_OPCODES.has(trace.op) && trace.depth > 1) {
             const stackArr = callStackByDepth.get(trace.depth);
             if (stackArr && stackArr.length > 0) {
                 const currentCall = stackArr[stackArr.length - 1];
-                currentCall.rawStorage = trace.storage ? { ...trace.storage } : {};
+
+                // CAMBIATO: usa storage accumulato da SLOAD/SSTORE
+                const accumulated = storageAccumulator.get(trace.depth) || { reads: {}, writes: {} };
+                currentCall.rawStorage = {
+                    reads: accumulated.reads,
+                    writes: accumulated.writes
+                };
                 currentCall.endOp = trace.op;
+
+                // Pulisci accumulatore
+                storageAccumulator.delete(trace.depth);
 
                 stackArr.pop();
                 if (stackArr.length === 0) callStackByDepth.delete(trace.depth);
             }
-        } else if (trace.op === "KECCAK256" && trace.depth==1) {
+        }
+
+        // KECCAK256 per depth 1
+        else if (trace.op === "KECCAK256" && trace.depth === 1) {
             bufferPC = trace.pc;
             const stackLength = trace.stack.length;
             const memoryLocation = trace.stack[stackLength - 1];
@@ -791,45 +840,81 @@ async function getTraceStorageFromErigon(httpStream, networkData,functionName,tr
             const hexKey = trace.memory[numberLocation];
             const hexStorageIndex = trace.memory[storageIndexLocation];
             trackBuffer[index] = { hexKey, hexStorageIndex };
-            
-        } else if (trace.op === "STOP" && trace.depth==1) {
+        }
+
+        // STOP per depth 1
+        else if (trace.op === "STOP" && trace.depth === 1) {
             for (const slot in trace.storage) {
                 functionStorage[slot] = trace.storage[slot];
             }
-            
-        } else if (trace.pc === (bufferPC + 1) && trace.depth==1) {
+        }
+
+        // ADD dopo KECCAK per depth 1
+        else if (trace.pc === bufferPC + 1 && trace.depth === 1) {
             keccakBeforeAdd = trackBuffer[index];
             bufferPC = -10;
             trackBuffer[index].finalKey = trace.stack[trace.stack.length - 1];
             keccakBeforeAdd = trackBuffer[index];
             index++;
-            
-            if (trace.op === "ADD" && 
-                (trace.stack[trace.stack.length - 1] === keccakBeforeAdd.finalKey ||
-                 trace.stack[trace.stack.length - 2] === keccakBeforeAdd.finalKey) &&
-                keccakBeforeAdd.hexStorageIndex === "0000000000000000000000000000000000000000000000000000000000000000") {
-                
+
+            if (trace.op === "ADD" && trace.stack[trace.stack.length - 1] === keccakBeforeAdd.finalKey) {
+                trace.stack[trace.stack.length - 2] = keccakBeforeAdd.finalKey;
+                keccakBeforeAdd.hexStorageIndex = "0000000000000000000000000000000000000000000000000000000000000000";
                 const keyBuff = trackBuffer[index - 1].hexKey;
                 const slotBuff = trackBuffer[index - 1].hexStorageIndex;
                 trackBuffer[index - 1].hexKey = slotBuff;
                 trackBuffer[index - 1].hexStorageIndex = keyBuff;
-                
+
                 if (nextTrace && nextTrace.stack && nextTrace.stack.length > 0) {
                     trackBuffer[index - 1].finalKey = nextTrace.stack[nextTrace.stack.length - 1];
+                    trackBuffer[index - 1].indexSum = trace.stack[trace.stack.length - 2];
                 }
-                trackBuffer[index - 1].indexSum = trace.stack[trace.stack.length - 2];
             }
-            
-        } else if (trace.op === "SSTORE" && trace.depth==1) {
+        }
+
+        //  NUOVO: cattura SLOAD per depth > 1
+        else if (trace.op === "SLOAD" && trace.depth > 1) {
+            const slot = trace.stack[trace.stack.length - 1];
+            if (!storageAccumulator.has(trace.depth)) {
+                storageAccumulator.set(trace.depth, { reads: {}, writes: {} });
+            }
+            const acc = storageAccumulator.get(trace.depth);
+
+            // Il valore letto sarà nello stack del nextTrace
+            if (nextTrace && nextTrace.stack && nextTrace.stack.length > 0) {
+                acc.reads[slot] = nextTrace.stack[nextTrace.stack.length - 1];
+            } else {
+                acc.reads[slot] = null; // segnaposto se non disponibile
+            }
+        }
+
+        // SSTORE per depth 1
+        else if (trace.op === "SSTORE" && trace.depth === 1) {
             sstoreOptimization.push(trace.stack);
             sstoreBuffer.push(trace.stack[trace.stack.length - 1]);
-            //I'm interested in the main contract storage so the depth is 1
-            if(trace.depth==1){
-                for(const slot in trace.storage){
-                    functionStorage[slot]=trace.storage[slot]
-                }
+        }
+
+        //  NUOVO: cattura SSTORE per depth > 1
+        else if (trace.op === "SSTORE" && trace.depth > 1) {
+            const slot = trace.stack[trace.stack.length - 1];
+            const value = trace.stack[trace.stack.length - 2];
+
+            if (!storageAccumulator.has(trace.depth)) {
+                storageAccumulator.set(trace.depth, { reads: {}, writes: {} });
             }
-        } else if (CALL_OPCODES.includes(trace.op)) {
+            const acc = storageAccumulator.get(trace.depth);
+            acc.writes[slot] = value;
+        }
+
+        // Im interested in the main contract storage so the depth is 1
+        else if (trace.depth === 1) {
+            for (const slot in trace.storage) {
+                functionStorage[slot] = trace.storage[slot];
+            }
+        }
+
+        // CALL opcodes
+        else if (CALL_OPCODES.includes(trace.op)) {
             const call = {
                 callId: "0_1" + (trace.depth > 1 ? "_1".repeat(trace.depth - 1) : ""),
                 callType: trace.op,
@@ -846,8 +931,8 @@ async function getTraceStorageFromErigon(httpStream, networkData,functionName,tr
             const lengthBytes = trace.stack[trace.op === "CALL" ? trace.stack.length - 5 : trace.stack.length - 4];
             let stringMemory = trace.memory.join("");
             stringMemory = stringMemory.slice(
-                web3.utils.hexToNumber("0x" + offsetBytes) * 2,
-                web3.utils.hexToNumber("0x" + offsetBytes) * 2 + web3.utils.hexToNumber("0x" + lengthBytes) * 2
+                (web3.utils.hexToNumber("0x" + offsetBytes) * 2),
+                (web3.utils.hexToNumber("0x" + offsetBytes) * 2) + (web3.utils.hexToNumber("0x" + lengthBytes) * 2)
             );
             call.inputsCall = stringMemory;
 
@@ -856,18 +941,16 @@ async function getTraceStorageFromErigon(httpStream, networkData,functionName,tr
             const d = call.calleeDepth;
             if (!callStackByDepth.has(d)) callStackByDepth.set(d, []);
             callStackByDepth.get(d).push(call);
-        } else if(trace.op=="SLOAD" && trace.depth==1){
-            if(trace.depth==1){
-                for(const slot in trace.storage){
-                    functionStorage[slot]=trace.storage[slot]
-                }
-            }
+
+            //  NUOVO: inizializza accumulatore per la nuova call
+            storageAccumulator.set(d, { reads: {}, writes: {} });
         }
     }
 
+    // Resto del processing
     try {
         finalShaTraces = trackBuffer;
-        
+
         for (let i = 0; i < trackBuffer.length; i++) {
             if (sstoreBuffer.includes(trackBuffer[i].finalKey)) {
                 const trace = {
@@ -876,10 +959,9 @@ async function getTraceStorageFromErigon(httpStream, networkData,functionName,tr
                     indexSum: trackBuffer[i].indexSum,
                     hexStorageIndex: trackBuffer[i].hexStorageIndex
                 };
-                
                 let flag = false;
                 let test = i;
-                
+
                 while (flag === false) {
                     if (!(web3.utils.hexToNumber("0x" + trackBuffer[test].hexStorageIndex) < 300)) {
                         if (test > 0) {
@@ -898,35 +980,35 @@ async function getTraceStorageFromErigon(httpStream, networkData,functionName,tr
             }
         }
 
-        let sstoreObject = { sstoreOptimization, sstoreBuffer };
+        let sstoreObject = [sstoreOptimization, sstoreBuffer];
         finalShaTraces = regroupShatrace(finalShaTraces);
+
         let internalStorage = [];
-        
         if (extractionOption.internalStorage != 0) {
-            internalStorage = contractTree && contractTree.storageLayoutFlag 
+            internalStorage = contractTree && contractTree.storageLayoutFlag
                 ? await optimizedDecodeValues(sstoreObject, contractTree.fullContractTree, finalShaTraces, functionStorage, functionName, mainContract, web3, contractTree.contractCompiled)
                 : [];
         }
-        
+
         let internalTxs = [];
         if (extractionOption.internalTransaction == 0) {
-            internalTxs = await decodeInternalTransaction(internalCalls, smartContract, web3, networkData,transactionHash,blockNumber);
+            internalTxs = await decodeInternalTransaction(internalCalls, smartContract, web3, networkData, transactionHash, blockNumber);
         } else if (extractionOption.internalTransaction == 1) {
-            internalTxs = await newDecodedInternalTransaction(transactionHash, smartContract, networkData, web3,blockNumber);
+            internalTxs = await newDecodedInternalTransaction(transactionHash, smartContract, networkData, web3, blockNumber);
         }
-        
+
         let result = {
             decodedValues: internalStorage,
             internalTxs: internalTxs,
             internalCallsRaw: internalCalls
         };
+
         sstoreObject = null;
         return result;
-        
+
     } catch (err) {
         console.log("errore ", err);
         throw err;
-        
     } finally {
         functionStorage = null;
         trackBuffer.length = 0;

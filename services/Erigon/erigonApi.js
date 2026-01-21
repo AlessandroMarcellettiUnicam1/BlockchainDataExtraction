@@ -483,7 +483,7 @@ async function buildTransactionHierarchy(contractAddressesFrom, contractAddresse
                 from: publicTransaction.from,
                 to: publicTransaction.to,
                 value: publicTransaction.value,
-                gasUsed: publicTransaction.gasUsed,
+                gasUsed: publicTransaction.gasUsed ? parseInt(publicTransaction.gasUsed) : 0,
                 input: publicTransaction.input,
                 blockNumber: publicTransaction.blockNumber,
                 timestamp: blockTimestamp
