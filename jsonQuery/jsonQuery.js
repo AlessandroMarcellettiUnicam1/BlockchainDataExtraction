@@ -25,9 +25,12 @@ function findPathRecursive(node, parts, startIndex, results) {
     }
 }
 
-export function queryJsonPath(tx, path) {
+function queryJsonPath(tx, path) {
     const parts = path.split(".");
     const results = [];
     findPathRecursive(tx, parts, 0, results);
     return results;
+}
+module.exports={
+    queryJsonPath
 }

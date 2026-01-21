@@ -1,12 +1,12 @@
-import mongoose from "mongoose";
-import {getAllTransactions} from "./flattenTransaction.js"
-import {filterOccurrences} from "./filter.js"
+const mongoose = require("mongoose");
+const getAllTransactions=require( "./flattenTransaction.js");
+const filterOccurrences =require("./filter.js")
 
 // Cache setup
 const cache = new Map();
 const CACHE_TTL = 5000; // 5 seconds
 
-export async function fetchTransactions(query) {
+async function fetchTransactions(query) {
 	const cacheKey = JSON.stringify(query);
 
 	// Return cached result if available
@@ -100,4 +100,7 @@ export async function fetchTransactions(query) {
 		cache.delete(cacheKey);
 		throw error;
 	}
+}
+module.exports={
+	fetchTransactions
 }

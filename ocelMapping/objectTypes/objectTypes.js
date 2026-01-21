@@ -1,12 +1,12 @@
-import {
+const {
     handleCallTypeObjects,
     handleContractAddressObjects, handleEventNameObjects,
     handleInputNameObjects,
     handleSenderObjects,
     handleTxHashObjects, handleVariableNameObjects
-} from "./setObjectTypes.js";
+} = require("./setObjectTypes.js");
 
-export const setObjectTypes = (obj, ocel,jsonLog) => {
+const setObjectTypes = (obj, ocel,jsonLog) => {
     const newOcel = ocel
 
     switch (obj){
@@ -56,4 +56,7 @@ export const setObjectTypes = (obj, ocel,jsonLog) => {
             break;
     }
     return newOcel
+}
+module.exports={
+setObjectTypes
 }

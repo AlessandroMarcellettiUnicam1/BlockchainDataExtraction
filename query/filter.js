@@ -1,4 +1,4 @@
-export async function filterOccurrences(transactions, minOccurrences) {
+async function filterOccurrences(transactions, minOccurrences) {
     const activityMap = {}
     transactions.forEach((tx) => {
         const activity = tx.activity || tx.functionName || "unknown";
@@ -21,4 +21,7 @@ export async function filterOccurrences(transactions, minOccurrences) {
         const activity = tx.activity || tx.functionName || "unknown";
         return keys.includes(activity);
     });
+}
+module.exports={
+    filterOccurrences
 }

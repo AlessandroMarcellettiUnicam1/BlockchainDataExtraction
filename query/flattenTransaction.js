@@ -1,4 +1,4 @@
-export async function getAllTransactions(transactions) {
+async function getAllTransactions(transactions) {
     if(transactions.length===0){
         return [];
     }
@@ -42,4 +42,7 @@ function changeKey(obj, oldKey, newKey){
         delete obj[oldKey];
     }
     return obj;
+}
+module.exports={
+    getAllTransactions
 }
