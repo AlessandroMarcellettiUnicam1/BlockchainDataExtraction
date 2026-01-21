@@ -1,6 +1,6 @@
 const mongoose = require("mongoose");
 const getAllTransactions=require( "./flattenTransaction.js");
-const filterOccurrences =require("./filter.js")
+const {filterOccurrences} =require("./filter.js")
 
 // Cache setup
 const cache = new Map();
