@@ -1,12 +1,12 @@
-import mongoose from "mongoose";
-import {getAllTransactions} from "./flattenTransaction.js"
-import {filterOccurrences} from "./filter.js"
+const mongoose = require("mongoose");
+const {getAllTransactions}=require( "./flattenTransaction.js");
+const {filterOccurrences} =require("./filter.js")
 
 // Cache setup
 const cache = new Map();
 const CACHE_TTL = 5000; // 5 seconds
 
-export async function fetchTransactions(query) {
+async function fetchTransactions(query) {
 	const cacheKey = JSON.stringify(query);
 
 	// Return cached result if available
@@ -18,8 +18,8 @@ export async function fetchTransactions(query) {
 	const { contractAddress, dateFrom, dateTo, fromBlock, toBlock, internalTxs, minOccurrences, txHash } = query;
 	const queryFilter = {};
 
-	if (contractAddress) {
-		queryFilter.contractAddress = contractAddress;
+	if (contractAddress && Array.isArray(contractAddress) && contractAddress.length > 0) {
+		queryFilter.contractAddress = {$in: contractAddress};
 	}
 
 	if (dateFrom) {
@@ -56,21 +56,34 @@ export async function fetchTransactions(query) {
 	let results = [];
 
 	try {
+		// const page = Number(1);
+		// const limit = Number(50);
+		// const skip = (page - 1) * limit;
 		// Always search across all collections
 		const collections = await mongoose.connection.db
 			.listCollections()
 			.toArray();
-
 		for (const c of collections) {
 			const collection = mongoose.connection.db.collection(c.name);
 			const transactions = await collection
 				.find(queryFilter, { projection: { _id: 0 } })
 				.toArray();
+				// .skip(skip)
+				// .limit(limit)
 			results = results.concat(transactions);
 		}
 
-        if(internalTxs)
+        if(internalTxs && internalTxs!=="public") {
             results = await getAllTransactions(results);
+
+            if(internalTxs==="internal")
+                results = results.filter((tx)=>tx.hasOwnProperty("depth"))
+                    .map((tx)=>({
+                    ...tx,
+                    transactionHash: tx.transactionHash.split("-")[0],
+                        functionName: tx.activity
+                }));
+        }
 
         if(minOccurrences)
             results = await filterOccurrences(results, minOccurrences);
@@ -91,4 +104,7 @@ export async function fetchTransactions(query) {
 		cache.delete(cacheKey);
 		throw error;
 	}
+}
+module.exports={
+	fetchTransactions
 }

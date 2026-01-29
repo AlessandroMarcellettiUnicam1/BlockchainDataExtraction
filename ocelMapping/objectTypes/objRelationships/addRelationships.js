@@ -122,7 +122,7 @@ const addContractSenderRelationships = (ocelObjects) => {
     return objects
 }
 
-export const addContractAddressRelationships = (ocelObjects, jsonLog) => {
+const addContractAddressRelationships = (ocelObjects, jsonLog) => {
     let objects = ocelObjects;
 
     if (objects.some(obj => obj.id.includes("variable_"))) {
@@ -217,7 +217,7 @@ const addSenderTxHashRelationships = (ocelObjects) => {
     return objects
 }
 
-export const addSenderRelationships = (ocelObjects) => {
+const addSenderRelationships = (ocelObjects) => {
     let objects = ocelObjects;
 
     if (objects.some(obj => obj.type.includes("contractAddress"))) {
@@ -275,7 +275,7 @@ const addTxHashInternalTxRelationships = (ocelObjects) => {
     return objects
 }
 
-export const addTxHashRelationships = (ocelObjects) => {
+const addTxHashRelationships = (ocelObjects) => {
     let objects = ocelObjects;
 
     if (objects.some(obj => obj.type.includes("sender"))) {
@@ -289,7 +289,7 @@ export const addTxHashRelationships = (ocelObjects) => {
     return objects
 }
 
-export const addInputNameRelationships = (ocelObjects) => {
+const addInputNameRelationships = (ocelObjects) => {
     let objects = ocelObjects;
     if (objects.some(obj => obj.type.includes("sender"))) {
         objects = addSenderInputRelationships(objects);
@@ -298,7 +298,7 @@ export const addInputNameRelationships = (ocelObjects) => {
     return objects
 }
 
-export const addVariableRelationships = (ocelObjects, jsonLog) => {
+const addVariableRelationships = (ocelObjects, jsonLog) => {
     let objects = ocelObjects
 
     if (objects.some(obj => obj.type.includes("contractAddress"))) {
@@ -308,7 +308,7 @@ export const addVariableRelationships = (ocelObjects, jsonLog) => {
     return objects
 }
 
-export const addEventRelationships = (ocelObjects) => {
+const addEventRelationships = (ocelObjects) => {
     let objects = ocelObjects
 
     if (objects.some(obj => obj.type.includes("contractAddress"))) {
@@ -318,7 +318,7 @@ export const addEventRelationships = (ocelObjects) => {
     return objects
 }
 
-export const addInternalTxRelationships = (ocelObjects) => {
+const addInternalTxRelationships = (ocelObjects) => {
     let objects = ocelObjects
 
     if (objects.some(obj => obj.type.includes("transactionHash"))) {
@@ -326,4 +326,14 @@ export const addInternalTxRelationships = (ocelObjects) => {
     }
 
     return objects
+}
+
+module.exports={
+    addContractAddressRelationships,
+    addSenderRelationships,
+    addTxHashRelationships,
+    addInputNameRelationships,
+   addVariableRelationships,
+   addEventRelationships,
+   addInternalTxRelationships
 }

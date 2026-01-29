@@ -1,12 +1,12 @@
-import { fetchTransactions } from "./transactionQuery.js";
-import {getAllTransactions} from "./flattenTransaction.js";
+const {fetchTransactions} = require ("./transactionQuery.js");
+const {getAllTransactions} = require("./flattenTransaction.js");
 
-export async function getTransactions(query) {
+async function getTransactions(query) {
     return fetchTransactions(query);
 }
 
 
-export async function getGasUsage(query) {
+async function getGasUsage(query) {
 	try {
 		const transactions = await fetchTransactions(query);
 		const activityGasMap = {};
@@ -26,7 +26,7 @@ export async function getGasUsage(query) {
 			activityGasMap[activity].count += 1;
 		});
         let txs = transactions;
-        if(query.hasOwnProperty("internalTxs")){
+        if(query.hasOwnProperty("internalTxs") && query.internalTxs==="public+internal"){
             txs = txs.filter((tx)=>!tx.hasOwnProperty("depth"));
         }
 
@@ -38,7 +38,7 @@ export async function getGasUsage(query) {
 	}
 }
 
-export async function getActivityData(query) {
+async function getActivityData(query) {
 	try {
 		const transactions = await fetchTransactions(query);
 		const activityStats = {};
@@ -60,7 +60,7 @@ export async function getActivityData(query) {
 		throw new Error(error.message);
 	}
 }
-export async function getMostActiveSenders(query) {
+async function getMostActiveSenders(query) {
 	try {
 		const transactions = await fetchTransactions(query);
 		const mostActiveSenders = {};
@@ -93,15 +93,14 @@ export async function getMostActiveSenders(query) {
 	}
 }
 
-export async function getTimeData(query) {
+async function getTimeData(query) {
+
 	try {
 		const transactions = await fetchTransactions(query);
 		const timeData = {};
-
 		transactions.forEach((tx) => {
 			// Aggregate by day instead of exact timestamp
-			const date = new Date(tx.timestamp).toISOString().split("T")[0];
-
+			const date = new Date(tx.timestamp);
 			if (!timeData[date]) {
 				timeData[date] = {
 					date,
@@ -122,7 +121,7 @@ export async function getTimeData(query) {
 	}
 }
 
-export async function getInputsData(query) {
+async function getInputsData(query) {
 	try {
 		const transactions = await fetchTransactions(query);
         const inputsData = {};
@@ -166,7 +165,7 @@ export async function getInputsData(query) {
 	}
 }
 
-export async function getEventsData(query) {
+async function getEventsData(query) {
 	try {
 		const transactions = await fetchTransactions(query);
 		const eventsData = {};
@@ -197,13 +196,13 @@ export async function getEventsData(query) {
 	}
 }
 
-export async function getCallsData(query) {
+async function getCallsData(query) {
 	try {
 		const transactions = await fetchTransactions(query);
 		const callsData = {};
 
         const {internalTxs} = query;
-        if(internalTxs) {
+        if(internalTxs && internalTxs!=="public") {
             for (const transaction of transactions) {
                 if (transaction.hasOwnProperty("type")) {
                     if (!callsData[transaction.type]) {
@@ -233,7 +232,7 @@ export async function getCallsData(query) {
             });
         }
         let txsFiltered = transactions;
-        if(!internalTxs)
+        if(internalTxs==="public" || !internalTxs)
             txsFiltered = await getAllTransactions(transactions);
         txsFiltered = txsFiltered.filter((tx)=>tx.hasOwnProperty("depth"))
                                     .map((tx)=>({
@@ -248,7 +247,7 @@ export async function getCallsData(query) {
 		throw new Error(error.message);
 	}
 }
-export async function getStorageStateData(query) {
+async function getStorageStateData(query) {
 	try {
 		const transactions = await fetchTransactions(query);
 		const storageStateData = {};
@@ -274,7 +273,7 @@ export async function getStorageStateData(query) {
 	}
 }
 
-export function formatTransactionForTreeView(tx) {
+function formatTransactionForTreeView(tx) {
 	const children = [];
 
 	// Add basic transaction details
@@ -408,7 +407,7 @@ export function formatTransactionForTreeView(tx) {
 	};
 }
 
-export function formatEventsForTreeView(tx) {
+function formatEventsForTreeView(tx) {
 	const eventNodes = [];
 
 	if (tx.events && tx.events.length > 0) {
@@ -446,7 +445,7 @@ export function formatEventsForTreeView(tx) {
 	};
 }
 
-export function formatInternalTransactionsForTreeView(
+function formatInternalTransactionsForTreeView(
     transaction
 ){
     const children = [];
@@ -502,7 +501,7 @@ export function formatInternalTransactionsForTreeView(
     }]
 }
 
-export function formatCallForTreeView(transaction,callId){
+function formatCallForTreeView(transaction,callId){
     const children = [];
     children.push({
         id: `${transaction.transactionHash}`,
@@ -629,7 +628,7 @@ function expandInternal(transactions,parentIndex,txHash){
     });
 }
 
-export function formatCallsForTreeView(
+function formatCallsForTreeView(
 	callType,
 	transactions,
 	page = 0,
@@ -723,7 +722,7 @@ export function formatCallsForTreeView(
 	});
 }
 
-export function extractEventDataAsJson(tx) {
+function extractEventDataAsJson(tx) {
 	const extractedEvents = [];
 
 	if (tx.events && tx.events.length > 0) {
@@ -759,7 +758,7 @@ export function extractEventDataAsJson(tx) {
 }
 
 // Function to format storage variable history for visualization
-export function formatStorageHistoryForVisualization(
+function formatStorageHistoryForVisualization(
 	variableName,
 	transactions,
 	options = {}
@@ -958,4 +957,22 @@ function isMonotonicSequence(values) {
 	}
 
 	return increasing || decreasing;
+}
+module.exports={
+	getTransactions,
+	getActivityData,
+	getMostActiveSenders,
+	getTimeData,
+	getInputsData,	
+	getEventsData,
+	getGasUsage,
+	getCallsData,
+	getStorageStateData,
+	formatTransactionForTreeView,
+	formatEventsForTreeView,	
+	formatInternalTransactionsForTreeView,
+	formatCallForTreeView,
+	formatCallsForTreeView,
+	extractEventDataAsJson,
+	formatStorageHistoryForVisualization,	
 }
