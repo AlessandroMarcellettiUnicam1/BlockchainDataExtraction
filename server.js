@@ -60,16 +60,77 @@ const {
     formatCallForTreeView
 } = require("./query/queryFunctions");
 
+function flattenTransaction(inputData) {
+	 const result = [];
+  
+  // Handle array of transactions
+  const transactions = Array.isArray(inputData) ? inputData : [inputData];
+  for (const transaction of transactions) {
+    // Extract parent transaction info (everything except _id, timestamp, and calls)
+    const parentInfo = {
+      functionName: transaction.functionName,
+      transactionHash: transaction.transactionHash,
+      contractAddress: transaction.contractAddress,
+      sender: transaction.sender,
+      gasUsed: transaction.gasUsed,
+      blockNumber: transaction.blockNumber,
+      value: transaction.value,
+      inputs: transaction.inputs,
+      storageState: transaction.storageState
+    };
+    
+    // Recursively process internal transactions
+    function processInternalTxs(calls) {
+      if (!calls || calls.length === 0) {
+		result.push({
+			...parentInfo,
+			calls:[]
+		})
+        return;
+      }
+      
+      for (const tx of calls) {
+        // Create a copy of the transaction without nested calls
+        const flatTx = { ...tx };
+        
+        // Store nested calls temporarily
+        const nestedCalls = flatTx.calls;
+        
+        // Replace calls with empty array
+        flatTx.calls = flatTx.calls ? [] : undefined;
+        
+        // Create a new object with parent info and this transaction
+        const flattenedObject = {
+          ...parentInfo,
+          calls: [flatTx]
+        };
+        
+        result.push(flattenedObject);
+        
+        // Recursively process nested calls
+        if (nestedCalls && nestedCalls.length > 0) {
+          processInternalTxs(nestedCalls);
+        }
+      }
+    }
+    
+    // Start processing from the top-level calls
+    processInternalTxs(transaction.calls);
+  }
+  
+  return result;
+}
 app.post("/api/generateGraph", (req, res) => {
 	const jsonData = req.body.jsonData;
 	const edges = req.body.edges;
 	const nodesSet = new Map();
-	let edgesArray = [];
-
+	let edgesArray = []; 
+	const parentFiledMapping=['functionName','transactionHas','contractAddress','sender','gasUsed','blockNumber','value','inputs','storageState'];
+	const falltendeObject=flattenTransaction(jsonData);
 	const addNodeIfMissing = (id, label, shape, color, tx, key) => {
-		if (!nodesSet.has(id)) {
-			nodesSet.set(id, {
-				id: id,
+		if (!nodesSet.has(id.toLowerCase())) {
+			nodesSet.set(id.toLowerCase(), {
+				id: id.toLowerCase(),
 				size: 10,
 				hidden: false,
 				label: label,
@@ -82,20 +143,21 @@ app.post("/api/generateGraph", (req, res) => {
 			});
 		}
 	};
-	const addEdgeIfMissing = (from, to) => {
-		let id = `${from}-${to}`;
-		if (!edgesArray.some((edge) => edge.id === id)) {
+	const addEdgeIfMissing = (from, to,colorEdge) => {
+		let id = `${from.toLowerCase()}-${to.toLowerCase()}`;
+		if (!edgesArray.some((edge) => edge.id.toLowerCase() === id.toLowerCase())) {
 			edgesArray.push({
-				id: id,
-				from: from,
-				to: to,
+				id: id.toLowerCase(),
+				from: from.toLowerCase(),
+				to: to.toLowerCase(),
 				label: "",
+				color:colorEdge,
 				value: 1,
 				size: 1,
 			});
 		} else {
 			edgesArray.forEach((edge) => {
-				if (edge.id === id) {
+				if (edge.id.toLowerCase() === id.toLowerCase()) {
 					edge.value++;
 					edge.size = edge.value;
 				}
@@ -119,7 +181,11 @@ app.post("/api/generateGraph", (req, res) => {
         let to = edge.to;
 		const colorFrom = getRandomColor();
 		const colorTo = getRandomColor();
-		jsonData.forEach((tx) => {
+		const colorEdge=getRandomColor();
+		//If this flag is true this means we try to map a parent field so I don't have to flat the log
+		const flagForMapping=parentFiledMapping.includes(from) || parentFiledMapping.includes(to);
+		const transactionMapping=flagForMapping?jsonData:falltendeObject
+		transactionMapping.forEach((tx) => {
             let fromResults = queryJsonPath(tx,from);
             let toResults = queryJsonPath(tx,to);
 			const fromItems = Array.isArray(fromResults)
@@ -135,7 +201,7 @@ app.post("/api/generateGraph", (req, res) => {
 					const idTo = getNodeId(toItem);
 					const labelTo = idTo.slice(0, 64);
 					addNodeIfMissing(idTo, labelTo, "box", colorTo, tx, to);
-					addEdgeIfMissing(idFrom, idTo, "");
+					addEdgeIfMissing(idFrom, idTo, colorFrom);
 				});
 			});
 		});
@@ -177,6 +243,7 @@ app.post("/api/generateGraph", (req, res) => {
 		if (maxEdgeValue === minEdgeValue) return 1;
 		return ((value - minEdgeValue) / (maxEdgeValue - minEdgeValue)) * 4 + 1;
 	};
+
 	const newEdges = edgesArray.map((obj, index) => ({
 		key: obj.id,
 		source: obj.from,
@@ -184,7 +251,7 @@ app.post("/api/generateGraph", (req, res) => {
 		attributes: {
 			value: obj.value,
 			size: scaleEdgeValue(obj.value),
-			color: "#3399FF",
+			color: obj.color,
 			x: Math.random() * 100,
 			y: Math.random() * 100,
 		},

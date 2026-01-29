@@ -1,5 +1,5 @@
 const mongoose = require("mongoose");
-const getAllTransactions=require( "./flattenTransaction.js");
+const {getAllTransactions}=require( "./flattenTransaction.js");
 const {filterOccurrences} =require("./filter.js")
 
 // Cache setup
@@ -56,16 +56,20 @@ async function fetchTransactions(query) {
 	let results = [];
 
 	try {
+		// const page = Number(1);
+		// const limit = Number(50);
+		// const skip = (page - 1) * limit;
 		// Always search across all collections
 		const collections = await mongoose.connection.db
 			.listCollections()
 			.toArray();
-
 		for (const c of collections) {
 			const collection = mongoose.connection.db.collection(c.name);
 			const transactions = await collection
 				.find(queryFilter, { projection: { _id: 0 } })
 				.toArray();
+				// .skip(skip)
+				// .limit(limit)
 			results = results.concat(transactions);
 		}
 

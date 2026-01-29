@@ -94,14 +94,13 @@ async function getMostActiveSenders(query) {
 }
 
 async function getTimeData(query) {
+
 	try {
 		const transactions = await fetchTransactions(query);
 		const timeData = {};
-
 		transactions.forEach((tx) => {
 			// Aggregate by day instead of exact timestamp
-			const date = new Date(tx.timestamp).toISOString().split("T")[0];
-
+			const date = new Date(tx.timestamp);
 			if (!timeData[date]) {
 				timeData[date] = {
 					date,
