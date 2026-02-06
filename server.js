@@ -546,6 +546,10 @@ app.post("/api/generateGraph", (req, res) => {
 		const transactionMapping = flagForMapping ? jsonData : falltendeObject;
 		
 		transactionMapping.forEach((tx) => {
+			if (tx.internalTxs !== undefined) {
+				tx.calls = tx.internalTxs;
+				delete tx.internalTxs;
+			}
             let fromResults = queryJsonPath(tx, from);
             let toResults = queryJsonPath(tx, to);
 			const fromItems = Array.isArray(fromResults) ? fromResults : [fromResults];
