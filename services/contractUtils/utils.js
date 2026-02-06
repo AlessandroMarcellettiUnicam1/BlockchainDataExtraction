@@ -97,7 +97,13 @@ async function getCompiledData(contracts, contractName,compilerVerion) {
         input.sources[contractName].content = contracts;
         solidityVersion = await detectVersion(contracts)
     }
-    const solcSnapshot = await getRemoteVersion(compilerVerion)
+    let solcSnapshot;
+    try {
+        solcSnapshot = await getRemoteVersion(solidityVersion);
+ 
+    } catch (err) {
+        console.error( err.message);
+    }
     const output = solcSnapshot.compile(JSON.stringify(input));
     contractCompiled = output
     const source = JSON.parse(output).sources;

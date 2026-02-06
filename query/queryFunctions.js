@@ -450,19 +450,19 @@ function formatInternalTransactionsForTreeView(
 ){
     const children = [];
     children.push({
-        id: `${transaction.transactionHash}`,
+        id: `${transaction.transactionHash}-tx`,
         label: `Transaction: ${transaction.transactionHash}`
     });
     children.push({
-        id: `${transaction.transactionHash}-${transaction.functionName || transaction.activity}`,
+        id: `${transaction.transactionHash}-function`,
         label: `Function Name: ${transaction.functionName || transaction.activity}`,
     });
     children.push({
-        id: `${transaction.transactionHash}-${transaction.sender || transaction.from}`,
+        id: `${transaction.transactionHash}-sender`,
         label: `Sender: ${transaction.sender || transaction.from}`,
     });
     children.push({
-        id: `${transaction.transactionHash}-${transaction.contractAddress || transaction.to}`,
+        id: `${transaction.transactionHash}-contract`,
         label: `Contract Address: ${transaction.contractAddress || transaction.to}`,
     });
 
@@ -481,7 +481,7 @@ function formatInternalTransactionsForTreeView(
             };
         });
         children.push({
-            id: `${transaction.transactionHash}-input`,
+            id: `${transaction.transactionHash}-inputs`,
             label: `Inputs (Decoded): `,
             children: inputsChildren,
         })
@@ -574,21 +574,25 @@ function findInternalCall(transactions,callId,txHash,counter={value:0}) {
     return results;
 }
 
-function expandInternal(transactions,parentIndex,txHash){
-    const parentId = parentIndex.join("-");
+function expandInternal(transactions, parentIndex, txHash){
+    const parentId = parentIndex.length > 0 ? parentIndex.join("-") : "";
     if(!transactions || !Array.isArray(transactions) || transactions.length === 0) return [];
+    
     return transactions.map((tx, index) => {
+        // Create a unique prefix for this transaction node
+        const nodePrefix = parentId ? `${txHash}-${parentId}-${index}` : `${txHash}-${index}`;
+        
         const children = [];
         children.push({
-            id: `${txHash}-${tx.functionName || tx.activity}-${parentId}-${index}`,
+            id: `${nodePrefix}-function`,
             label: `Function Name: ${tx.functionName || tx.activity}`,
         });
         children.push({
-            id: `${txHash}-${tx.sender || tx.from}-${parentId}-${index}`,
+            id: `${nodePrefix}-from`,
             label: `From: ${tx.sender || tx.from}`,
         });
         children.push({
-            id: `${txHash}-${tx.contractAddress || tx.to}-${parentId}-${index}`,
+            id: `${nodePrefix}-to`,
             label: `To: ${tx.contractAddress || tx.to}`,
         });
 
@@ -602,27 +606,29 @@ function expandInternal(transactions,parentIndex,txHash){
                     inputValue = inputValue.toExponential(2);
                 }
                 return {
-                    id: `${txHash}-${parentId}-${index}-input-${inputIndex}`,
+                    id: `${nodePrefix}-input-${inputIndex}`,
                     label: `${input.name} (${input.type}): ${inputValue}`,
                 };
             });
             children.push({
-                id: `${txHash}-${parentId}-${index}-input`,
+                id: `${nodePrefix}-inputs`,
                 label: `Inputs (Decoded): `,
                 children: inputsChildren
             })
         }
+        
         if (tx.calls && Array.isArray(tx.calls) && tx.calls.length > 0) {
-            const callChildren = expandInternal(tx.calls,parentIndex.concat(index),txHash);
+            const callChildren = expandInternal(tx.calls, parentIndex.concat(index), txHash);
             children.push({
-                id: `${txHash}-${parentId}-${index}-call`,
+                id: `${nodePrefix}-calls`,
                 label: `Calls: `,
                 children: callChildren
             })
         }
+        
         return {
-            id: `${txHash}-${parentId}-${index}-calls`,
-            label: `Calls: `,
+            id: `${nodePrefix}`,
+            label: `Call ${index + 1}: ${tx.functionName || tx.activity}`,
             children: children
         }
     });

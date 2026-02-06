@@ -120,6 +120,340 @@ function flattenTransaction(inputData) {
   
   return result;
 }
+// app.post("/api/generateGraph", (req, res) => {
+// 	const jsonData = req.body.jsonData;
+// 	const edges = req.body.edges;
+// 	const nodesSet = new Map();
+// 	let edgesArray = []; 
+// 	const parentFiledMapping=['functionName','transactionHas','contractAddress','sender','gasUsed','blockNumber','value','inputs','storageState'];
+// 	const falltendeObject=flattenTransaction(jsonData);
+	
+// 	const addNodeIfMissing = (id, label, shape, color, tx, key) => {
+// 		if (!nodesSet.has(id.toLowerCase())) {
+// 			nodesSet.set(id.toLowerCase(), {
+// 				id: id.toLowerCase(),
+// 				size: 10,
+// 				hidden: false,
+// 				label: label,
+// 				keyUsed: key,
+//                 cluster: key,
+// 				x: Math.random() * 100,
+// 				y: Math.random() * 100,
+// 				color: color,
+// 				details: tx,
+// 			});
+// 		}
+// 	};
+	
+// 	// Modified: Direction matters now - from -> to is different from to -> from
+// 	const addEdgeIfMissing = (from, to, colorEdge,edgesCount,alphaLetter) => {
+// 		let id = `${from.toLowerCase()}-${to.toLowerCase()}`; // Changed to -> for clarity
+// 		if (!edgesArray.some((edge) => edge.id.toLowerCase() === id.toLowerCase())) {
+// 			edgesArray.push({
+// 				id: id.toLowerCase(),
+// 				from: from.toLowerCase(),
+// 				to: to.toLowerCase(),
+// 				label: `${alphaLetter}-${edgesCount}`,
+// 				color: colorEdge,
+// 				value: 1,
+// 				size: 1,
+// 				type: 'arrow', // Added: indicates this is a directed edge
+// 			});
+// 		} else {
+// 			edgesArray.forEach((edge) => {
+// 				if (edge.id.toLowerCase() === id.toLowerCase()) {
+// 					edge.value++;
+// 					edge.size = edge.value;
+// 				}
+// 			});
+// 		}
+// 	};
+	
+// 	const getNodeId = (item) => {
+// 		if (typeof item === "object" && item !== null) {
+// 			return JSON.stringify(item);
+// 		}
+// 		return String(item);
+// 	};
+	
+// 	const getRandomColor = () => {
+// 		return (
+// 			"#" + (((1 << 24) * Math.random()) | 0).toString(16).padStart(6, "0")
+// 		);
+// 	};
+// 	const alpha="ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+// 	edges.forEach((edge) => {
+
+// 		let alphaLetter=alpha.charAt(edges.indexOf(edge));
+// 		let edgesCount=1;
+//         let from = edge.from;
+//         let to = edge.to;
+// 		const colorFrom = getRandomColor();
+// 		const colorTo = getRandomColor();
+// 		const colorEdge = getRandomColor();
+// 		const flagForMapping = parentFiledMapping.includes(from) || parentFiledMapping.includes(to);
+// 		const transactionMapping = flagForMapping ? jsonData : falltendeObject;
+		
+// 		transactionMapping.forEach((tx) => {.isArray(fromResults) ? fromResults : [fromResults];
+// 			const toItems = Array.isArray(toResults) ? toResults : [toResults];
+			
+// 			fromItems.fo
+//             let fromResults = queryJsonPath(tx, from);
+//             let toResults = queryJsonPath(tx, to);
+// 			const fromItems = ArrayrEach((fromItem) => {
+// 				const idFrom = getNodeId(fromItem);
+// 				const labelFrom = idFrom.slice(0, 64);
+// 				addNodeIfMissing(idFrom, labelFrom, "ellipse", colorFrom, tx, from);
+
+// 				toItems.forEach((toItem) => {
+// 					const idTo = getNodeId(toItem);
+// 					const labelTo = idTo.slice(0, 64);
+// 					addNodeIfMissing(idTo, labelTo, "box", colorTo, tx, to);
+// 					addEdgeIfMissing(idFrom, idTo, colorEdge,edgesCount,alphaLetter); // Direction: from -> to
+// 					edgesCount++;
+// 				});
+// 			});
+// 		});
+// 	});
+
+// 	const nodes = Array.from(nodesSet.values()).map((obj, index) => ({
+// 		key: obj.id,
+// 		attributes: {
+// 			label: `${obj.label}`,
+// 			size: 10,
+// 			details: obj.details,
+// 			keyUsed: obj.keyUsed,
+// 			color: obj.color,
+//             cluster: obj.cluster,
+// 			x: obj.x,
+// 			y: obj.y,
+// 		},
+// 	}));
+
+// 	const colorLegendData = [];
+// 	const colorSet = new Set();
+// 	nodes.forEach((node) => {
+// 		if (node.attributes.color && !colorSet.has(node.attributes.color)) {
+// 			colorLegendData.push({
+// 				color: node.attributes.color,
+// 				keyAssigned: node.attributes.keyUsed,
+// 			});
+// 			colorSet.add(node.attributes.color);
+// 		}
+// 	});
+
+// 	const edgeValues = edgesArray.map((edge) => edge.value);
+// 	const maxEdgeValue = Math.max(...edgeValues);
+// 	const minEdgeValue = Math.min(...edgeValues);
+// 	const scaleEdgeValue = (value) => {
+// 		if (maxEdgeValue === minEdgeValue) return 1;
+// 		return ((value - minEdgeValue) / (maxEdgeValue - minEdgeValue)) * 4 + 1;
+// 	};
+
+// 	const newEdges = edgesArray.map((obj, index) => ({
+// 		key: obj.id,
+// 		source: obj.from,
+// 		target: obj.to,
+// 		attributes: {
+// 			value: obj.value,
+// 			size: scaleEdgeValue(obj.value),
+// 			color: obj.color,
+// 			label:obj.label,
+// 			type: 'arrow', 
+// 			x: Math.random() * 100,
+// 			y: Math.random() * 100,
+// 		},
+// 	}));
+
+// 	res.send({
+// 		nodes,
+// 		edges: newEdges,
+// 		colorLegend: colorLegendData,
+// 		edgeFilter: edgeValues,
+// 	});
+// });
+// app.post("/api/generateGraph", (req, res) => {
+// 	const jsonData = req.body.jsonData;
+// 	const edges = req.body.edges;
+// 	const nodesSet = new Map();
+// 	let edgesArray = []; 
+// 	const parentFiledMapping=['functionName','transactionHas','contractAddress','sender','gasUsed','blockNumber','value','inputs','storageState'];
+// 	const falltendeObject=flattenTransaction(jsonData);
+	
+// 	const addNodeIfMissing = (id, label, shape, color, tx, key) => {
+// 		if (!nodesSet.has(id.toLowerCase())) {
+// 			nodesSet.set(id.toLowerCase(), {
+// 				id: id.toLowerCase(),
+// 				size: 10,
+// 				hidden: false,
+// 				label: label,
+// 				keyUsed: key,
+//                 cluster: key,
+// 				x: Math.random() * 100,
+// 				y: Math.random() * 100,
+// 				color: color,
+// 				details: tx,
+// 			});
+// 		}
+// 	};
+	
+// 	// FIXED: For MultiGraph, each edge needs a unique key but can share source/target
+// 	const addEdgeIfMissing = (from, to, colorEdge, edgesCount, alphaLetter) => {
+// 		let labelId = `${alphaLetter}-${edgesCount}`;
+// 		// CRITICAL: Use a unique ID for each edge instance (for MultiGraph)
+// 		let uniqueId = `${from.toLowerCase()}-${to.toLowerCase()}-${labelId}`;
+		
+// 		// Check if there's ANY edge in the same direction (regardless of label)
+// 		const sameDirectionEdges = edgesArray.filter(
+// 			(edge) => edge.from.toLowerCase() === from.toLowerCase() && 
+// 			         edge.to.toLowerCase() === to.toLowerCase()
+// 		);
+		
+// 		// Check if there's ANY edge in the reverse direction
+// 		const reverseDirectionEdges = edgesArray.filter(
+// 			(edge) => edge.from.toLowerCase() === to.toLowerCase() && 
+// 			         edge.to.toLowerCase() === from.toLowerCase()
+// 		);
+		
+// 		// Determine if this edge should be curved
+// 		const shouldBeCurved = reverseDirectionEdges.length > 0 || sameDirectionEdges.length > 0;
+		
+// 		// Calculate curvature based on how many edges already exist in this direction
+// 		let curvature = 0;
+// 		if (shouldBeCurved) {
+// 			// For multiple edges in same direction, spread them out
+// 			const edgeIndex = sameDirectionEdges.length;
+// 			// Alternate between positive and negative curvature
+// 			curvature = edgeIndex % 2 === 0 ? 0.5 + (edgeIndex * 0.15) : -(0.5 + (edgeIndex * 0.15));
+// 		}
+// 		if(from=="transfer" && to=="0x9b5a5c5800c91af9c965b3bf06ad29caa6d00f9b"){
+// 			console.log(labelId)
+// 		}
+		
+// 		edgesArray.push({
+// 			id: uniqueId,
+// 			from: from.toLowerCase(),
+// 			to: to.toLowerCase(),
+// 			label: labelId,
+// 			color: colorEdge,
+// 			value: 1,
+// 			size: 1,
+// 			type: shouldBeCurved ? 'curved' : 'straight',
+// 			curvature: curvature,
+// 		});
+		
+// 		// Update all reverse edges to be curved if they aren't already
+// 		if (reverseDirectionEdges.length > 0 && sameDirectionEdges.length === 0) {
+// 			reverseDirectionEdges.forEach((reverseEdge, idx) => {
+// 				reverseEdge.type = 'curved';
+// 				// Give reverse edges opposite curvature
+// 				reverseEdge.curvature = idx % 2 === 0 ? -0.3 : 0.3;
+// 			});
+// 		}
+// 	};
+	
+// 	const getNodeId = (item) => {
+// 		if (typeof item === "object" && item !== null) {
+// 			return JSON.stringify(item);
+// 		}
+// 		return String(item);
+// 	};
+	
+// 	const getRandomColor = () => {
+// 		return (
+// 			"#" + (((1 << 24) * Math.random()) | 0).toString(16).padStart(6, "0")
+// 		);
+// 	};
+	
+// 	const alpha="ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+// 	edges.forEach((edge) => {
+// 		let alphaLetter = alpha.charAt(edges.indexOf(edge));
+// 		let edgesCount = 1;
+//         let from = edge.from;
+//         let to = edge.to;
+// 		const colorFrom = getRandomColor();
+// 		const colorTo = getRandomColor();
+// 		const colorEdge = getRandomColor();
+// 		const flagForMapping = parentFiledMapping.includes(from) || parentFiledMapping.includes(to);
+// 		const transactionMapping = flagForMapping ? jsonData : falltendeObject;
+		
+// 		transactionMapping.forEach((tx) => {
+//             let fromResults = queryJsonPath(tx, from);
+//             let toResults = queryJsonPath(tx, to);
+// 			const fromItems = Array.isArray(fromResults) ? fromResults : [fromResults];
+// 			const toItems = Array.isArray(toResults) ? toResults : [toResults];
+			
+// 			fromItems.forEach((fromItem) => {
+// 				const idFrom = getNodeId(fromItem);
+// 				const labelFrom = idFrom.slice(0, 64);
+// 				addNodeIfMissing(idFrom, labelFrom, "ellipse", colorFrom, tx, from);
+
+// 				toItems.forEach((toItem) => {
+// 					const idTo = getNodeId(toItem);
+// 					const labelTo = idTo.slice(0, 64);
+// 					addNodeIfMissing(idTo, labelTo, "box", colorTo, tx, to);
+// 					addEdgeIfMissing(idFrom, idTo, colorEdge, edgesCount, alphaLetter);
+// 					edgesCount++;
+// 				});
+// 			});
+// 		});
+// 	});
+
+// 	const nodes = Array.from(nodesSet.values()).map((obj, index) => ({
+// 		key: obj.id,
+// 		attributes: {
+// 			label: `${obj.label}`,
+// 			size: 10,
+// 			details: obj.details,
+// 			keyUsed: obj.keyUsed,
+// 			color: obj.color,
+//             cluster: obj.cluster,
+// 			x: obj.x,
+// 			y: obj.y,
+// 		},
+// 	}));
+
+// 	const colorLegendData = [];
+// 	const colorSet = new Set();
+// 	nodes.forEach((node) => {
+// 		if (node.attributes.color && !colorSet.has(node.attributes.color)) {
+// 			colorLegendData.push({
+// 				color: node.attributes.color,
+// 				keyAssigned: node.attributes.keyUsed,
+// 			});
+// 			colorSet.add(node.attributes.color);
+// 		}
+// 	});
+
+// 	const edgeValues = edgesArray.map((edge) => edge.value);
+// 	const maxEdgeValue = Math.max(...edgeValues);
+// 	const minEdgeValue = Math.min(...edgeValues);
+// 	const scaleEdgeValue = (value) => {
+// 		if (maxEdgeValue === minEdgeValue) return 1;
+// 		return ((value - minEdgeValue) / (maxEdgeValue - minEdgeValue)) * 4 + 1;
+// 	};
+
+// 	const newEdges = edgesArray.map((obj) => ({
+// 		key: obj.id, // CRITICAL: Each edge must have unique key for MultiGraph
+// 		source: obj.from,
+// 		target: obj.to,
+// 		attributes: {
+// 			value: obj.value,
+// 			size: scaleEdgeValue(obj.value),
+// 			color: obj.color,
+// 			label: obj.label,
+// 			type: obj.type, // Preserved from our logic
+// 			curvature: obj.curvature, // Preserved from our logic
+// 		},
+// 	}));
+
+// 	res.send({
+// 		nodes,
+// 		edges: newEdges,
+// 		colorLegend: colorLegendData,
+// 		edgeFilter: edgeValues,
+// 	});
+// });
 app.post("/api/generateGraph", (req, res) => {
 	const jsonData = req.body.jsonData;
 	const edges = req.body.edges;
@@ -143,55 +477,80 @@ app.post("/api/generateGraph", (req, res) => {
 			});
 		}
 	};
-	const addEdgeIfMissing = (from, to,colorEdge) => {
-		let id = `${from.toLowerCase()}-${to.toLowerCase()}`;
-		if (!edgesArray.some((edge) => edge.id.toLowerCase() === id.toLowerCase())) {
+	
+	// Modified: Direction matters now - from -> to is different from to -> from
+	const addEdgeIfMissing = (from, to, colorEdge, edgesCount, alphaLetter) => {
+		let labelId=`${alphaLetter}-${edgesCount}`
+		let id = `${from.toLowerCase()}-${to.toLowerCase()}`; 
+		let reverseId = `${to.toLowerCase()}-${from.toLowerCase()}`; // Check for reverse edge
+		// Check if this exact edge already exists
+		const existingEdge = edgesArray.find((edge) => edge.id.toLowerCase() === id.toLowerCase() );
+		
+		if (existingEdge) {
+			// Edge exists in same direction - increment value
+			existingEdge.value++;
+			existingEdge.size = existingEdge.value;
+			existingEdge.label+=", "+labelId;
+			
+		} else {
+			// Check if reverse edge exists
+			const reverseEdge = edgesArray.find((edge) => edge.id.toLowerCase() === reverseId.toLowerCase());
+			
+			// CHANGED: Use 'curved' type when there's a reverse edge, 'straight' otherwise
+			
 			edgesArray.push({
 				id: id.toLowerCase(),
 				from: from.toLowerCase(),
 				to: to.toLowerCase(),
-				label: "",
-				color:colorEdge,
+				label: `${alphaLetter}-${edgesCount}`,
+				color: colorEdge,
 				value: 1,
 				size: 1,
+				// Use 'curved' type when bidirectional, 'straight' when unidirectional
+				type: reverseEdge ? 'curved' : 'straight',
+				// Positive curvature for this direction when bidirectional
+				curvature: reverseEdge ? 0.5 : 0,
 			});
-		} else {
-			edgesArray.forEach((edge) => {
-				if (edge.id.toLowerCase() === id.toLowerCase()) {
-					edge.value++;
-					edge.size = edge.value;
-				}
-			});
+			
+			// If reverse edge exists, also make it curved
+			if (reverseEdge) {
+				reverseEdge.type = 'curved';
+				reverseEdge.curvature = 0.1; // Negative curvature for opposite direction
+			}
 		}
 	};
+	
 	const getNodeId = (item) => {
 		if (typeof item === "object" && item !== null) {
 			return JSON.stringify(item);
 		}
 		return String(item);
 	};
+	
 	const getRandomColor = () => {
 		return (
 			"#" + (((1 << 24) * Math.random()) | 0).toString(16).padStart(6, "0")
 		);
 	};
-
+	const alpha="ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 	edges.forEach((edge) => {
+
+		let alphaLetter=alpha.charAt(edges.indexOf(edge));
+		let edgesCount=1;
         let from = edge.from;
         let to = edge.to;
 		const colorFrom = getRandomColor();
 		const colorTo = getRandomColor();
-		const colorEdge=getRandomColor();
-		//If this flag is true this means we try to map a parent field so I don't have to flat the log
-		const flagForMapping=parentFiledMapping.includes(from) || parentFiledMapping.includes(to);
-		const transactionMapping=flagForMapping?jsonData:falltendeObject
+		const colorEdge = getRandomColor();
+		const flagForMapping = parentFiledMapping.includes(from) || parentFiledMapping.includes(to);
+		const transactionMapping = flagForMapping ? jsonData : falltendeObject;
+		
 		transactionMapping.forEach((tx) => {
-            let fromResults = queryJsonPath(tx,from);
-            let toResults = queryJsonPath(tx,to);
-			const fromItems = Array.isArray(fromResults)
-				? fromResults
-				: [fromResults];
+            let fromResults = queryJsonPath(tx, from);
+            let toResults = queryJsonPath(tx, to);
+			const fromItems = Array.isArray(fromResults) ? fromResults : [fromResults];
 			const toItems = Array.isArray(toResults) ? toResults : [toResults];
+			
 			fromItems.forEach((fromItem) => {
 				const idFrom = getNodeId(fromItem);
 				const labelFrom = idFrom.slice(0, 64);
@@ -201,13 +560,13 @@ app.post("/api/generateGraph", (req, res) => {
 					const idTo = getNodeId(toItem);
 					const labelTo = idTo.slice(0, 64);
 					addNodeIfMissing(idTo, labelTo, "box", colorTo, tx, to);
-					addEdgeIfMissing(idFrom, idTo, colorFrom);
+					addEdgeIfMissing(idFrom, idTo, colorEdge, edgesCount, alphaLetter);
+					edgesCount++;
 				});
 			});
 		});
 	});
 
-	// Transform nodes for frontend
 	const nodes = Array.from(nodesSet.values()).map((obj, index) => ({
 		key: obj.id,
 		attributes: {
@@ -222,7 +581,6 @@ app.post("/api/generateGraph", (req, res) => {
 		},
 	}));
 
-	// Color legend
 	const colorLegendData = [];
 	const colorSet = new Set();
 	nodes.forEach((node) => {
@@ -235,7 +593,6 @@ app.post("/api/generateGraph", (req, res) => {
 		}
 	});
 
-	// Edge scaling
 	const edgeValues = edgesArray.map((edge) => edge.value);
 	const maxEdgeValue = Math.max(...edgeValues);
 	const minEdgeValue = Math.min(...edgeValues);
@@ -252,10 +609,13 @@ app.post("/api/generateGraph", (req, res) => {
 			value: obj.value,
 			size: scaleEdgeValue(obj.value),
 			color: obj.color,
-			x: Math.random() * 100,
-			y: Math.random() * 100,
+			label: obj.label,
+			// CRITICAL: Use the type determined by bidirectionality
+			type: obj.type, // 'curved' for bidirectional, 'straight' for unidirectional
+			curvature: obj.curvature, // Positive/negative for curve direction
 		},
 	}));
+
 	res.send({
 		nodes,
 		edges: newEdges,
@@ -263,7 +623,6 @@ app.post("/api/generateGraph", (req, res) => {
 		edgeFilter: edgeValues,
 	});
 });
-
 app.post("/api/ocelMap", (req, res) => {
 	const ocelMap = req.body;
 	let ocel = {

@@ -67,9 +67,9 @@ async function fetchTransactions(query) {
 			const collection = mongoose.connection.db.collection(c.name);
 			const transactions = await collection
 				.find(queryFilter, { projection: { _id: 0 } })
-				.toArray();
 				// .skip(skip)
 				// .limit(limit)
+				.toArray();
 			results = results.concat(transactions);
 		}
 
