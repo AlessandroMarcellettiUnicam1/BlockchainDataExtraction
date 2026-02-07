@@ -13,6 +13,7 @@ const { saveTransaction } = require("../../databaseStore");
 const {searchAbi} = require("../../query/query")
 const {saveAbi}=require("../../databaseStore")
 const {decodeTransactionInputs,getEvents,iterateInternalForEvent,decodeInputs,getEventFromErigon,getEventsFromInternal,getEventFromHardHat} = require('../decodingUtils/utils')
+const { getContractTree } = require('./mainWithOption');
 
 const fs = require('fs');
 const path = require('path');
@@ -20,6 +21,7 @@ const https = require('https');
 const http = require('http');
 const util = require("util");
 
+/*
 function buildCallObjectFromTrace(trace, web3, possibleImplementation) {
     // ATTENZIONE: per CALL il layout stack è diverso rispetto a DELEGATECALL/STATICCALL
     const offsetBytes = trace.stack[trace.op === "CALL" ? trace.stack.length - 4 : trace.stack.length - 3];
@@ -28,6 +30,7 @@ function buildCallObjectFromTrace(trace, web3, possibleImplementation) {
     let stringDepthConstruction = "";
     for (let i = 0; i < trace.depth - 1; i++) stringDepthConstruction += "_1";
 
+    
     return {
         callId: "0_1" + stringDepthConstruction,
         callType: trace.op,
@@ -38,12 +41,13 @@ function buildCallObjectFromTrace(trace, web3, possibleImplementation) {
         possibleImplementation,
         // NUOVO:
         calleeDepth: trace.depth + 1,      // depth del callee
-        rawStorage: null,                 // snapshot storage al termine del callee
-        endOp: null                       // STOP/RETURN/REVERT/SELFDESTRUCT
+        rawStorage: null,                  // snapshot storage al termine del callee
+        endOp: null      // STOP/RETURN/REVERT/SELFDESTRUCT
     };
 }
+*/
 
-function extractCallInputFromMemory(trace, web3) {
+/*function extractCallInputFromMemory(trace, web3) {
     const offsetBytes = trace.stack[trace.op === "CALL" ? trace.stack.length - 4 : trace.stack.length - 3];
     const lengthBytes = trace.stack[trace.op === "CALL" ? trace.stack.length - 5 : trace.stack.length - 4];
 
@@ -52,7 +56,7 @@ function extractCallInputFromMemory(trace, web3) {
         web3.utils.hexToNumber("0x" + offsetBytes) * 2,
         web3.utils.hexToNumber("0x" + offsetBytes) * 2 + web3.utils.hexToNumber("0x" + lengthBytes) * 2
     );
-}
+}*/
 
 
 
@@ -223,6 +227,7 @@ async function createTransactionLog(tx, mainContract, contractTree, smartContrac
                 try{
                     storageVal = await getTraceStorageFromErigon(stream, networkData,tx.inputDecoded?tx.inputDecoded.method:null,tx.hash,mainContract,contractTree,smartContract,option,web3,transactionLog.blockNumber);
                     //storageVal.internalTxs=await newDecodedInternalTransaction(transactionLog.transactionHash, smartContract, networkData, web3);
+                    //fs.writeFileSync('outputTrace2901.txt', storageVal.internalCallsRaw, 'utf8');
                     console.log(util.inspect(storageVal, { depth: null, colors: true, maxArrayLength: null }));
                     console.log(util.inspect(storageVal.internalCallsRaw, { depth: null, colors: true, maxArrayLength: null }));
                 }catch (err){
@@ -645,7 +650,7 @@ async function getTraceStorage(traceDebugged, networkData, functionName, transac
                     if (nextTrace) possibleImplementation = retriveImplementationContract(trace, nextTrace, web3);
 
                     const call = buildCallObjectFromTrace(trace, web3, possibleImplementation);
-                    call.inputsCall = extractCallInputFromMemory(trace, web3);
+                    //call.inputsCall = extractCallInputFromMemory(trace, web3);
 
                     internalCalls.push(call);
 
@@ -709,6 +714,54 @@ async function getTraceStorage(traceDebugged, networkData, functionName, transac
             internalTxs = await newDecodedInternalTransaction(transactionHash, smartContract, networkData, web3, blockNumber);
         }
 
+        ///
+ for (const call of internalCalls) {
+
+    call.decodedStorage = [];
+
+    if (!call.rawStorage || Object.keys(call.rawStorage).length === 0) continue;
+
+
+
+    // ⚠️ contractTree DEVE ESSERE QUELLO DEL CONTRATTO call.to
+    const callContractTree =  getContractTree(
+        call.to,
+        call.to,
+        process.env.ETHERSCAN_MAINNET_ENDPOINT,
+        process.env.API_KEY_ETHERSCAN,
+        mainContract
+    );
+
+    if (!callContractTree || !callContractTree.storageLayoutFlag) continue;
+
+    //console.log("Call Type: " + call.callType + "\n\n\n\n");
+    //console.log("Call Type: " + call.rawStorage + "\n\n\n\n");
+    
+    /*call.decodedStorage = await optimizedDecodeValues(
+        null,                               
+        callContractTree.fullContractTree,  
+        [],                     
+        call.rawStorage,                    
+        call.activity,
+        call.contractCalledName,
+        web3,
+        callContractTree.contractCompiled
+    );*/
+    call.decodedStorage = decodeRawStorageAdvanced(
+    call.rawStorage,
+    callContractTree,
+    finalShaTraces,
+    web3
+);
+
+    console.log(
+  "DECODING STORAGE FOR",
+  call.to,
+  Object.keys(call.rawStorage)
+);
+}
+
+
         let result = {
             decodedValues: internalStorage,
             internalTxs: internalTxs,
@@ -755,7 +808,9 @@ function retriveImplementationContract(trace,nextTrace,web3){
     return possibleImplementation;
 }
 // Modified getTraceStorage2 to accept a stream instead of reading from file
-async function getTraceStorageFromErigon(httpStream, networkData, functionName, transactionHash, mainContract, contractTree, smartContract, extractionOption, web3, blockNumber) {
+async function getTraceStorageFromErigon(httpStream, networkData, functionName, transactionHash, mainContract, contractTree, smartContract, extractionOption, web3, blockNumber) 
+{
+
     let functionStorage = {};
     let index = 0;
     let trackBuffer = [];
@@ -816,10 +871,11 @@ async function getTraceStorageFromErigon(httpStream, networkData, functionName, 
 
                 // CAMBIATO: usa storage accumulato da SLOAD/SSTORE
                 const accumulated = storageAccumulator.get(trace.depth) || { reads: {}, writes: {} };
-                currentCall.rawStorage = {
-                    reads: accumulated.reads,
-                    writes: accumulated.writes
-                };
+                
+                
+                //currentCall.rawStorage = optimizedDecodeValues(sstoreBuffer, contractTree, null, accumulated, contractTree.functionName, contractTree.mainContract, web3, contractTree.contractCompiled); 
+                currentCall.rawStorage = normalizeRawStorage(accumulated);
+
                 currentCall.endOp = trace.op;
 
                 // Pulisci accumulatore
@@ -927,6 +983,8 @@ async function getTraceStorageFromErigon(httpStream, networkData, functionName, 
                 endOp: null
             };
 
+    
+
             const offsetBytes = trace.stack[trace.op === "CALL" ? trace.stack.length - 4 : trace.stack.length - 3];
             const lengthBytes = trace.stack[trace.op === "CALL" ? trace.stack.length - 5 : trace.stack.length - 4];
             let stringMemory = trace.memory.join("");
@@ -950,7 +1008,7 @@ async function getTraceStorageFromErigon(httpStream, networkData, functionName, 
     // Resto del processing
     try {
         finalShaTraces = trackBuffer;
-
+    
         for (let i = 0; i < trackBuffer.length; i++) {
             if (sstoreBuffer.includes(trackBuffer[i].finalKey)) {
                 const trace = {
@@ -997,6 +1055,50 @@ async function getTraceStorageFromErigon(httpStream, networkData, functionName, 
             internalTxs = await newDecodedInternalTransaction(transactionHash, smartContract, networkData, web3, blockNumber);
         }
 
+        for (const call of internalCalls) 
+            {
+
+            call.decodedStorage = [];
+
+            if (!call.rawStorage || Object.keys(call.rawStorage).length === 0) continue;
+
+            const callContractTree = await getContractTree(
+                null,
+                call.to,
+                process.env.ETHERSCAN_MAINNET_ENDPOINT,
+                process.env.API_KEY_ETHERSCAN,
+                call.contractCalledName
+            );
+     
+
+
+fs.writeFileSync('C:\\Users\\Saverio\\Desktop\\DApp_analysis_ecosystem\\Backend\\output.json', JSON.stringify(callContractTree.contractCompiled));
+
+   /* console.log("\n\n\n\n TARGET CONTRACT TREE ("+call.to+") callContractTree.contractCompiled != null || callContractTree.contractCompiled != undefined: "+ callContractTree.contractCompiled != null && callContractTree.contractCompiled != undefined + "\n\n\n\n");
+    console.log("\n\n\n\n TARGET CONTRACT TREE ("+call.to+")  normalizeRawStorage(call.rawStorage): "+ normalizeRawStorage(call.rawStorage) + "\n\n\n\n");
+    console.log("\n\n\n\n TARGET CONTRACT TREE ("+call.to+") call.rawstorage: "+ call.rawStorage+ "\n\n\n\n");*/
+
+    
+
+    if ((!callContractTree || !callContractTree.storageLayoutFlag) && (callContractTree.contractCompiled == null || callContractTree.contractCompiled == undefined) ) continue;
+
+    
+    call.decodedStorage = await optimizedDecodeValues(
+        null,                               
+        callContractTree.fullContractTree, 
+        finalShaTraces,                     
+        normalizeRawStorage(call.rawStorage),                    
+        call.activity,
+        call.contractCalledName,
+        web3,
+        callContractTree.contractCompiled
+    );
+
+    console.log("TARGET DECODED STORAGE ("+call.to+"): "+ call.decodedStorage + "\n\n\n\n");
+
+}
+
+
         let result = {
             decodedValues: internalStorage,
             internalTxs: internalTxs,
@@ -1027,6 +1129,153 @@ function regroupShatrace(finalShaTraces){
         new Map(finalShaTraces.map(item => [item.finalKey + item.hexStorageIndex, item])).values()
       );
 }
+
+function normalizeRawStorage(accumulated) {
+    const flat = {};
+
+   /* if (accumulated.reads) {
+        for (const slot in accumulated.reads) {
+            if (accumulated.reads[slot] !== null) {
+                flat[slot] = accumulated.reads[slot];
+            }
+        }
+    }*/
+
+    if (accumulated.writes) {
+        for (const slot in accumulated.writes) {
+            flat[slot] = accumulated.writes[slot];
+        }
+    }
+
+    return flat;
+}
+
+function decodeRawStorageAdvanced(rawStorage, contractTree, finalShaTraces, web3) {
+    const decoded = [];
+
+    if (!contractTree?.storageLayout) return decoded;
+
+    for (const slotHex in rawStorage) {
+        const value = rawStorage[slotHex];
+
+        // 1️⃣ slot semplice?
+        const simple = decodeSimpleSlot(slotHex, value, contractTree, web3);
+        if (simple) {
+            decoded.push(simple);
+            continue;
+        }
+
+        // 2️⃣ mapping?
+        const mapping = decodeMappingSlot(slotHex, value, contractTree, finalShaTraces, web3);
+        if (mapping) {
+            decoded.push(mapping);
+            continue;
+        }
+
+        // 3️⃣ struct?
+        const struct = decodeStructSlot(slotHex, rawStorage, contractTree, web3);
+        if (struct) {
+            decoded.push(struct);
+        }
+    }
+
+    return decoded;
+}
+
+function decodeSimpleSlot(slotHex, valueHex, contractTree, web3) {
+    for (const entry of contractTree.storageLayout.storage) {
+        const expectedSlot = web3.utils.padLeft(
+            web3.utils.numberToHex(entry.slot),
+            64
+        ).slice(2);
+
+        if (expectedSlot !== slotHex) continue;
+
+        return {
+            variable: entry.label,
+            type: entry.type,
+            value: decodeByType(entry.type, valueHex, web3)
+        };
+    }
+    return null;
+}
+
+
+function decodeMappingSlot(slotHex, valueHex, contractTree, finalShaTraces, web3) {
+    for (const entry of contractTree.storageLayout.storage) {
+        if (!entry.type.startsWith("t_mapping")) continue;
+
+        const baseSlot = entry.slot.toString();
+
+        // trova keccak che ha prodotto questo slot
+        const trace = finalShaTraces.find(t => t.finalKey?.endsWith(slotHex));
+        if (!trace) continue;
+
+        const keyHex = trace.hexKey;
+        const decodedKey = "0x" + keyHex.slice(24);
+
+        return {
+            variable: entry.label,
+            key: decodedKey,
+            type: entry.type,
+            value: decodeByType(
+                contractTree.storageLayout.types[entry.type].value,
+                valueHex,
+                web3
+            )
+        };
+    }
+    return null;
+}
+
+function decodeStructSlot(baseSlotHex, rawStorage, contractTree, web3) {
+    for (const entry of contractTree.storageLayout.storage) {
+        const typeDef = contractTree.storageLayout.types[entry.type];
+        if (!typeDef || typeDef.encoding !== "inplace") continue;
+        if (!typeDef.members) continue;
+
+        const baseSlot = parseInt(entry.slot);
+
+        if (web3.utils.padLeft(web3.utils.numberToHex(baseSlot),64).slice(2) !== baseSlotHex) continue;
+
+        const struct = {};
+
+        for (const member of typeDef.members) {
+            const memberSlot = web3.utils.padLeft(
+                web3.utils.numberToHex(baseSlot + member.slot),
+                64
+            ).slice(2);
+
+            if (rawStorage[memberSlot]) {
+                struct[member.label] = decodeByType(
+                    member.type,
+                    rawStorage[memberSlot],
+                    web3
+                );
+            }
+        }
+
+        return {
+            variable: entry.label,
+            type: entry.type,
+            value: struct
+        };
+    }
+    return null;
+}
+
+function decodeByType(type, valueHex, web3) {
+    if (type.startsWith("t_uint")) return web3.utils.toBN("0x"+valueHex).toString();
+    if (type.startsWith("t_int")) return web3.utils.toBN("0x"+valueHex).toString();
+    if (type === "t_address") return "0x"+valueHex.slice(24);
+    if (type === "t_bool") return valueHex.endsWith("1");
+    return "0x"+valueHex;
+}
+
+
+
+
+
 
 
 // Handle messages from main process
@@ -1086,4 +1335,3 @@ process.on('unhandledRejection', (reason, promise) => {
     console.error('Unhandled Rejection in worker at:', promise, 'reason:', reason);
     process.exit(1);
 });
-

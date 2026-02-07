@@ -170,8 +170,9 @@ async function getContractTree(smartContract,impl_contract,endpoint,apiKey,mainC
             throw new Error(err.message)
         }
     }
-
+    //console.log("CONTRACT-Tree: \n\n full contract tree" + contractTree + "\n\n contract compiled:" + contractCompiled);
     contractsResult = null
+    //console.log("\n\n\n\n contract tree (inner): " + contractTree.contractCompiled + "abcdefg\n\n\n\n");
     return contractTree;
 }
 /**
@@ -379,8 +380,13 @@ function runWorkerForTx(tx, mainContract, contractTree, contractAddress, smartCo
     });
 }
 
+module.exports = {
+    getContractTree,
+    getAllTransactions
+}
 
 // 0xa939a421a423fc2beb109f09f34d3fe96b3bb4bffaacd8203cc60e3d052efea3
+
 
 //ultima transazione
 // 0x8848f14a738c0f2bb87247e6796e1950068c14791f9b436b1b9d31c6747e695e

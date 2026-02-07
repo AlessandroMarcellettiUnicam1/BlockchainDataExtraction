@@ -19,8 +19,9 @@ let contractCompiled;
 async function optimizedDecodeValues(sstore, contractTree, shaTraces, functionStorage, functionName, mainContract, web3Variable, contractCompiledPassed) {
     web3 = web3Variable;
     contractCompiled = contractCompiledPassed;
-    mainContractName = mainContract
-    let shatracesProcessed = new Set();
+    //console.log("\n\n\n\nCONTRACT COMPILED IN optimizedDecodeValues:" + contractCompiled + "\n\n\n\n optimizeddecodevalues sopra \n\n\n\n");
+    mainContractName = mainContract;
+    let shatracesProcessed = new Set(); 
     let resultOfPreprocessing = []
     if (functionStorage != {}) {
         decodeComplexData(shaTraces, contractTree, functionName,functionStorage, mainContract, shatracesProcessed, resultOfPreprocessing)
@@ -29,6 +30,7 @@ async function optimizedDecodeValues(sstore, contractTree, shaTraces, functionSt
         // Separate found and missing keys
         let result = decodingSimpleStorage(mainContract, functionStorage, shatracesProcessed, contractTree, functionName, resultOfPreprocessing)
         result=result.filter(item => item !== undefined);
+        
         result = result.map(obj => {
             const { name, value, decodedValue, slot, offset, contentSlot, ...rest } = obj;
 
@@ -833,8 +835,14 @@ function getStructMembersByVariable(variable, mainContractCompiled) {
 }
 
 function getMainContractCompiled(mainContract) {
-    const testContract = JSON.parse(contractCompiled);
-    for (const contract in testContract.contracts) {
+    
+   // console.log("\n\n\n\n CONTRACT COMPILED IN getMainContractCompiled: " + contractCompiled  + "\n\n\n\n contract compiled di  getMainContractCompiled sopra (field)");
+    
+   const testContract = JSON.parse(contractCompiled);
+   // console.log("\n\n\n\n testContract IN getMainContractCompiled: " + testContract  + "\n\n\n\n test contract getMainContractCompiled sopra (jsonparse)");
+   
+    
+for (const contract in testContract.contracts) {
         const firstKey = Object.keys(testContract.contracts[contract])[0];
         if (firstKey === mainContract) {
             return testContract.contracts[contract][firstKey];
