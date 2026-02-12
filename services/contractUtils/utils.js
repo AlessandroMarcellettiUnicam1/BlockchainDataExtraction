@@ -99,7 +99,7 @@ async function getCompiledData(contracts, contractName,compilerVerion) {
     }
     let solcSnapshot;
     try {
-        solcSnapshot = await getRemoteVersion(solidityVersion);
+        solcSnapshot = await getRemoteVersion(compilerVerion);
  
     } catch (err) {
         console.error( err.message);
