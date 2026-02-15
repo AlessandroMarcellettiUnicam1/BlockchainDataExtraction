@@ -457,6 +457,7 @@ function flattenTransaction(inputData) {
 app.post("/api/generateGraph", (req, res) => {
 	const jsonData = req.body.jsonData;
 	const edges = req.body.edges;
+	const filters=req.body.filters;
 	const nodesSet = new Map();
 	let edgesArray = []; 
 	const parentFiledMapping=['functionName','transactionHas','contractAddress','sender','gasUsed','blockNumber','value','inputs','storageState'];
@@ -546,28 +547,30 @@ app.post("/api/generateGraph", (req, res) => {
 		const transactionMapping = flagForMapping ? jsonData : falltendeObject;
 		
 		transactionMapping.forEach((tx) => {
-			if (tx.internalTxs !== undefined) {
-				tx.calls = tx.internalTxs;
-				delete tx.internalTxs;
-			}
-            let fromResults = queryJsonPath(tx, from);
-            let toResults = queryJsonPath(tx, to);
-			const fromItems = Array.isArray(fromResults) ? fromResults : [fromResults];
-			const toItems = Array.isArray(toResults) ? toResults : [toResults];
-			
-			fromItems.forEach((fromItem) => {
-				const idFrom = getNodeId(fromItem);
-				const labelFrom = idFrom.slice(0, 64);
-				addNodeIfMissing(idFrom, labelFrom, "ellipse", colorFrom, tx, from);
-
-				toItems.forEach((toItem) => {
-					const idTo = getNodeId(toItem);
-					const labelTo = idTo.slice(0, 64);
-					addNodeIfMissing(idTo, labelTo, "box", colorTo, tx, to);
-					addEdgeIfMissing(idFrom, idTo, colorEdge, edgesCount, alphaLetter);
-					edgesCount++;
+			if(filters.transactionHash.length==0 || filters.transactionHash.includes(tx.transactionHash)){
+				if (tx.internalTxs !== undefined) {
+					tx.calls = tx.internalTxs;
+					delete tx.internalTxs;
+				}
+				let fromResults = queryJsonPath(tx, from);
+				let toResults = queryJsonPath(tx, to);
+				const fromItems = Array.isArray(fromResults) ? fromResults : [fromResults];
+				const toItems = Array.isArray(toResults) ? toResults : [toResults];
+				
+				fromItems.forEach((fromItem) => {
+					const idFrom = getNodeId(fromItem);
+					const labelFrom = idFrom.slice(0, 64);
+					addNodeIfMissing(idFrom, labelFrom, "ellipse", colorFrom, tx, from);
+	
+					toItems.forEach((toItem) => {
+						const idTo = getNodeId(toItem);
+						const labelTo = idTo.slice(0, 64);
+						addNodeIfMissing(idTo, labelTo, "box", colorTo, tx, to);
+						addEdgeIfMissing(idFrom, idTo, colorEdge, edgesCount, alphaLetter);
+						edgesCount++;
+					});
 				});
-			});
+			}
 		});
 	});
 
