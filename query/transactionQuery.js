@@ -15,7 +15,7 @@ async function fetchTransactions(query) {
 		if (Date.now() - timestamp < CACHE_TTL) return data;
 	}
 
-	const { contractAddress, dateFrom, dateTo, fromBlock, toBlock, internalTxs, minOccurrences, txHash } = query;
+	const { contractAddress, dateFrom, dateTo, fromBlock, toBlock, internalTxs, minOccurrences, txHash ,selectedCollection} = query;
 	const queryFilter = {};
 
 	if (contractAddress && Array.isArray(contractAddress) && contractAddress.length > 0) {
@@ -63,8 +63,17 @@ async function fetchTransactions(query) {
 		const collections = await mongoose.connection.db
 			.listCollections()
 			.toArray();
-		for (const c of collections) {
-			const collection = mongoose.connection.db.collection(c.name);
+        const allCollectionNames = collections.map(collection=>collection.name);
+        let validSelectedCollections;
+        if(selectedCollection && Array.isArray(selectedCollection) && selectedCollection.length > 0) {
+            validSelectedCollections = selectedCollection.filter(collectionName =>
+                allCollectionNames.includes(collectionName)
+            );
+        }
+        else
+            validSelectedCollections = allCollectionNames;
+		for (const c of validSelectedCollections) {
+			const collection = mongoose.connection.db.collection(c);
 			const transactions = await collection
 				.find(queryFilter, { projection: { _id: 0 } })
 				.toArray();

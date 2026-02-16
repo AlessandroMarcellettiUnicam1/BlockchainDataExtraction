@@ -1096,6 +1096,89 @@ app.post("/api/data/storageState", async (req, res) => {
 	}
 });
 
+app.get("/api/collections", async(req,res)=>{
+    try {
+        await connectDB("Mainnet");
+        const collections = await mongoose.connection.db.listCollections().toArray();
+        const names = collections.map((c)=>c.name);
+        res.json(names);
+    }catch(error){
+        console.error(error);
+        res.status(500).json("Failed to fetch collections");
+    }
+});
+
+app.post("/api/transactions", async (req,res)=>{
+    try{
+        await connectDB("Mainnet");
+        const {selectedCollection,contractAddress,dateFrom,dateTo,fromBlock,toBlock,funName,sender,minGasUsed,maxGasUsed} = req.body;
+        const queryFilter = {};
+        if(contractAddress && Array.isArray(contractAddress) && contractAddress.length > 0){
+            queryFilter.contractAddress = {$in:contractAddress};
+        }
+        if(sender)
+            queryFilter.sender = sender;
+        if(funName)
+            queryFilter.functionName = funName;
+        if(dateFrom)
+            queryFilter.dateFrom = {
+                ...queryFilter.dateFrom,
+                $gte: new Date(dateFrom),
+            }
+        if(dateTo)
+            queryFilter.dateTo = {
+                ...queryFilter.dateTo,
+                $lte: new Date(dateTo)
+            }
+        if(fromBlock)
+            queryFilter.blockNumber = {
+                ...queryFilter.blockNumber,
+                $gte:fromBlock
+            }
+        if(toBlock)
+            queryFilter.toBlock = {
+                ...queryFilter.toBlock,
+                $lte:toBlock
+            }
+        if(minGasUsed)
+            queryFilter.minGasUsed = {
+                ...queryFilter.minGasUsed,
+                $gte:minGasUsed
+            }
+        if(maxGasUsed)
+            queryFilter.maxGasUsed = {
+                ...queryFilter.maxGasUsed,
+                $lte:maxGasUsed
+            }
+        const collections = await mongoose.connection.db
+            .listCollections()
+            .toArray();
+        let results = [];
+        const allCollectionNames = collections.map(collection=>collection.name);
+        let validSelectedCollections;
+        if(selectedCollection && Array.isArray(selectedCollection) && selectedCollection.length > 0) {
+            validSelectedCollections = selectedCollection.filter(collectionName =>
+                allCollectionNames.includes(collectionName)
+            );
+        }
+        else
+            validSelectedCollections = allCollectionNames;
+        for (const c of validSelectedCollections) {
+            const collection = mongoose.connection.db.collection(c);
+            const transactions = await collection
+                .find(queryFilter, { projection: { _id: 0 } })
+                .toArray();
+            // .skip(skip)
+            // .limit(limit)
+            results = results.concat(transactions);
+        }
+        res.json(results);
+    }catch(error){
+        console.error(error);
+        res.status(500).json("Failed to fetch collections");
+    }
+});
+
 
 // Start the server
 app.listen(port, () => {
