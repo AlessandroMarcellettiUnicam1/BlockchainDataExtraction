@@ -457,7 +457,7 @@ function flattenTransaction(inputData) {
 app.post("/api/generateGraph", (req, res) => {
 	const jsonData = req.body.jsonData;
 	const edges = req.body.edges;
-	const filters=req.body.filters;
+	//const filters=req.body.filters;
 	const nodesSet = new Map();
 	let edgesArray = []; 
 	const parentFiledMapping=['functionName','transactionHas','contractAddress','sender','gasUsed','blockNumber','value','inputs','storageState'];
@@ -508,7 +508,7 @@ app.post("/api/generateGraph", (req, res) => {
 				value: 1,
 				size: 1,
 				// Use 'curved' type when bidirectional, 'straight' when unidirectional
-				type: reverseEdge ? 'curved' : 'straight',
+				type: reverseEdge ? 'curve' : 'line',
 				// Positive curvature for this direction when bidirectional
 				curvature: reverseEdge ? 0.5 : 0,
 			});
@@ -547,11 +547,11 @@ app.post("/api/generateGraph", (req, res) => {
 		const transactionMapping = flagForMapping ? jsonData : falltendeObject;
 		
 		transactionMapping.forEach((tx) => {
-			if(filters.transactionHash.length==0 || filters.transactionHash.includes(tx.transactionHash)){
+			/*if(filters.transactionHash.length===0 || filters.transactionHash.includes(tx.transactionHash)){
 				if (tx.internalTxs !== undefined) {
 					tx.calls = tx.internalTxs;
 					delete tx.internalTxs;
-				}
+				}*/
 				let fromResults = queryJsonPath(tx, from);
 				let toResults = queryJsonPath(tx, to);
 				const fromItems = Array.isArray(fromResults) ? fromResults : [fromResults];
@@ -570,7 +570,7 @@ app.post("/api/generateGraph", (req, res) => {
 						edgesCount++;
 					});
 				});
-			}
+            //}
 		});
 	});
 
@@ -1487,34 +1487,34 @@ app.post("/api/transactions", async (req,res)=>{
         if(funName)
             queryFilter.functionName = funName;
         if(dateFrom)
-            queryFilter.dateFrom = {
-                ...queryFilter.dateFrom,
+            queryFilter.timestamp = {
+                ...queryFilter.timestamp,
                 $gte: new Date(dateFrom),
             }
         if(dateTo)
-            queryFilter.dateTo = {
-                ...queryFilter.dateTo,
+            queryFilter.timestamp = {
+                ...queryFilter.timestamp,
                 $lte: new Date(dateTo)
             }
         if(fromBlock)
             queryFilter.blockNumber = {
                 ...queryFilter.blockNumber,
-                $gte:fromBlock
+                $gte:Number(fromBlock)
             }
         if(toBlock)
-            queryFilter.toBlock = {
-                ...queryFilter.toBlock,
-                $lte:toBlock
+            queryFilter.blockNumber = {
+                ...queryFilter.blockNumber,
+                $lte:Number(toBlock)
             }
         if(minGasUsed)
-            queryFilter.minGasUsed = {
-                ...queryFilter.minGasUsed,
-                $gte:minGasUsed
+            queryFilter.gasUsed = {
+                ...queryFilter.gasUsed,
+                $gte:Number(minGasUsed)
             }
         if(maxGasUsed)
-            queryFilter.maxGasUsed = {
-                ...queryFilter.maxGasUsed,
-                $lte:maxGasUsed
+            queryFilter.gasUsed = {
+                ...queryFilter.gasUsed,
+                $lte:Number(maxGasUsed)
             }
         const collections = await mongoose.connection.db
             .listCollections()
