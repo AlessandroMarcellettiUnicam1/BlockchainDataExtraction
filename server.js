@@ -508,7 +508,7 @@ app.post("/api/generateGraph", (req, res) => {
 				value: 1,
 				size: 1,
 				// Use 'curved' type when bidirectional, 'straight' when unidirectional
-				type: reverseEdge ? 'curve' : 'line',
+				type: reverseEdge ? 'curved' : 'straight',
 				// Positive curvature for this direction when bidirectional
 				curvature: reverseEdge ? 0.5 : 0,
 			});
