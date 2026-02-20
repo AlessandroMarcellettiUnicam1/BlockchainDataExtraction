@@ -1,5 +1,45 @@
 const {getRemoteVersion, detectVersion} = require("../solcVersionManager");
 const axios = require("axios");
+const { execFile } = require("child_process");
+const path = require("path");
+const { fork } = require("child_process");
+
+/**
+ * Method use to create a solcWorker use to get the compiled version of a contract
+ * This i done in this way to solve the memory stack error. In this way 
+ * if the process hit the memory stack error kill the child process but not the main process
+ * @param {*} input 
+ * @param {*} compilerVersion 
+ * @returns 
+ */
+function compileInChildProcess(input, compilerVersion) {
+    const workerPath = path.join(__dirname, "solcWorker.js");
+    return new Promise((resolve, reject) => {
+        const worker = fork(workerPath, [], {
+            execArgv: ["--max-old-space-size=4096", "--expose-gc"],
+        });
+
+        worker.send({ input, compilerVersion });
+
+        worker.on("message", (msg) => {
+            if (msg.output) {
+                resolve(msg.output);  
+            } else if (msg.error) {
+                reject(new Error(msg.error));
+            }
+        });
+
+        worker.on("exit", (code, signal) => {
+            if (code !== 0) {
+                reject(new Error(`Worker exited with code ${code} and signal ${signal}`));
+            }
+        });
+
+        worker.on("error", (err) => {
+            reject(err);
+        });
+    });
+}
 
 /**
  * Returns the source code of the smart contract using the Etherscan APIs
@@ -7,19 +47,39 @@ const axios = require("axios");
  * @param contractAddress - the address of the contract to get the source code
  * @returns {Promise<*[]>} - the source code of the contract with the imported contracts
  */
-async function getContractCodeEtherscan(contractAddress,endpoint,apiKey) {
+async function getContractCodeEtherscan(contractAddress,endpoint,apiKey,queryResult) {
     let contracts = [];
     let response=[];
     let buffer;
     try{    
-        response = await axios.get(endpoint + `&module=contract&action=getsourcecode&address=${contractAddress}&apikey=${apiKey}`);
-        const data = response.data;
-        if (data.result[0].SourceCode === "") {
-            throw new Error("No contract found");
+        let jsonCode;
+        let data={
+            compilerVersion:"",
+            contractAbi:"",
+            sourceCode:"",
+            proxy:"",
+            contractName: "",
+        };
+        if(queryResult && !queryResult.abi.includes("Contract source code not verified")){
+            data.compilerVersion=queryResult.compilerVersion;
+            data.contractAbi=queryResult.abi;
+            data.sourceCode=queryResult.sourceCode;
+            data.proxy=queryResult.proxy;
+            data.contractName=queryResult.contractName;
+        }else{
+            response = await axios.get(endpoint + `&module=contract&action=getsourcecode&address=${contractAddress}&apikey=${apiKey}`);
+            if (response.data.result[0].SourceCode === "") {
+                throw new Error("No contract found");
+            } 
+            data.compilerVersion=response.data.result[0].CompilerVersion;
+            data.contractAbi=response.data.result[0].ABI;
+            data.sourceCode=response.data.result[0].SourceCode;
+            data.proxy=response.data.result[0].Proxy
+            data.contractName=response.data.result[0].ContractName;
         }
+        jsonCode=data.sourceCode;
         let i = 0;
 
-        let jsonCode = data.result[0].SourceCode;
 
     
         if (jsonCode.charAt(0) === "{") {
@@ -49,7 +109,14 @@ async function getContractCodeEtherscan(contractAddress,endpoint,apiKey) {
             contracts[actualContract].nameId = actualContract;
             contracts[actualContract].content = code;
         }
-        return {contracts:contracts,compilerVersion:data.result[0].CompilerVersion};
+        return {contracts:contracts,
+            compilerVersion:data.compilerVersion,
+            contractAbi:data.contractAbi,
+            sourceCode:data.sourceCode,
+            proxy:data.proxy,
+            contractName: data.contractName,
+            
+        };
     }catch (err){
         console.log("error",err)
     }finally{
@@ -67,7 +134,6 @@ async function getContractCodeEtherscan(contractAddress,endpoint,apiKey) {
  * @returns {Promise<*>} - the AST of the smart contract, allowing the reading of the variables and the functions of the contract.
  */
 async function getCompiledData(contracts, contractName,compilerVerion) {
-    let contractAbi;
     let storageLayoutFlag = true;
     let input = {
         language: 'Solidity',
@@ -99,15 +165,15 @@ async function getCompiledData(contracts, contractName,compilerVerion) {
     }
     let solcSnapshot;
     try {
-        solcSnapshot = await getRemoteVersion(compilerVerion);
- 
+        solcSnapshot = await compileInChildProcess(input,compilerVerion);
     } catch (err) {
         console.error( err.message);
+        return {};
     }
-    const output = solcSnapshot.compile(JSON.stringify(input));
+    const output = solcSnapshot;
     contractCompiled = output
     const source = JSON.parse(output).sources;
-    contractAbi = JSON.stringify(await getAbi(JSON.parse(output), contractName));
+
     //get all storage variable for contract, including inherited ones
     const storageData = await getContractVariableTree(JSON.parse(output));
 
@@ -126,7 +192,7 @@ async function getCompiledData(contracts, contractName,compilerVerion) {
         storageLayoutFlag=false;
     }
 
-    return {fullContractTree:fullContractTree,storageLayoutFlag:storageLayoutFlag,contractAbi:contractAbi,contractCompiled:contractCompiled};
+    return {fullContractTree:fullContractTree,storageLayoutFlag:storageLayoutFlag,contractCompiled:contractCompiled};
 }
 /**
  * Method used to return the contract variables

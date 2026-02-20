@@ -93,5 +93,7 @@ const extractionAbiSchema = new mongoose.Schema({
     proxy: {type: String},
     proxyImplementation:{type:String},
     contractAddress: {type: String},
+    sourceCode:{type:String},
+    compilerVersion:{type:String},
 })
 module.exports = {transactionSchema, extractionLogSchema,extractionAbiSchema};

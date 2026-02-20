@@ -197,16 +197,16 @@ async function createTransactionLog(tx, mainContract, contractTree, smartContrac
             }
             transactionLog.storageState =storageVal ? storageVal.decodedValues:[];
             transactionLog.internalTxs =storageVal ? storageVal.internalTxs:[];
-            let storeAbi;
-            if(contractTree){
-                storeAbi = {
-                    contractName: mainContract,
-                    abi: contractTree.contractAbi,
-                    proxy: '',
-                    proxyImplementation: '',
-                    contractAddress: tx.to,
-                };
-            }
+            let storeAbi = {
+                contractName: contractTree.contractName,
+                abi: contractTree.contractAbi,
+                proxy: contractTree.proxy,
+                proxyImplementation: '',
+                contractAddress: tx.to,
+                sourceCode: contractTree.sourceCode,
+                compilerVersion: contractTree.compilerVersion
+            };
+            //forse a questo punto basta controllare solo se il contratto è un proxy o no
             if(transactionLog.functionName==null && transactionLog.internalTxs && transactionLog.internalTxs.length>0){
                 if(transactionLog.internalTxs[0].type=="DELEGATECALL"){
                     const addressTo = transactionLog.internalTxs[0].to;

@@ -36,7 +36,7 @@ async function saveAbi(storeAbi) {
         return;
     }else{
         try {
-            const ExtractionAbi = mongoose.model('ExtractionAbi', extractionAbiSchema, 'ExtractionAbi');
+            const ExtractionAbi = mongoose.model('ContractData', extractionAbiSchema, 'ContractData');
             const newExtractionAbi = new ExtractionAbi(storeAbi);
             await newExtractionAbi.save();
 

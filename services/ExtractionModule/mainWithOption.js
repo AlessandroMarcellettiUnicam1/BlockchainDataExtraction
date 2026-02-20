@@ -5,7 +5,8 @@ const axios = require("axios");
 let contractAbi = {};
 const { getCompiledData, getContractCodeEtherscan } = require ('../contractUtils/utils')
 const hre = require("hardhat");
-const {searchTransaction}= require("../../query/query")
+
+const {searchTransaction,searchAbi}= require("../../query/query")
 const { saveExtractionLog} = require("../../databaseStore");
 const {connectDB} = require("../../config/db");
 const mongoose = require("mongoose");
@@ -96,19 +97,37 @@ async function getAllTransactions(oldParams, newParams) {
         if(!oldParams && newParams){
             result = await buildTransactionHierarchy(newParams.contractAddressesFrom, newParams.contractAddressesTo, newParams.fromBlock, newParams.toBlock, networkData);
             for(let tx of result){
-                const anotherCallForAbi = await axios.get(
-                    `${networkData.endpoint}&module=contract&action=getsourcecode&address=${tx.to}&apikey=${networkData.apiKey}`
-                );
-                let contractName=anotherCallForAbi.data.result[0].ContractName;
-                contractTree=await getContractTree(null, tx.to, networkData.endpoint, networkData.apiKey,contractName);
-                let temp=[];
+                const query = { contractAddress: tx.to.toLowerCase() };
+                let queryResult = await searchAbi(query);
+                if (!queryResult || queryResult?.abi?.includes("Contract source code not verified")) {
+                    const anotherCallForAbi = await axios.get(
+                        `${networkData.endpoint}&module=contract&action=getsourcecode&address=${tx.to}&apikey=${networkData.apiKey}`
+                    );
+                    queryResult = {
+                        contractName: anotherCallForAbi.data.result[0].ContractName,
+                        abi: anotherCallForAbi.data.result[0].ABI,
+                        proxy: anotherCallForAbi.data.result[0].Proxy,
+                        proxyImplementation: '',
+                        sourceCode: anotherCallForAbi.data.result[0].SourceCode,
+                        contractAddress: tx.to,
+                        compilerVersion: anotherCallForAbi.data.result[0].CompilerVersion,
+
+                    }
+                } else {
+                    console.log("contract found in the db");
+                }
+
+                console.log("processing before the contract tree: ", tx);
+
+                contractTree = await getContractTree(null, tx.to, networkData.endpoint, networkData.apiKey, queryResult);
+                let temp = [];
                 temp.push(tx)
-                
-                result = await getStorageData(temp, contractName, contractTree, tx.to, newParams.filters, newParams.smartContract, newParams.option, networkData,newParams.contractAddressesTo);
-                
+                result = await getStorageData(temp, queryResult.contractName, contractTree, tx.to, newParams.filters, newParams.smartContract, newParams.option, networkData, newParams.contractAddressesTo);
             }
         } else {
-            contractTree = await getContractTree(oldParams.smartContract, oldParams.implementationContractAddress, networkData.endpoint, networkData.apiKey, oldParams.contractName);
+            const query = { contractAddress: oldParams.implementationContractAddress.toLowerCase() };
+            let queryResult = await searchAbi(query);
+            contractTree = await getContractTree(oldParams.smartContract, oldParams.implementationContractAddress, networkData.endpoint, networkData.apiKey, queryResult);
             transactionList = await getTransactionFromContract(networkData, oldParams.contractAddress, oldParams.fromBlock, oldParams.toBlock);
             
             result = await getStorageData(transactionList, oldParams.contractName, contractTree, oldParams.contractAddress, oldParams.filters, oldParams.smartContract, oldParams.option, networkData,null);
@@ -150,7 +169,7 @@ async function getAllTransactions(oldParams, newParams) {
  * @param {*} mainContract 
  * @returns 
  */
-async function getContractTree(smartContract,impl_contract,endpoint,apiKey,mainContract){
+async function getContractTree(smartContract,impl_contract,endpoint,apiKey,queryResult){
     let contractsResult = null
     // if the contract is uploaded by the user then the contract is compiled
     let contractTree = null;
@@ -159,19 +178,26 @@ async function getContractTree(smartContract,impl_contract,endpoint,apiKey,mainC
     } else {
         //implementation contract address
         try {
-            contractsResult = await getContractCodeEtherscan(impl_contract, endpoint, apiKey);
+                contractsResult = await getContractCodeEtherscan(impl_contract, endpoint, apiKey,queryResult);
             if (contractsResult) {
-                contractTree = await getCompiledData(contractsResult.contracts, mainContract, contractsResult.compilerVersion);
-                contractCompiled = contractTree.contractCompiled
-                contractAbi = contractTree.contractAbi
+                contractTree = await getCompiledData(contractsResult.contracts, contractsResult.contractName, contractsResult.compilerVersion);
+                //If contractTree is null is because It can't compile the code but the rest of the data are valid
+                contractTree.contractAbi=contractsResult.contractAbi;
+                contractTree.sourceCode=contractsResult.sourceCode;
+                contractTree.proxy=contractsResult.proxy;
+                contractTree.contractName=contractsResult.contractName;
+                contractTree.proxyImplementation='';
+                contractTree.compilerVersion=contractsResult.compilerVersion;
             }
         } catch (err) {
             console.error('getContractCodeEtherscan error: ', err);
+            
             throw new Error(err.message)
         }
     }
-
+    //console.log("CONTRACT-Tree: \n\n full contract tree" + contractTree + "\n\n contract compiled:" + contractCompiled);
     contractsResult = null
+    //console.log("\n\n\n\n contract tree (inner): " + contractTree.contractCompiled + "abcdefg\n\n\n\n");
     return contractTree;
 }
 /**

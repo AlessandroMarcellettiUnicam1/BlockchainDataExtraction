@@ -167,6 +167,8 @@ async function handleAbiFetch(addressTo, apiKey, endpoint) {
         proxy: callForAbi.data.result[0].Proxy,
         proxyImplementation: '',
         contractAddress: addressTo,
+        compilerVersion:callForAbi.data.result[0].CompilerVersion,
+        sourceCode:callForAbi.data.result[0].SourceCode
     }
     if (!callForAbi.data.message.includes("NOTOK")) {
         await saveAbi(storeAbi);

@@ -92,7 +92,7 @@ async function searchAbi(query) {
 	}
 
 	try {
-		const collection = mongoose.connection.db.collection("ExtractionAbi");
+		const collection = mongoose.connection.db.collection("ContractData");
 		const result = await collection.find(query).toArray();
 		if (result.length > 0) {
 			return result[0];

@@ -198,7 +198,9 @@ async function handleAbiFetch(element, addressTo, apiKey, endpoint, web3) {
             abi: callForAbi.data.result[0].ABI,
             proxy: callForAbi.data.result[0].Proxy,
             proxyImplementation: proxyImplementation,
+            sourceCode:callForAbi.data.result[0].SourceCode,
             contractAddress: addressTo,
+            compilerVersion:callForAbi.data.result[0].CompilerVersion,
         };
        
         
@@ -221,7 +223,9 @@ async function handleAbiFetch(element, addressTo, apiKey, endpoint, web3) {
                     abi: anotherCallForAbi.data.result[0].ABI,
                     proxy: anotherCallForAbi.data.result[0].Proxy,
                     proxyImplementation: '',
+                    sourceCode:anotherCallForAbi.data.result[0].SourceCode,
                     contractAddress: nextElement.to,
+                    compilerVersion:anotherCallForAbi.data.result[0].CompilerVersion
                 };
                 
                 if (!anotherCallForAbi.data.result[0].ABI.includes("Contract source code not verified")) {
@@ -338,6 +342,8 @@ async function handleAbiFetchErigon(element, addressTo, apiKey, endpoint, web3) 
             proxy: callForAbi.data.result[0].Proxy,
             proxyImplementation: proxyImplementation,
             contractAddress: addressTo,
+            sourceCode:callForAbi.data.result[0].SourceCode,
+            compilerVersion:callForAbi.data.result[0].CompilerVersion,
         };
 
         // Handle proxy contracts using DELEGATECALL pattern
@@ -359,6 +365,8 @@ async function handleAbiFetchErigon(element, addressTo, apiKey, endpoint, web3) 
                     proxy: anotherCallForAbi.data.result[0].Proxy,
                     proxyImplementation: '',
                     contractAddress: nextElement.to,
+                    sourceCode:anotherCallForAbi.data.result[0].SourceCode,
+                    compilerVersion:anotherCallForAbi.data.result[0].CompilerVersion,
                 };
                 
                 if (!anotherCallForAbi.data.result[0].ABI.includes("Contract source code not verified")) {
