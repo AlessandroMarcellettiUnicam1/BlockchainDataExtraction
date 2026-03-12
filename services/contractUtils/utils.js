@@ -84,8 +84,12 @@ async function getContractCodeEtherscan(contractAddress,endpoint,apiKey,queryRes
     
         if (jsonCode.charAt(0) === "{") {
     
-
-            jsonCode = JSON.parse(jsonCode.slice(1, -1)).sources
+            if(jsonCode.charAt(1)==="{"){
+                jsonCode = JSON.parse(jsonCode.slice(1, -1)).sources
+            }else{
+                jsonCode = JSON.parse(jsonCode).sources
+            }
+            
     
             for (const contract in jsonCode) {
     
@@ -366,7 +370,48 @@ async function getAbi(compiled, contractName) {
         return compiled.contracts["contract0"][contractName].abi;
     }
 }
+/**
+ * 
+ * @param {*} smartContract 
+ * @param {*} impl_contract 
+ * @param {*} endpoint 
+ * @param {*} apiKey 
+ * @param {*} mainContract 
+ * @returns 
+ */
+async function getContractTree(smartContract,impl_contract,endpoint,apiKey,queryResult){
+    let contractsResult = null
+    // if the contract is uploaded by the user then the contract is compiled
+    let contractTree = null;
+    if (smartContract) {
+        contractsResult = smartContract
+    } else {
+        //implementation contract address
+        try {
+                contractsResult = await getContractCodeEtherscan(impl_contract, endpoint, apiKey,queryResult);
+            if (contractsResult) {
+                contractTree = await getCompiledData(contractsResult.contracts, contractsResult.contractName, contractsResult.compilerVersion);
+                //If contractTree is null is because It can't compile the code but the rest of the data are valid
+                contractTree.contractAbi=contractsResult.contractAbi;
+                contractTree.sourceCode=contractsResult.sourceCode;
+                contractTree.proxy=contractsResult.proxy;
+                contractTree.contractName=contractsResult.contractName;
+                contractTree.proxyImplementation='';
+                contractTree.compilerVersion=contractsResult.compilerVersion;
+            }
+        } catch (err) {
+            console.error('getContractCodeEtherscan error: ', err);
+            
+            throw new Error(err.message)
+        }
+    }
+    //console.log("CONTRACT-Tree: \n\n full contract tree" + contractTree + "\n\n contract compiled:" + contractCompiled);
+    contractsResult = null
+    //console.log("\n\n\n\n contract tree (inner): " + contractTree.contractCompiled + "abcdefg\n\n\n\n");
+    return contractTree;
+}
 module.exports={
     getCompiledData,
-    getContractCodeEtherscan
+    getContractCodeEtherscan,
+    getContractTree
 }

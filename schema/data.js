@@ -39,6 +39,9 @@ const internalTxSchema = new mongoose.Schema({
     activity: {type: String, required: false},
     contractCalledName: {type: String, required: false},
     input: {type: String, required: false}, // Raw input data
+    storageState:[
+        storageStateSchema
+    ],
     calls: [mongoose.Schema.Types.Mixed], // Nested calls
     events: [
         eventSchema

@@ -2,6 +2,7 @@ const mongoose = require("mongoose");
 const { connectDB } = require("../../config/db");
 require('dotenv').config();
 const JSONStream = require("JSONStream");
+const {getContractTree}=require("../contractUtils/utils")
 // Import necessary modules that were missing
 const { Web3, net } = require('web3');
 const hre = require("hardhat");
@@ -669,9 +670,17 @@ function retriveImplementationContract(trace,nextTrace,web3){
     }
     return possibleImplementation;
 }
+
 // Modified getTraceStorage2 to accept a stream instead of reading from file
 async function getTraceStorageFromErigon(httpStream, networkData,functionName,transactionHash,mainContract,contractTree,smartContract,extractionOption,web3,blockNumber) {
     let functionStorage = {};
+    /**
+     * The index of the functionStorageArray is the index associated with the transaction/internalTransaction
+     * THe index are controlled by the index in the indexMap
+     */
+    let mapForStorage = {};
+    let depthToIndexMap = new Map(); // Map depth -> current active index for that depth
+    let nextIndex = 1; // Start from 1
     let index = 0;
     let trackBuffer = [];
     let bufferPC = -10;
@@ -685,7 +694,18 @@ async function getTraceStorageFromErigon(httpStream, networkData,functionName,tr
     httpStream.pipe(parser);
     
     let previousTrace = null;
-
+    // Helper function to get or create index for a depth
+    function getOrCreateIndexForDepth(depth) {
+        if (!depthToIndexMap.has(depth)) {
+            const newIndex = nextIndex++;
+            depthToIndexMap.set(depth, newIndex);
+            mapForStorage[newIndex] = {
+                trackBuffer: [],
+                functionStorage: {}
+            };
+        }
+        return depthToIndexMap.get(depth);
+    }
     await new Promise((resolve, reject) => {
         parser.on("data", (trace) => {
             // Normalize stack first
@@ -719,7 +739,9 @@ async function getTraceStorageFromErigon(httpStream, networkData,functionName,tr
     });
 
     function processTrace(trace, nextTrace) {
-        if (trace.op === "KECCAK256" && trace.depth==1) {
+        const currentIndex = getOrCreateIndexForDepth(trace.depth);
+        
+        if (trace.op === "KECCAK256") {
             bufferPC = trace.pc;
             const stackLength = trace.stack.length;
             const memoryLocation = trace.stack[stackLength - 1];
@@ -727,18 +749,19 @@ async function getTraceStorageFromErigon(httpStream, networkData,functionName,tr
             let storageIndexLocation = numberLocation + 1;
             const hexKey = trace.memory[numberLocation];
             const hexStorageIndex = trace.memory[storageIndexLocation];
-            trackBuffer[index] = { hexKey, hexStorageIndex };
             
-        } else if (trace.op === "STOP" && trace.depth==1) {
+            mapForStorage[currentIndex].trackBuffer[index] = { hexKey, hexStorageIndex };
+            
+        } else if (trace.op === "STOP" || trace.op === "RETURN") {
             for (const slot in trace.storage) {
-                functionStorage[slot] = trace.storage[slot];
+                mapForStorage[currentIndex].functionStorage[slot] = trace.storage[slot];
             }
+            depthToIndexMap.delete(trace.depth);
             
-        } else if (trace.pc === (bufferPC + 1) && trace.depth==1) {
-            keccakBeforeAdd = trackBuffer[index];
+        } else if (trace.pc === (bufferPC + 1)) {
             bufferPC = -10;
-            trackBuffer[index].finalKey = trace.stack[trace.stack.length - 1];
-            keccakBeforeAdd = trackBuffer[index];
+            mapForStorage[currentIndex].trackBuffer[index].finalKey = trace.stack[trace.stack.length - 1];
+            keccakBeforeAdd = mapForStorage[currentIndex].trackBuffer[index];
             index++;
             
             if (trace.op === "ADD" && 
@@ -746,26 +769,25 @@ async function getTraceStorageFromErigon(httpStream, networkData,functionName,tr
                  trace.stack[trace.stack.length - 2] === keccakBeforeAdd.finalKey) &&
                 keccakBeforeAdd.hexStorageIndex === "0000000000000000000000000000000000000000000000000000000000000000") {
                 
-                const keyBuff = trackBuffer[index - 1].hexKey;
-                const slotBuff = trackBuffer[index - 1].hexStorageIndex;
-                trackBuffer[index - 1].hexKey = slotBuff;
-                trackBuffer[index - 1].hexStorageIndex = keyBuff;
+                const keyBuff = mapForStorage[currentIndex].trackBuffer[index - 1].hexKey;
+                const slotBuff = mapForStorage[currentIndex].trackBuffer[index - 1].hexStorageIndex;
+                mapForStorage[currentIndex].trackBuffer[index - 1].hexKey = slotBuff;
+                mapForStorage[currentIndex].trackBuffer[index - 1].hexStorageIndex = keyBuff;
                 
                 if (nextTrace && nextTrace.stack && nextTrace.stack.length > 0) {
-                    trackBuffer[index - 1].finalKey = nextTrace.stack[nextTrace.stack.length - 1];
+                    mapForStorage[currentIndex].trackBuffer[index - 1].finalKey = nextTrace.stack[nextTrace.stack.length - 1];
                 }
-                trackBuffer[index - 1].indexSum = trace.stack[trace.stack.length - 2];
+                mapForStorage[currentIndex].trackBuffer[index - 1].indexSum = trace.stack[trace.stack.length - 2];
             }
             
-        } else if (trace.op === "SSTORE" && trace.depth==1) {
+        } else if (trace.op === "SSTORE") {
             sstoreOptimization.push(trace.stack);
             sstoreBuffer.push(trace.stack[trace.stack.length - 1]);
-            //I'm interested in the main contract storage so the depth is 1
-            if(trace.depth==1){
-                for(const slot in trace.storage){
-                    functionStorage[slot]=trace.storage[slot]
-                }
-            }  
+            
+            for (const slot in trace.storage) {
+                mapForStorage[currentIndex].functionStorage[slot] = trace.storage[slot];
+            }
+            
         } else if (trace.op === "CALL" || trace.op === "DELEGATECALL" || trace.op === "STATICCALL") {
             const offsetBytes = trace.stack[trace.op === "CALL" ? trace.stack.length - 4 : trace.stack.length - 3];
             const lengthBytes = trace.stack[trace.op === "CALL" ? trace.stack.length - 5 : trace.stack.length - 4];
@@ -781,6 +803,10 @@ async function getTraceStorageFromErigon(httpStream, networkData,functionName,tr
                 to: "0x" + trace.stack[trace.stack.length - 2].slice(-40),
                 inputsCall: ""
             };
+            
+            // Pre-create structure for the next depth
+            getOrCreateIndexForDepth(trace.depth + 1);
+            
             let stringMemory = trace.memory.join("");
             stringMemory = stringMemory.slice(
                 web3.utils.hexToNumber("0x" + offsetBytes) * 2,
@@ -788,16 +814,16 @@ async function getTraceStorageFromErigon(httpStream, networkData,functionName,tr
             );
             call.inputsCall = stringMemory;
             internalCalls.push(call);
-        }else if(trace.op=="SLOAD" && trace.depth==1){
-            if(trace.depth==1){
-                for(const slot in trace.storage){
-                    functionStorage[slot]=trace.storage[slot]
-                }
+            
+        } else if (trace.op === "SLOAD") {
+            for (const slot in trace.storage) {
+                mapForStorage[currentIndex].functionStorage[slot] = trace.storage[slot];
             }
         }
     }
-
+   
     try {
+
         finalShaTraces = trackBuffer;
         
         for (let i = 0; i < trackBuffer.length; i++) {
@@ -829,14 +855,16 @@ async function getTraceStorageFromErigon(httpStream, networkData,functionName,tr
                 sstoreBuffer.splice(sstoreBuffer.indexOf(trackBuffer[i].finalKey), 1);
             }
         }
-
+        for(const singleObject in mapForStorage){
+            createShatrace(mapForStorage[singleObject],sstoreBuffer,web3);
+        }
         let sstoreObject = { sstoreOptimization, sstoreBuffer };
         finalShaTraces = regroupShatrace(finalShaTraces);
         let internalStorage = [];
-        
+        //dal mapping della struttura alla key 1 è associata la chiamata pubblica quindi la posso passare direttamente "hardcoded"
         if (extractionOption.internalStorage != 0) {
             internalStorage = contractTree && contractTree.storageLayoutFlag 
-                ? await optimizedDecodeValues(sstoreObject, contractTree.fullContractTree, finalShaTraces, functionStorage, functionName, mainContract, web3, contractTree.contractCompiled)
+                ? await optimizedDecodeValues(sstoreObject, contractTree.fullContractTree, mapForStorage["1"].finalShaTraces, mapForStorage["1"].functionStorage, functionName, mainContract, web3, contractTree.contractCompiled)
                 : [];
         }
         
@@ -846,7 +874,10 @@ async function getTraceStorageFromErigon(httpStream, networkData,functionName,tr
         } else if (extractionOption.internalTransaction == 1) {
             internalTxs = await newDecodedInternalTransaction(transactionHash, smartContract, networkData, web3,blockNumber);
         }
-        
+         
+        assignStorageToTheInternal(internalTxs,mapForStorage);
+        await decodeInteralTxsStorage(internalTxs,web3);
+
         let result = {
             decodedValues: internalStorage,
             internalTxs: internalTxs
@@ -871,7 +902,69 @@ async function getTraceStorageFromErigon(httpStream, networkData,functionName,tr
         if (global.gc) global.gc();
     }
 }
+function createShatrace(singleObject,sstoreBuffer,web3){
+    singleObject.finalShaTraces=singleObject.trackBuffer;
+
+    for (let i = 0; i < singleObject.trackBuffer.length; i++) {
+        if (singleObject.trackBuffer[i] && sstoreBuffer.includes(singleObject.trackBuffer[i].finalKey)) {
+            const trace = {
+                finalKey: singleObject.trackBuffer[i].finalKey,
+                hexKey: singleObject.trackBuffer[i].hexKey,
+                indexSum: singleObject.trackBuffer[i].indexSum,
+                hexStorageIndex: singleObject.trackBuffer[i].hexStorageIndex
+            };
+
+            let flag = false;
+            let test = i;
+
+            while (flag === false) {
+                if (!(web3.utils.hexToNumber("0x" + singleObject.trackBuffer[test].hexStorageIndex) < 300)) {
+                    if (test > 0) {
+                        test--;
+                    } else {
+                        flag = true;
+                    }
+                } else {
+                    trace.hexStorageIndex = singleObject.trackBuffer[test].hexStorageIndex;
+                    flag = true;
+                    singleObject.finalShaTraces.push(trace);
+                }
+            }
+            singleObject.finalShaTraces.push(trace);
+            sstoreBuffer.splice(sstoreBuffer.indexOf(singleObject.trackBuffer[i].finalKey), 1);
+        }
+    }
+    singleObject.finalShaTraces=regroupShatrace(singleObject.finalShaTraces)
+    delete singleObject.trackBuffer;
+} 
+
+function assignStorageToTheInternal(internalTxs,mapForStorage,index=2){
+    for(let txs of internalTxs){
+        txs.finalShaTraces=mapForStorage[index].finalShaTraces;
+        txs.functionStorage=mapForStorage[index].functionStorage;
+        index++;
+        if(txs.calls && txs.calls.length>0){
+            assignStorageToTheInternal(txs.calls,mapForStorage,index);
+        }
+    }
+}
+
+async function decodeInteralTxsStorage(internalTxs,web3){
+    for(let txs of internalTxs){
+        const query = { contractAddress: txs.to.toLowerCase() };
+        let queryResult = await searchAbi(query);
+        let contractTree = await getContractTree(null, txs.to, null, null, queryResult);
+        let storageState = contractTree && contractTree.storageLayoutFlag 
+                ? await optimizedDecodeValues(null, contractTree.fullContractTree, txs.finalShaTraces, txs.functionStorage, txs.activity, txs.contractCalledName, web3, contractTree.contractCompiled)
+                : [];
+        txs.storageState=storageState;
+        if(txs.calls && txs.calls.length>0){
+            await decodeInteralTxsStorage(txs.calls,web3)
+        }
+    }
+}
 function regroupShatrace(finalShaTraces){
+    finalShaTraces=finalShaTraces.flat();
     return Array.from(
         new Map(finalShaTraces.map(item => [item.finalKey + item.hexStorageIndex, item])).values()
       );
