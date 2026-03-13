@@ -844,21 +844,24 @@ app.post("/submit", upload.single("file"), async (req, res) => {
                 network: req.body.network,
                 filters: JSON.parse(req.body.filters),
                 extractionType: req.body.extractionType,
+				parameterForExtraction: req.body.parameterForExtraction,
                 option: {},
                 smartContract: null
             };
             switch (params.extractionType) {
                 case "0":
-                    params.option = { default: 1, internalStorage: 1, internalTransaction: 1 };
+                    params.option = { default: 1, internalStorage: 1, internalTransaction: 1 ,parameterForExtraction:0};
                     break;
                 case "1":
-                    params.option = { default: 1, internalStorage: 1, internalTransaction: 0 };
+                    params.option = { default: 1, internalStorage: 1, internalTransaction: 0,parameterForExtraction:0 };
                     break;
                 case "2":
-                    params.option = { default: 0, internalStorage: 1, internalTransaction: 1 };
+                    params.option = { default: 0, internalStorage: 1, internalTransaction: 1 ,parameterForExtraction:0};
                     break;
+				case "3":
+					params.option = { default: 1, internalStorage: 1, internalTransaction: 1 ,storageInternalTransactio:1};
                 default:
-                    params.option = { default: 1, internalStorage: 1, internalTransaction: 1 };
+                    params.option = { default: 1, internalStorage: 1, internalTransaction: 1 ,parameterForExtraction:0};
             }
 
             if (req.file) {

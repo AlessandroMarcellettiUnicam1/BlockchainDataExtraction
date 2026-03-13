@@ -874,9 +874,10 @@ async function getTraceStorageFromErigon(httpStream, networkData,functionName,tr
         } else if (extractionOption.internalTransaction == 1) {
             internalTxs = await newDecodedInternalTransaction(transactionHash, smartContract, networkData, web3,blockNumber);
         }
-         
-        assignStorageToTheInternal(internalTxs,mapForStorage);
-        await decodeInteralTxsStorage(internalTxs,web3);
+        if(extractionOption.storageInternalTransactio==1){
+            assignStorageToTheInternal(internalTxs,mapForStorage);
+            await decodeInteralTxsStorage(internalTxs,web3);
+        }
 
         let result = {
             decodedValues: internalStorage,
