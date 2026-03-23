@@ -860,10 +860,10 @@ app.post("/submit", upload.single("file"), async (req, res) => {
                     break;
 				case "3":
 					params.option = { default: 1, internalStorage: 1, internalTransaction: 1 ,storageInternalTransactio:1};
+					break;
                 default:
-                    params.option = { default: 1, internalStorage: 1, internalTransaction: 1 ,parameterForExtraction:0};
+                    params.option = { default: 1, internalStorage: 1, internalTransaction: 1 ,storageInternalTransactio:0};
             }
-
             if (req.file) {
                 params.smartContract = await fs.promises.readFile(req.file.path, "utf-8");
                 await fs.promises.unlink(req.file.path);

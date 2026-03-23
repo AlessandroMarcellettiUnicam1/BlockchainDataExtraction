@@ -47,10 +47,11 @@ function compileInChildProcess(input, compilerVersion) {
  * @param contractAddress - the address of the contract to get the source code
  * @returns {Promise<*[]>} - the source code of the contract with the imported contracts
  */
-async function getContractCodeEtherscan(contractAddress,endpoint,apiKey,queryResult) {
+async function getContractCodeEtherscan(contractAddress,endpoint,apiKey,queryResult,firstExtraction=true) {
     let contracts = [];
     let response=[];
     let buffer;
+    
     try{    
         let jsonCode;
         let data={
@@ -67,6 +68,9 @@ async function getContractCodeEtherscan(contractAddress,endpoint,apiKey,queryRes
             data.proxy=queryResult.proxy;
             data.contractName=queryResult.contractName;
         }else{
+            if (!firstExtraction) {
+                return;
+            }
             response = await axios.get(endpoint + `&module=contract&action=getsourcecode&address=${contractAddress}&apikey=${apiKey}`);
             if (response.data.result[0].SourceCode === "") {
                 throw new Error("No contract found");
@@ -379,7 +383,7 @@ async function getAbi(compiled, contractName) {
  * @param {*} mainContract 
  * @returns 
  */
-async function getContractTree(smartContract,impl_contract,endpoint,apiKey,queryResult){
+async function getContractTree(smartContract,impl_contract,endpoint,apiKey,queryResult,firstExtraction=true){
     let contractsResult = null
     // if the contract is uploaded by the user then the contract is compiled
     let contractTree = null;
@@ -388,7 +392,7 @@ async function getContractTree(smartContract,impl_contract,endpoint,apiKey,query
     } else {
         //implementation contract address
         try {
-                contractsResult = await getContractCodeEtherscan(impl_contract, endpoint, apiKey,queryResult);
+                contractsResult = await getContractCodeEtherscan(impl_contract, endpoint, apiKey,queryResult,firstExtraction);
             if (contractsResult) {
                 contractTree = await getCompiledData(contractsResult.contracts, contractsResult.contractName, contractsResult.compilerVersion);
                 //If contractTree is null is because It can't compile the code but the rest of the data are valid
