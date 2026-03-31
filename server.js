@@ -16,6 +16,7 @@ const upload = multer({ dest: "uploads/" });
 const port = 8000;
 const { setEventTypes } = require("./ocelMapping/eventTypes");
 const {queryJsonPath} = require("./jsonQuery/jsonQuery");
+const { debugTraceCall } = require('./services/ExtractionModule/transactionSimulator');
 app.use(cors());
 
 // Middleware: Logging for every request
@@ -59,6 +60,7 @@ const {
     formatInternalTransactionsForTreeView,
     formatCallForTreeView
 } = require("./query/queryFunctions");
+const { error } = require("console");
 
 function flattenTransaction(inputData) {
 	 const result = [];
@@ -1545,6 +1547,27 @@ app.post("/api/transactions", async (req,res)=>{
     }catch(error){
         console.error(error);
         res.status(500).json("Failed to fetch collections");
+    }
+});
+
+app.post("/api/simulate", async (req, res) => {
+	try {
+        const { url, params } = req.body;
+
+        if (!url || !params) {
+            return res.status(400).json({ error: "URL e params sono obbligatori" });
+        }
+
+        const { requiredTime, stream } = await debugTraceCall(params, url);
+        
+        console.log(`Connessione al nodo stabilita in ${requiredTime}s. Trasmissione dati in corso...`);
+
+        res.setHeader('Content-Type', 'application/json');
+        stream.pipe(res);
+
+    } catch (error) {
+        console.error("Errore durante la simulazione:", error);
+        res.status(500).json({ error: error.message });
     }
 });
 
