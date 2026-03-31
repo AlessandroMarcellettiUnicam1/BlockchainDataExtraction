@@ -100,6 +100,20 @@ function debugTransactionErigonStreaming(transactionHash,erigonUrl ) {
     });
 }
 
+function debugTraceCallErigonStreaming(params, url) {
+    return new Promise((resolve, reject) => {
+        const start = new Date();
+
+        makeRpcCallStreaming(url, 'debug_traceCall', params)
+            .then(stream => {
+                const end = new Date();
+                const requiredTime = parseFloat(((end - start) / 1000).toFixed(2));
+                resolve({ requiredTime, stream });
+            })
+            .catch(reject);
+    });
+}
+
 // Modified to return stream instead of writing to file
 function makeRpcCallStreaming(url, method, params) {
     return new Promise((resolve, reject) => {
