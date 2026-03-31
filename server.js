@@ -1548,8 +1548,7 @@ app.post("/api/transactions", async (req,res)=>{
         console.error(error);
         res.status(500).json("Failed to fetch collections");
     }
-});
-
+});/*
 app.post("/api/simulate", async (req, res) => {
 	try {
         const { url, params } = req.body;
@@ -1570,7 +1569,7 @@ app.post("/api/simulate", async (req, res) => {
         res.status(500).json({ error: error.message });
     }
 });
-
+*/
 
 // Start the server
 app.listen(port, () => {
