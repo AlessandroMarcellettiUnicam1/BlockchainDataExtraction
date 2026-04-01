@@ -18,11 +18,6 @@ const { fork } = require("child_process");
 const {ethers} = require("hardhat");
 const {buildTransactionHierarchy} = require("../Erigon/erigonApi");
 
-
-
-
-
-
 /**
  * Method called by the server to extract the transactions
  *
@@ -343,10 +338,10 @@ async function getStorageData(contractTransactions, mainContract, contractTree, 
         }
        
         return [];
-    }catch(err){
+    } catch(err){
         console.log(err)
         return;
-    }finally{
+    } finally{
         if (transactionsFiltered) {
             transactionsFiltered.length = 0;
             transactionsFiltered = null;
@@ -358,8 +353,8 @@ async function getStorageData(contractTransactions, mainContract, contractTree, 
         }
 
     }
-    
 }
+
 function runWorkerForTx(tx, mainContract, contractTree, contractAddress, smartContract, option, networkData,addressRange) {
     const workerPath = path.join(__dirname, 'workerWithOption.js');
     

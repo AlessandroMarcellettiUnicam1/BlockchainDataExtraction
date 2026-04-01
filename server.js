@@ -16,7 +16,6 @@ const upload = multer({ dest: "uploads/" });
 const port = 8000;
 const { setEventTypes } = require("./ocelMapping/eventTypes");
 const {queryJsonPath} = require("./jsonQuery/jsonQuery");
-const { debugTraceCall } = require('./services/ExtractionModule/transactionSimulator');
 app.use(cors());
 
 // Middleware: Logging for every request
@@ -1548,8 +1547,9 @@ app.post("/api/transactions", async (req,res)=>{
         console.error(error);
         res.status(500).json("Failed to fetch collections");
     }
-});/*
-app.post("/api/simulate", async (req, res) => {
+});
+
+/* app.post("/api/simulate", async (req, res) => {
 	try {
         const { url, params } = req.body;
 
@@ -1568,8 +1568,7 @@ app.post("/api/simulate", async (req, res) => {
         console.error("Errore durante la simulazione:", error);
         res.status(500).json({ error: error.message });
     }
-});
-*/
+}); */
 
 // Start the server
 app.listen(port, () => {
