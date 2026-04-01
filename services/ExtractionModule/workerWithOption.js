@@ -100,19 +100,7 @@ function debugTransactionErigonStreaming(transactionHash,erigonUrl ) {
     });
 }
 
-function debugTraceCallErigonStreaming(params, url) {
-    return new Promise((resolve, reject) => {
-        const start = new Date();
 
-        makeRpcCallStreaming(url, 'debug_traceCall', params)
-            .then(stream => {
-                const end = new Date();
-                const requiredTime = parseFloat(((end - start) / 1000).toFixed(2));
-                resolve({ requiredTime, stream });
-            })
-            .catch(reject);
-    });
-}
 
 // Modified to return stream instead of writing to file
 function makeRpcCallStreaming(url, method, params) {
@@ -267,9 +255,9 @@ async function createTransactionLog(tx, mainContract, contractTree, smartContrac
                 collectionName+=addressRange[i].substring(0,5).toLowerCase(); 
             }
             await saveTransaction(transactionLog,collectionName)
-        }else if(addressRange && addressRange.length==1){
+        } else if(addressRange && addressRange.length==1){
             await saveTransaction(transactionLog,addressRange[0].toLowerCase());
-        }else{
+        } else{
             await saveTransaction(transactionLog, tx.to!=''?tx.to:tx.from);
         }
         
@@ -290,9 +278,6 @@ async function createTransactionLog(tx, mainContract, contractTree, smartContrac
         }
         transactionLog=null;
     }
-
-
-
     return ;
 }
 /**

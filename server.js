@@ -60,6 +60,7 @@ const {
     formatCallForTreeView
 } = require("./query/queryFunctions");
 const { error } = require("console");
+const { processSimulation } = require("./services/ExtractionModule/simulationOrchestrator");
 
 function flattenTransaction(inputData) {
 	 const result = [];
@@ -1549,26 +1550,34 @@ app.post("/api/transactions", async (req,res)=>{
     }
 });
 
-/* app.post("/api/simulate", async (req, res) => {
+app.post("/api/simulate", async (req, res) => {
 	try {
-        const { url, params } = req.body;
+		const params = req.body.params;
 
-        if (!url || !params) {
-            return res.status(400).json({ error: "URL e params sono obbligatori" });
-        }
+		if (!parmas || !Array.isArray(params)) {
+			return req.status(400).json("Parametri non validi");
+		}
 
-        const { requiredTime, stream } = await debugTraceCall(params, url);
-        
-        console.log(`Connessione al nodo stabilita in ${requiredTime}s. Trasmissione dati in corso...`);
+		const txObject = params[0];
 
-        res.setHeader('Content-Type', 'application/json');
-        stream.pipe(res);
+		const networkData = {
+            web3Endpoint: process.env.WEB3_ALCHEMY_MAINNET_URL,
+            apiKey: process.env.API_KEY_ETHERSCAN,
+            endpoint: process.env.ETHERSCAN_MAINNET_ENDPOINT,
+            networkName: "Mainnet"
+        };
 
-    } catch (error) {
-        console.error("Errore durante la simulazione:", error);
-        res.status(500).json({ error: error.message });
-    }
-}); */
+		const result = await processSimulation(params, txObject.to, networkData);
+
+		return res.status(200).json(result);
+	}
+	catch (err){
+		console.error("Simulation error: " + err);
+		return req.status(400).json({
+			error: error.message
+		});
+	}
+});
 
 // Start the server
 app.listen(port, () => {

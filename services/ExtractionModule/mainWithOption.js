@@ -155,6 +155,7 @@ async function getAllTransactions(oldParams, newParams) {
         await cleanupResources();
     }
 }
+
 /**
  * 
  * @param {*} smartContract 
@@ -195,6 +196,7 @@ async function getContractTree(smartContract,impl_contract,endpoint,apiKey,query
     //console.log("\n\n\n\n contract tree (inner): " + contractTree.contractCompiled + "abcdefg\n\n\n\n");
     return contractTree;
 }
+
 /**
  * Recursive function to get all the trasaction in a block range
  * @param {*} networkData 
