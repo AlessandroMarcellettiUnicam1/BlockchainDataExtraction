@@ -100,8 +100,6 @@ function debugTransactionErigonStreaming(transactionHash,erigonUrl ) {
     });
 }
 
-
-
 // Modified to return stream instead of writing to file
 function makeRpcCallStreaming(url, method, params) {
     return new Promise((resolve, reject) => {
