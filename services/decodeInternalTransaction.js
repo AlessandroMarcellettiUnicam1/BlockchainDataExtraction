@@ -567,5 +567,7 @@ async function newDecodedInternalTransaction(transactionHash, smartContract, net
 
 module.exports = { 
     decodeInternalTransaction,      
-    newDecodedInternalTransaction   
+    newDecodedInternalTransaction,
+    handleAbiFetch,
+    handleAbiFromDb
 };
