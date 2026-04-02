@@ -52,7 +52,7 @@ async function processTransaction(tx, mainContract, contractTree, contractAddres
  */
 function decodeInput(tx,contractTree){
     if (tx.input == "0x") {
-        tx.methodId = "Tranfer";
+        tx.methodId = "Transfer";
     } else if (contractTree?.contractAbi && (typeof contractTree.contractAbi !== 'object' || Object.keys(contractTree.contractAbi).length > 0)) {
         decodeTransactionInputs(tx, contractTree.contractAbi);
     }
@@ -235,7 +235,6 @@ async function createTransactionLog(tx, mainContract, contractTree, smartContrac
                                     inputValue: value,
                                 };
                             });
-                            
                         }
                     }
                 }
@@ -900,6 +899,7 @@ async function getTraceStorageFromErigon(httpStream, networkData,functionName,tr
         if (global.gc) global.gc();
     }
 }
+
 function createShatrace(singleObject,sstoreBuffer,web3){
     singleObject.finalShaTraces=singleObject.trackBuffer;
 

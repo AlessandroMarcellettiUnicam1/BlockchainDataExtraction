@@ -3,6 +3,9 @@ const https = require("https");
 const { searchAbi } = require("../../query/query");
 const axios = require("axios");
 const { getContractTree } = require("../contractUtils/utils");
+const { default: Web3 } = require("web3");
+const { decodeInputs, decodeTransactionInputs } = require("../decodingUtils/utils");
+const { saveAbi } = require("../../databaseStore");
 
 async function processSimulation(params, targetAddress, networkData) {
     try {
@@ -43,6 +46,11 @@ async function processSimulation(params, targetAddress, networkData) {
             queryResult
         );
 
+        const txObject = rcpParams[0];
+        txObject.input = txObject.data || txObject.input;
+
+        decodeInput(txObject, contractTree);
+
         const simulationResult = await createSimulatedTransactionLog(
                 rpcParams,
                 queryResult.contractName,
@@ -58,8 +66,94 @@ async function processSimulation(params, targetAddress, networkData) {
     }
 }
 
-async function createSimulatedTransactionLog(rcpparams, mainContract, contractTree, networkData)  {
-    
+async function createSimulatedTransactionLog(rcpParams, mainContract, contractTree, networkData)  {
+    let web3 = new Web3(networkData.web3endpoint);
+    const txObject = rcpParams[0];
+    const blockRef = rcpParams[1];
+
+    let transactionLog = {
+        functionName: null,
+        transactionHash: "SIMULATED_TX",
+        blockNumber: (typeof blockRef === 'string' && blockRef.startsWith("0x")) ? web3.utils.hexToNumber(blockRef) : blockRef,
+        contractAddress: txObject.to,
+        sender: txObject.from,
+        gasUsed: 0,
+        timestamp: new Date().toISOString(),
+        inputs: txObject.inputDecoded ? decodeInputs(txObject.inputDecoded, web3) : [],
+        value: txObject.value || "0x0",
+        storageState: [],
+        internalTxs: [],
+        events: []
+    }
+
+    let storageVal = null;
+
+    try {
+        const { stream, requiredTime } = debugTraceCallErigonStreaming(rcpParams, networkData.web3Endpoint);
+
+        storageVal = await getSimulatedTaceStorageFromErigon(
+            stream, 
+            networkData,
+            transactionLog.functionName,
+            mainContract,
+            contractTree,
+            web3
+        );
+
+        transactionLog.storageState = storageVal ? storageVal.decodedValues:[];
+        transactionLog.internalTxs = storageVal ? storageVal.internalTxs:[];
+
+        let storeAbi = {
+            contractName: contractTree?.contractName || "",
+            abi: contractTree?.contractAbi || "",
+            proxy: contractTree?.proxy || "0",
+            proxyImplementation: '',
+            contractAddress: txObject.to,
+            sourceCode: contractTree?.sourceCode || "",
+            compilerVersion: contractTree?.compilerVersion || ""
+        };
+
+        if (!transactionLog.functionName && transactionLog.internalTxs && transactionLog.internalTxs.length > 0) {
+            if (transactionLog.internalTxs[0].type == "DELEGATECALL") {
+                const addressTo = transactionLog.internalTxs[0].to;
+                const query = { contractAddress: addressTo.toLowerCase() };
+                const response = await searchAbi(query);
+
+                if (response) {
+                    storeAbi.proxy = '1';
+                    storeAbi.proxyImplementation = query.contractAddress;
+
+                    decodeTransactionInputs(txObject, response.abi, web3);
+
+                    if (txObject.inputDecoded) {
+                        transactionLog.functionName = txObject.inputDecoded.method;
+                        // decodifica completa migliorata
+                        transactionLog.inputs = decodeInputs(txObject.inputDecoded, web3);
+                    }
+                }
+            }   
+        }
+
+        if (contractTree && storeAbi.proxyImplementation !== '') {
+            await saveAbi(storeAbi);
+        }
+    }
+    catch (err) {
+        console.err("Errore durante il salvataggio del log: ", err);
+        throw err; 
+    }
+    finally {
+        if (storageVal) {
+            storageVal.decodedValues = null;
+            storageVal.internalTxs = null;
+            storageVal = null
+        }
+    }
+    return transactionLog;
+}
+
+async function getSimulatedTaceStorageFromErigon(httpStream, networkData, functionName, mainContract, contractTree, web3) {
+
 }
 
 function debugTraceCallErigonStreaming(params, url) {
@@ -119,6 +213,14 @@ function makeRpcCallStreaming(url, method, params) {
         req.write(payload);
         req.end();
     });
+}
+
+function decodeInput(tx,contractTree){
+    if (tx.input == "0x") {
+        tx.methodId = "Transfer";
+    } else if (contractTree?.contractAbi && (typeof contractTree.contractAbi !== 'object' || Object.keys(contractTree.contractAbi).length > 0)) {
+        decodeTransactionInputs(tx, contractTree.contractAbi);
+    }
 }
 
 module.exports={
