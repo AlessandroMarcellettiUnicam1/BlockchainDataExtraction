@@ -1552,10 +1552,11 @@ app.post("/api/transactions", async (req,res)=>{
 
 app.post("/api/simulate", async (req, res) => {
 	try {
+		await connectDB("Mainnet");
 		const params = req.body.params;
 
-		if (!parmas || !Array.isArray(params)) {
-			return req.status(400).json("Parametri non validi");
+		if (!params || !Array.isArray(params)) {
+			return res.status(400).json("Parametri non validi");
 		}
 
 		const txObject = params[0];
@@ -1569,13 +1570,19 @@ app.post("/api/simulate", async (req, res) => {
 
 		const result = await processSimulation(params, txObject.to, networkData);
 
+		await mongoose.disconnect();
 		return res.status(200).json(result);
 	}
 	catch (err){
 		console.error("Simulation error: " + err);
-		return req.status(400).json({
-			error: error.message
+		return res.status(400).json({
+			error: err.message
 		});
+	}
+	finally {
+		if (mongoose.connection.readyState !== 0) {
+            await mongoose.disconnect();
+        }
 	}
 });
 

@@ -49,7 +49,7 @@ async function processSimulation(params, targetAddress, networkData) {
             queryResult
         );
 
-        const txObject = rcpParams[0];
+        const txObject = rpcParams[0];
         txObject.input = txObject.data || txObject.input;
 
         decodeInput(txObject, contractTree);
@@ -65,14 +65,14 @@ async function processSimulation(params, targetAddress, networkData) {
     }
     catch (err) {
         console.error("Errore in processSimulation:", error);
-        throw error;
+        throw err;
     }
 }
 
-async function createSimulatedTransactionLog(rcpParams, mainContract, contractTree, networkData)  {
+async function createSimulatedTransactionLog(rpcParams, mainContract, contractTree, networkData)  {
     let web3 = new Web3(networkData.web3Endpoint);
-    const txObject = rcpParams[0];
-    const blockRef = rcpParams[1];
+    const txObject = rpcParams[0];
+    const blockRef = rpcParams[1];
 
     let transactionLog = {
         functionName: null,
@@ -92,7 +92,7 @@ async function createSimulatedTransactionLog(rcpParams, mainContract, contractTr
     let storageVal = null;
 
     try {
-        const { stream, requiredTime } = debugTraceCallErigonStreaming(rcpParams, networkData.web3Endpoint);
+        const { stream, requiredTime } = debugTraceCallErigonStreaming(rpcParams, networkData.web3Endpoint);
 
         storageVal = await getSimulatedTraceStorageFromErigon(
             stream, 
@@ -142,7 +142,7 @@ async function createSimulatedTransactionLog(rcpParams, mainContract, contractTr
         }
     }
     catch (err) {
-        console.err("Errore durante il salvataggio del log: ", err);
+        console.error("Errore durante il salvataggio del log: ", err);
         throw err; 
     }
     finally {
