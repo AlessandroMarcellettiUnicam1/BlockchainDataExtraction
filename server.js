@@ -848,6 +848,7 @@ app.post("/submit", upload.single("file"), async (req, res) => {
                 option: {},
                 smartContract: null
             };
+			console.log("prima dello swit",params)
             switch (params.extractionType) {
                 case "0":
                     params.option = { default: 1, internalStorage: 1, internalTransaction: 1 ,parameterForExtraction:0};
@@ -864,6 +865,7 @@ app.post("/submit", upload.single("file"), async (req, res) => {
                 default:
                     params.option = { default: 1, internalStorage: 1, internalTransaction: 1 ,storageInternalTransactio:0};
             }
+			console.log("submint",params.option)
             if (req.file) {
                 params.smartContract = await fs.promises.readFile(req.file.path, "utf-8");
                 await fs.promises.unlink(req.file.path);
@@ -882,10 +884,27 @@ app.post("/submit", upload.single("file"), async (req, res) => {
                 filters: JSON.parse(req.body.filters),
                 contractName: req.body.contractName,
                 implementationContractAddress: req.body.implementationContractAddress,
-                smartContract: null,
-				option : { default: 1, internalStorage: 1, internalTransaction: 1 }
+				extractionType: req.body.extractionType,
+				parameterForExtraction: req.body.parameterForExtraction,
+                option: {},
+                smartContract: null
             };
-
+			switch (params.extractionType) {
+                case "0":
+                    params.option = { default: 1, internalStorage: 1, internalTransaction: 1 ,parameterForExtraction:0};
+                    break;
+                case "1":
+                    params.option = { default: 1, internalStorage: 1, internalTransaction: 0,parameterForExtraction:0 };
+                    break;
+                case "2":
+                    params.option = { default: 0, internalStorage: 1, internalTransaction: 1 ,parameterForExtraction:0};
+                    break;
+				case "3":
+					params.option = { default: 1, internalStorage: 1, internalTransaction: 1 ,storageInternalTransactio:1};
+					break;
+                default:
+                    params.option = { default: 1, internalStorage: 1, internalTransaction: 1 ,storageInternalTransactio:0};
+            }
             if (req.file) {
                 params.smartContract = await fs.promises.readFile(req.file.path, "utf-8");
                 await fs.promises.unlink(req.file.path);

@@ -20,9 +20,22 @@ const {buildTransactionHierarchy} = require("../Erigon/erigonApi");
 
 
 
+const FILE_PATH=path.join(__dirname, 'timePerformance.csv');
 
-
-
+const timePerformance={
+    hash:"",
+    time_traceFilter:0,
+    time_processTraceBatch:0,
+    time_getCode_onlypubliccontract:0,
+    time_compile:0,
+    time_debug_trace_trace:0,
+    time_decodeStorage_public:0,
+    time_debug_trace_internal:0,
+    time_getCode_allInternalContracts_decode:0,
+    time_decodeStorage_internalTx:0,
+    getEvents:0,
+    number_internalTxs:0
+}
 /**
  * Method called by the server to extract the transactions
  *
@@ -93,10 +106,17 @@ async function getAllTransactions(oldParams, newParams) {
         let transactionList;
         let contractTree;
         let result;
+
+        if (!fs.existsSync(FILE_PATH)) {
+            const headers = 'hash,time_traceFilter,time_processTraceBatch,time_getCode_onlypubliccontract,time_compile,time_debug_trace_trace,time_decodeStorage_public,time_debug_trace_internal,time_getCode_allInternalContracts_decode,time_decodeStorage_internalTx,getEvents,numberInternal\n';
+            fs.writeFileSync(FILE_PATH, headers);
+            console.log(`CSV file created at: ${FILE_PATH}`);
+        }
         await connectDB(networkData.networkName);
         if(!oldParams && newParams){
-            result = await buildTransactionHierarchy(newParams.contractAddressesFrom, newParams.contractAddressesTo, newParams.fromBlock, newParams.toBlock, networkData);
+            result = await buildTransactionHierarchy(newParams.contractAddressesFrom, newParams.contractAddressesTo, newParams.fromBlock, newParams.toBlock, networkData,timePerformance);
             for(let tx of result){
+                const timeStartGetPublicContractInformation=Date.now();
                 const query = { contractAddress: tx.to.toLowerCase() };
                 let queryResult = await searchAbi(query);
                 if (!queryResult || queryResult?.abi?.includes("Contract source code not verified")) {
@@ -117,12 +137,20 @@ async function getAllTransactions(oldParams, newParams) {
                     console.log("contract found in the db");
                 }
 
-                console.log("processing before the contract tree: ", tx);
-
+                
+                const timeEndGetPublicContractInformation=Date.now();
+                timePerformance.time_getCode_onlypubliccontract=timeEndGetPublicContractInformation-timeStartGetPublicContractInformation;
+                const timeBeforeCompileContract=Date.now();
                 contractTree = await getContractTree(null, tx.to, networkData.endpoint, networkData.apiKey, queryResult);
+                const timeAfterCompileConctract=Date.now();
+                timePerformance.time_compile=timeAfterCompileConctract-timeBeforeCompileContract;
                 let temp = [];
                 temp.push(tx)
+
+                timePerformance.hash=tx.hash;
                 result = await getStorageData(temp, queryResult.contractName, contractTree, tx.to, newParams.filters, newParams.smartContract, newParams.option, networkData, newParams.contractAddressesTo);
+                const values = Object.values(timePerformance).join(',');
+                fs.appendFileSync(FILE_PATH, values+'\n');
             }
         } else {
             const query = { contractAddress: oldParams.implementationContractAddress.toLowerCase() };
@@ -268,7 +296,7 @@ async function cleanupResources() {
     }
 }
 module.exports = {
-    getAllTransactions
+    getAllTransactions,
 };
 //CakeOFT
 //PixesFarmsLand
@@ -382,10 +410,18 @@ function runWorkerForTx(tx, mainContract, contractTree, contractAddress, smartCo
 
         // Listen for messages
         worker.on("message", (msg) => {
-            if (msg === "done") {
+            if (msg.type === "done") {
+
+                const perf = msg.performance;
+
+                timePerformance.time_debug_trace_trace=perf.time_debug_trace_trace;
+                timePerformance.getEvents=perf.getEvents;
+                timePerformance.time_decodeStorage_public=perf.time_decodeStorage_public;
+                timePerformance.time_debug_trace_internal=perf.time_debug_trace_internal;
+                timePerformance.time_getCode_allInternalContracts_decode=perf.time_getCode_allInternalContracts_decode;
+                timePerformance.time_decodeStorage_internalTx=perf.time_decodeStorage_internalTx;
+                timePerformance.number_internalTxs=perf.number_internalTxs;
                 resolve();
-            } else if (msg.error) {
-                reject(new Error(msg.error));
             }
         });
 

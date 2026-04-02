@@ -4,7 +4,7 @@ const { saveAbi } = require("../databaseStore");
 const { connectDB } = require("../config/db");
 const { getEventsFromInternal }= require("./decodingUtils/utils")
 const InputDataDecoder = require("ethereum-input-data-decoder");
-
+let timePerformance={};
 /**
  * 
  * @param {*} element 
@@ -287,6 +287,7 @@ async function handleAbiFromDbErigon(element, response, web3) {
         return;
     }
     if (response.proxy === '1' && response.proxyImplementation!='') {
+        const timeBeforeDecodingInput=Date.now();
         let query = { contractAddress: response.proxyImplementation.toLowerCase() };
         let responseImplementation = await searchAbi(query);
 
@@ -299,7 +300,9 @@ async function handleAbiFromDbErigon(element, response, web3) {
         } else {
             await tryMethodSignature(element, web3);
         }
+       
     }else{
+        const timeBeforeDecodingInput=Date.now();
         const abiFromDb = JSON.parse(response.abi);
         if(response.abi!='[]'){
             decodeInputs(element, abiFromDb, web3, response.contractName);  
@@ -314,6 +317,7 @@ async function handleAbiFromDbErigon(element, response, web3) {
         if (!element.activity) {
             await handleUnverifiedContract(element, web3);
         }
+        console.log("Tempo Decoding: ",Date.now()-timeBeforeDecodingInput)
     }
 }
 
@@ -551,17 +555,28 @@ async function debugInternalTransaction(transactionHash, web3Endpoint) {
  * @param {*} web3 
  * @returns 
  */
-async function newDecodedInternalTransaction(transactionHash, smartContract, networkData, web3,blockNumber) {
+async function newDecodedInternalTransaction(transactionHash, smartContract, networkData, web3,blockNumber,parTimePerformance) {
+    timePerformance=parTimePerformance;
+    //TODO: prendo tempo da qui 
+    const timeGetDebugInternal=Date.now();
     const internalCalls = await debugInternalTransaction(transactionHash, networkData.web3Endpoint);
-    
+    const timeEndGetDebugInternal=Date.now();
+    timePerformance.time_debug_trace_internal=timeEndGetDebugInternal-timeGetDebugInternal;
+    //fino a qui e questo è la debug 
+    //Tempo intenral da qui 
+
+    //per la decode degli input stampare il tempo della decode degli input per capire se è possibile omettere il valore
     if (!smartContract && internalCalls) {
         let seenEvent = new Set();
+        const timeStartGetCodeInternal=Date.now();
         await connectDB(networkData.networkName);
         await decodeInternalRecursive(internalCalls, smartContract, networkData, web3, 0, "0",transactionHash,blockNumber,seenEvent);
+        const timeEndCodeInternal=Date.now()
+        timePerformance.time_getCode_allInternalContracts_decode=timeEndCodeInternal-timeStartGetCodeInternal;
     } else {
         console.log("smart contract uploaded manually");
     }
-    
+    //a qui e sono le internal
     return internalCalls;
 }
 
