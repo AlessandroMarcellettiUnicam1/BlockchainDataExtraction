@@ -13,49 +13,62 @@ const { handleAbiFetch, handleAbiFromDb } = require("../decodeInternalTransactio
 async function processSimulation(params, targetAddress, networkData) {
     try {
         let queryResult;
+        let contractTree = null;
 
-        const query = { contractAddress: targetAddress.toLowerCase() };
-        let dbResponse = await searchAbi(query);
+        if (targetAddress && targetAddress !== "0x" && targetAddress !== "") {
+            const query = { contractAddress: targetAddress.toLowerCase() };
+            let dbResponse = await searchAbi(query);
 
-        if (!dbResponse || dbResponse?.abi?.includes("Contract source code not verified")) {
-            const axiosResponse = await axios.get(
-                `${networkData.endpoint}?module=contract&action=getsourcecode&address=${targetAddress}&apikey=${networkData.apiKey}`);
-            
-            const axiosResult = axiosResponse.data.result[0];
+            if (!dbResponse || dbResponse?.abi?.includes("Contract source code not verified")) {
+                const urlSeparator = networkData.endpoint.includes('?') ? '&' : '?';
+                
+                const axiosResponse = await axios.get(
+                    `${networkData.endpoint}${urlSeparator}module=contract&action=getsourcecode&address=${targetAddress}&apikey=${networkData.apiKey}`
+                );
+                
+                const axiosResult = axiosResponse.data.result[0];
 
-            if (!axiosResult.ABI || axiosResult.ABI === "Contract source code not verified") {
+                //if (!axiosResult.ABI) || axiosResult.ABI === "Contract source code not verified") {
+                if (!axiosResult.ABI) {
+                        throw new Error(" ABI vuota");
+                }
+                if (axiosResult.ABI === "Contract source code not verified") {
                     throw new Error("Impossibile recuperare l'ABI: Contratto non verificato su Etherscan.");
+                }
+
+                queryResult = {
+                    contractName: axiosResult.ContractName,
+                    abi: axiosResult.ABI,
+                    proxy: axiosResult.Proxy,
+                    proxyImplementation: '',
+                    sourceCode: axiosResult.SourceCode,
+                    contractAddress: targetAddress,
+                    compilerVersion: axiosResult.CompilerVersion,
+                };
+            } 
+            else {
+                queryResult = dbResponse;
             }
 
-            queryResult = {
-                contractName: axiosResult.ContractName,
-                abi: axiosResult.ABI,
-                proxy: axiosResult.Proxy,
-                proxyImplementation: '',
-                sourceCode: axiosResult.SourceCode,
-                contractAddress: targetAddress,
-                compilerVersion: axiosResult.CompilerVersion,
-            };
+            contractTree = await getContractTree(
+                null,
+                targetAddress,
+                networkData.endpoint,
+                networkData.apiKey,
+                queryResult
+            );
         } 
         else {
-            queryResult = dbResponse;
+            queryResult = { contractName: "Contract Creation", abi: [], proxy: "0" };
         }
 
-        const contractTree = await getContractTree(
-            null,
-            targetAddress,
-            networkData.endpoint,
-            networkData.apiKey,
-            queryResult
-        );
-
-        const txObject = rpcParams[0];
+        const txObject = params[0];
         txObject.input = txObject.data || txObject.input;
 
         decodeInput(txObject, contractTree);
 
         const simulationResult = await createSimulatedTransactionLog(
-                rpcParams,
+                params,
                 queryResult.contractName,
                 contractTree,
                 networkData
@@ -64,7 +77,7 @@ async function processSimulation(params, targetAddress, networkData) {
         return simulationResult;
     }
     catch (err) {
-        console.error("Errore in processSimulation:", error);
+        console.error("Errore in processSimulation:", err);
         throw err;
     }
 }
@@ -75,7 +88,7 @@ async function createSimulatedTransactionLog(rpcParams, mainContract, contractTr
     const blockRef = rpcParams[1];
 
     let transactionLog = {
-        functionName: null,
+        functionName: txObject.inputDecoded ? txObject.inputDecoded.method : nullll,
         transactionHash: "SIMULATED_TX",
         blockNumber: (typeof blockRef === 'string' && blockRef.startsWith("0x")) ? web3.utils.hexToNumber(blockRef) : blockRef,
         contractAddress: txObject.to,
@@ -92,7 +105,7 @@ async function createSimulatedTransactionLog(rpcParams, mainContract, contractTr
     let storageVal = null;
 
     try {
-        const { stream, requiredTime } = debugTraceCallErigonStreaming(rpcParams, networkData.web3Endpoint);
+        const { stream, requiredTime } = await debugTraceCallErigonStreaming(rpcParams, networkData.web3Endpoint);
 
         storageVal = await getSimulatedTraceStorageFromErigon(
             stream, 
@@ -218,6 +231,10 @@ async function getSimulatedTraceStorageFromErigon(httpStream, networkData, funct
 
     function processTrace(trace, nextTrace) {
         const currentIndex = getOrCreateIndexForDepth(trace.depth);
+
+        if (trace.op === "REVERT") {
+            console.log("LA TRANSAZIONE HA FATTO REVERT!");
+        }
         
         if (trace.op === "KECCAK256") {
             bufferPC = trace.pc;
@@ -301,6 +318,7 @@ async function getSimulatedTraceStorageFromErigon(httpStream, networkData, funct
 
     try {
         finalShaTraces = trackBuffer;
+        console.log("Raw Storage Keys catturate:", sstoreBuffer.length);
 
         for (let i = 0; i < trackBuffer.length; i++) {
             if (sstoreBuffer.includes(trackBuffer[i].finalKey)) {
@@ -339,8 +357,11 @@ async function getSimulatedTraceStorageFromErigon(httpStream, networkData, funct
         let sstoreObject = { sstoreOptimization, sstoreBuffer };
         finalShaTraces = regroupShatrace(finalShaTraces);
 
+        const rootShaTraces = mapForStorage["1"] ? mapForStorage["1"].finalShaTraces : [];
+        const rootFunctionStorage = mapForStorage["1"] ? mapForStorage["1"].functionStorage : {};
+
         let internalStorage = contractTree && contractTree.storageLayoutFlag
-            ? await optimizedDecodeValues(sstoreObject, contractTree.fullContractTree, mapForStorage["1"].finalShaTraces, mapForStorage["1"].functionStorage, functionName, mainContract, web3, contractTree.contractCompiled)
+            ? await optimizedDecodeValues(sstoreObject, contractTree.fullContractTree, rootShaTraces, rootFunctionStorage, functionName, mainContract, web3, contractTree.contractCompiled)
             : [];
         
         let internalTxs = [];
@@ -433,21 +454,31 @@ function makeRpcCallStreaming(url, method, params) {
                 'Content-Type': 'application/json',
                 'Content-Length': Buffer.byteLength(payload)
             },
-            timeout: 300000
+            timeout: 300000 
         };
 
         const req = client.request(options, (res) => {
-            // Return the response stream directly
+            const contentType = res.headers['content-type'] || '';
+
+            if (res.statusCode !== 200 || !contentType.includes('application/json')) {
+                let errorData = '';
+                res.on('data', chunk => errorData += chunk);
+                res.on('end', () => {
+                    reject(new Error(`Errore dal nodo (Status ${res.statusCode}): ${errorData.substring(0, 300)}`));
+                });
+                return;
+            }
+
             resolve(res);
         });
 
         req.on('error', (err) => {
-            reject(new Error(`Request failed: ${err.message}`));
+            reject(new Error(`Richiesta fallita a livello di rete: ${err.message}`));
         });
 
         req.on('timeout', () => {
             req.destroy();
-            reject(new Error('Request timeout'));
+            reject(new Error('Timeout dal nodo RPC.'));
         });
 
         req.write(payload);
