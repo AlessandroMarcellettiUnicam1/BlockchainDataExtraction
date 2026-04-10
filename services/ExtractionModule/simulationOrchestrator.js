@@ -84,11 +84,27 @@ async function createSimulatedTransactionLog(rpcParams, mainContract, contractTr
     let web3 = new Web3(networkData.web3Endpoint);
     const txObject = rpcParams[0];
     const blockRef = rpcParams[1];
+    let resolvedBlockNumber = blockRef;
+
+    try {
+        const blockInfo = await web3.eth.getBlock(blockRef);
+
+        if (blockInfo && blockInfo.number !== undefined && blockInfo.number !== null) {
+            resolvedBlockNumber = Number(blockInfo.number);
+        } else if (typeof blockRef === 'string' && blockRef.startsWith("0x")) {
+            resolvedBlockNumber = web3.utils.hexToNumber(blockRef);
+        }
+    }
+    catch (err) {
+        if (typeof blockRef === 'string' && blockRef.startsWith("0x")) {
+            resolvedBlockNumber = web3.utils.hexToNumber(blockRef);
+        }
+    }
 
     let transactionLog = {
         functionName: txObject.inputDecoded ? txObject.inputDecoded.method : null,
         transactionHash: "SIMULATED_TX",
-        blockNumber: (typeof blockRef === 'string' && blockRef.startsWith("0x")) ? web3.utils.hexToNumber(blockRef) : blockRef,
+        blockNumber: resolvedBlockNumber,
         contractAddress: txObject.to ? txObject.to : "Contract Creation (Deployment)",
         sender: txObject.from ? txObject.from : "0x0000000000000000000000000000000000000000",
         gasUsed: 0,
@@ -612,7 +628,7 @@ async function decodeInteralTxsStorage(internalTxs, web3, networkData){
         const query = { contractAddress: txs.to.toLowerCase() };
         let queryResult = await searchAbi(query);
         // changed nulls variables with networkData endpoint and apyKey
-        let contractTree = await getContractTree(null, txs.to, networkData.endpoint, networkData.apiKey, queryResult);
+        let contractTree = await getContractTree(null, txs.to, null, null, queryResult);
         let storageState = contractTree && contractTree.storageLayoutFlag 
                 ? await optimizedDecodeValues(null, contractTree.fullContractTree, txs.finalShaTraces, txs.functionStorage, txs.activity, txs.contractCalledName, web3, contractTree.contractCompiled)
                 : [];
