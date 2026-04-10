@@ -1027,3 +1027,12 @@ process.on('unhandledRejection', (reason, promise) => {
     process.exit(1);
 });
 
+module.exports = {
+    makeRpcCallStreaming,
+    decodeInput,
+    regroupShatrace,
+    createShatrace,
+    assignStorageToTheInternal,
+    decodeInteralTxsStorage
+}
+

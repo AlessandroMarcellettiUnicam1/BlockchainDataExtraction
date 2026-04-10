@@ -10,6 +10,7 @@ const JSONStream = require("JSONStream");
 const { optimizedDecodeValues } = require("../optimizedDecodeValues");
 const { handleAbiFetch, handleAbiFromDb, decodeInternalRecursive } = require("../decodeInternalTransaction");
 const { connectDB } = require("../../config/db");
+const { decodeInput, regroupShatrace, createShatrace, assignStorageToTheInternal } = require("./workerWithOption");
 
 // BiIng seralization
 BigInt.prototype.toJSON = function() {
@@ -506,7 +507,7 @@ async function debugTraceCallInternal(params, web3Endpoint) {
     }
 }
 
-// < -- FUNZIONI COPIATE DAL WORKER -- > 
+
 function makeRpcCallStreaming(url, method, params) {
     return new Promise((resolve, reject) => {
         const urlObj = new URL(url);
@@ -561,75 +562,12 @@ function makeRpcCallStreaming(url, method, params) {
     });
 }
 
-function decodeInput(tx,contractTree) {
-    if (tx.input == "0x") {
-        tx.methodId = "Transfer";
-    } else if (contractTree?.contractAbi && (typeof contractTree.contractAbi !== 'object' || Object.keys(contractTree.contractAbi).length > 0)) {
-        decodeTransactionInputs(tx, contractTree.contractAbi);
-    }
-}
-
-function regroupShatrace(finalShaTraces) {
-    finalShaTraces=finalShaTraces.flat();
-    return Array.from(
-        new Map(finalShaTraces.map(item => [item.finalKey + item.hexStorageIndex, item])).values()
-      );
-}
-
-function createShatrace(singleObject,sstoreBuffer,web3) {
-    singleObject.finalShaTraces=singleObject.trackBuffer;
-
-    for (let i = 0; i < singleObject.trackBuffer.length; i++) {
-        if (singleObject.trackBuffer[i] && sstoreBuffer.includes(singleObject.trackBuffer[i].finalKey)) {
-            const trace = {
-                finalKey: singleObject.trackBuffer[i].finalKey,
-                hexKey: singleObject.trackBuffer[i].hexKey,
-                indexSum: singleObject.trackBuffer[i].indexSum,
-                hexStorageIndex: singleObject.trackBuffer[i].hexStorageIndex
-            };
-
-            let flag = false;
-            let test = i;
-
-            while (flag === false) {
-                if (!(web3.utils.hexToNumber("0x" + singleObject.trackBuffer[test].hexStorageIndex) < 300)) {
-                    if (test > 0) {
-                        test--;
-                    } else {
-                        flag = true;
-                    }
-                } else {
-                    trace.hexStorageIndex = singleObject.trackBuffer[test].hexStorageIndex;
-                    flag = true;
-                    singleObject.finalShaTraces.push(trace);
-                }
-            }
-            singleObject.finalShaTraces.push(trace);
-            sstoreBuffer.splice(sstoreBuffer.indexOf(singleObject.trackBuffer[i].finalKey), 1);
-        }
-    }
-    singleObject.finalShaTraces = regroupShatrace(singleObject.finalShaTraces)
-    delete singleObject.trackBuffer;
-} 
-
-function assignStorageToTheInternal(internalTxs,mapForStorage,index=2) {
-    for(let txs of internalTxs){
-        txs.finalShaTraces=mapForStorage[index].finalShaTraces;
-        txs.functionStorage=mapForStorage[index].functionStorage;
-        index++;
-        if(txs.calls && txs.calls.length>0){
-            assignStorageToTheInternal(txs.calls,mapForStorage,index);
-        }
-    }
-}
-
 async function decodeInteralTxsStorage(internalTxs, web3, networkData){
     for(let txs of internalTxs){
         const query = { contractAddress: txs.to.toLowerCase() };
         let queryResult = await searchAbi(query);
         // changed nulls variables with networkData endpoint and apyKey
-        let contractTree = await getContractTree(null, txs.to, null, null, queryResult);
-        let storageState = contractTree && contractTree.storageLayoutFlag 
+    let contractTree = await getContractTree(null, txs.to, networkData.endpoint, networkData.apiKey, queryResult);        let storageState = contractTree && contractTree.storageLayoutFlag 
                 ? await optimizedDecodeValues(null, contractTree.fullContractTree, txs.finalShaTraces, txs.functionStorage, txs.activity, txs.contractCalledName, web3, contractTree.contractCompiled)
                 : [];
         txs.storageState=storageState;
@@ -638,6 +576,69 @@ async function decodeInteralTxsStorage(internalTxs, web3, networkData){
         }
     }
 }
+
+// < -- FUNZIONI COPIATE DAL WORKER -- > 
+// function decodeInput(tx,contractTree) {
+//     if (tx.input == "0x") {
+//         tx.methodId = "Transfer";
+//     } else if (contractTree?.contractAbi && (typeof contractTree.contractAbi !== 'object' || Object.keys(contractTree.contractAbi).length > 0)) {
+//         decodeTransactionInputs(tx, contractTree.contractAbi);
+//     }
+// }
+
+// function regroupShatrace(finalShaTraces) {
+//     finalShaTraces=finalShaTraces.flat();
+//     return Array.from(
+//         new Map(finalShaTraces.map(item => [item.finalKey + item.hexStorageIndex, item])).values()
+//       );
+// }
+
+// function createShatrace(singleObject,sstoreBuffer,web3) {
+//     singleObject.finalShaTraces=singleObject.trackBuffer;
+
+//     for (let i = 0; i < singleObject.trackBuffer.length; i++) {
+//         if (singleObject.trackBuffer[i] && sstoreBuffer.includes(singleObject.trackBuffer[i].finalKey)) {
+//             const trace = {
+//                 finalKey: singleObject.trackBuffer[i].finalKey,
+//                 hexKey: singleObject.trackBuffer[i].hexKey,
+//                 indexSum: singleObject.trackBuffer[i].indexSum,
+//                 hexStorageIndex: singleObject.trackBuffer[i].hexStorageIndex
+//             };
+
+//             let flag = false;
+//             let test = i;
+
+//             while (flag === false) {
+//                 if (!(web3.utils.hexToNumber("0x" + singleObject.trackBuffer[test].hexStorageIndex) < 300)) {
+//                     if (test > 0) {
+//                         test--;
+//                     } else {
+//                         flag = true;
+//                     }
+//                 } else {
+//                     trace.hexStorageIndex = singleObject.trackBuffer[test].hexStorageIndex;
+//                     flag = true;
+//                     singleObject.finalShaTraces.push(trace);
+//                 }
+//             }
+//             singleObject.finalShaTraces.push(trace);
+//             sstoreBuffer.splice(sstoreBuffer.indexOf(singleObject.trackBuffer[i].finalKey), 1);
+//         }
+//     }
+//     singleObject.finalShaTraces = regroupShatrace(singleObject.finalShaTraces)
+//     delete singleObject.trackBuffer;
+// } 
+
+// function assignStorageToTheInternal(internalTxs,mapForStorage,index=2) {
+//     for(let txs of internalTxs){
+//         txs.finalShaTraces=mapForStorage[index].finalShaTraces;
+//         txs.functionStorage=mapForStorage[index].functionStorage;
+//         index++;
+//         if(txs.calls && txs.calls.length>0){
+//             assignStorageToTheInternal(txs.calls,mapForStorage,index);
+//         }
+//     }
+// }
 
 module.exports={
     processSimulation
