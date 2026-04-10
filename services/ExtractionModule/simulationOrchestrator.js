@@ -8,7 +8,8 @@ const { decodeInputs, decodeTransactionInputs } = require("../decodingUtils/util
 const { saveAbi } = require("../../databaseStore");
 const JSONStream = require("JSONStream");
 const { optimizedDecodeValues } = require("../optimizedDecodeValues");
-const { handleAbiFetch, handleAbiFromDb } = require("../decodeInternalTransaction");
+const { handleAbiFetch, handleAbiFromDb, decodeInternalRecursive } = require("../decodeInternalTransaction");
+const { connectDB } = require("../../config/db");
 
 async function processSimulation(params, targetAddress, networkData) {
     try {
@@ -384,7 +385,7 @@ async function getSimulatedTraceStorageFromErigon(httpStream, networkData, funct
         
         let internalTxs = [];
         if (internalCalls.length > 0) {
-            internalTxs = await decodeSimulatedInternalTransaction(internalCalls, web3, networkData);
+            internalTxs = await decodeSimulatedInternalTransaction(params, null, web3, networkData);
             assignStorageToTheInternal(internalTxs, mapForStorage);
             await decodeInteralTxsStorage(internalTxs, web3);
         }
@@ -431,24 +432,45 @@ function debugTraceCallErigonStreaming(params, url) {
 }
 
 // funzione semplificata senza recupero degli eventi
-async function decodeSimulatedInternalTransaction(internalCalls, web3, networkData) {
-    for (const element of internalCalls) {
-        element.events = []; // Impostiamo a vuoto staticamente
-        const addressTo = element.to;
-        const query = { contractAddress: addressTo.toLowerCase() };
-        
-        const response = await searchAbi(query);
-        
-        if (!response) {
-            await handleAbiFetch(element, addressTo, networkData.apiKey, networkData.endpoint, web3);
-        } else {
-            await handleAbiFromDb(element, response, web3);
-        }
+async function decodeSimulatedInternalTransaction(params, smartContract, networkData, web3) {
+    const internalCalls = await debugTraceCallInternal(params, networkData.web3Endpoint);
+
+    if (!smartContract && internalCalls) {
+        let seenEvent = new Set();
+        await connectDB(networkData.networkName);
+        await decodeInternalRecursive(internalCalls, smartContract, networkData, web3, 0, "0", null, null, seenEvent, true);
+    } else {
+        console.log("smart contract uploaded manually");
     }
+
     return internalCalls;
 }
 
-// < -- FUNZIONI COPIATE DAL WORKER, ANDRANNO POI SPOSTATE IN UN FILE DI UTILS -- > 
+async function debugTraceCallInternal(params) {
+    try {
+        const payload = {
+            jsonrpc: "2.0",
+            method: "debug_traceCall",
+            params: [
+                transactionHash,
+                { tracer: "callTracer" }
+            ],
+            id: 1
+        };
+            
+        const response = await axios.post(web3Endpoint, payload, {
+            headers: { "Content-Type": "application/json" }
+        });
+            
+        return response.data.result.calls;
+    } 
+    catch (err) {
+        console.error("debugInternalTransaction error:", err.message);
+        throw err;
+    }
+}
+
+// < -- FUNZIONI COPIATE DAL WORKER -- > 
 function makeRpcCallStreaming(url, method, params) {
     return new Promise((resolve, reject) => {
         const urlObj = new URL(url);
