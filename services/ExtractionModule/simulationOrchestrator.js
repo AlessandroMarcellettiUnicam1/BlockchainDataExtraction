@@ -183,10 +183,25 @@ async function getSimulatedTraceStorageFromErigon(httpStream, networkData, funct
     httpStream.pipe(gasParser);
 
     // parsing per ottenere il gas
-    gasParser.on("data", (gasHex) => {
-        if (gasHex) {
-            capturedGas = web3.utils.hexToNumber(gasHex);
+    gasParser.on("data", (gasValue) => {
+        try {
+            if (gasValue !== undefined && gasValue !== null) {
+                // se il nodo manda una stringa esadecimale (es: "0x12a5")
+                if (typeof gasValue === 'string' && gasValue.startsWith('0x')) {
+                    capturedGas = web3.utils.hexToNumber(gasValue);
+                } 
+                // se il nodo manda una stringa numerica o è già un numero
+                else {
+                    capturedGas = Number(gasValue);
+                }
+            }
+        } catch (e) {
+            console.error("errore di conversione del gas:", e);
         }
+    });
+
+    gasParser.on("error", (err) => {
+        console.error("errore interno al parser del gas:", err);
     });
 
     function getOrCreateIndexForDepth(depth) {
