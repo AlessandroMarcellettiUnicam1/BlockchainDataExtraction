@@ -1555,11 +1555,13 @@ app.post("/api/simulate", async (req, res) => {
 		await connectDB("Mainnet");
 		const params = req.body.params;
 
-		if (!params || !Array.isArray(params)) {
+		if (!params || !Array.isArray(params) || params.length === 0 || !params[0]) {
 			return res.status(400).json("Parametri non validi");
 		}
 
 		const txObject = params[0];
+
+		const targetAddress = txObject.to || null;
 
 		const networkData = {
             web3Endpoint: process.env.WEB3_ALCHEMY_MAINNET_URL,
@@ -1568,9 +1570,8 @@ app.post("/api/simulate", async (req, res) => {
             networkName: "Mainnet"
         };
 
-		const result = await processSimulation(params, txObject.to, networkData);
+		const result = await processSimulation(params, targetAddress, networkData);
 
-		await mongoose.disconnect();
 		return res.status(200).json(result);
 	}
 	catch (err){

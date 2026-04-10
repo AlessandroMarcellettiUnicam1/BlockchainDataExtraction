@@ -28,14 +28,6 @@ async function processSimulation(params, targetAddress, networkData) {
                 
                 const axiosResult = axiosResponse.data.result[0];
 
-                //if (!axiosResult.ABI) || axiosResult.ABI === "Contract source code not verified") {
-                if (!axiosResult.ABI) {
-                        throw new Error(" ABI vuota");
-                }
-                if (axiosResult.ABI === "Contract source code not verified") {
-                    throw new Error("Impossibile recuperare l'ABI: Contratto non verificato su Etherscan.");
-                }
-
                 queryResult = {
                     contractName: axiosResult.ContractName,
                     abi: axiosResult.ABI,
@@ -45,7 +37,7 @@ async function processSimulation(params, targetAddress, networkData) {
                     contractAddress: targetAddress,
                     compilerVersion: axiosResult.CompilerVersion,
                 };
-            } 
+            }
             else {
                 queryResult = dbResponse;
             }
@@ -88,11 +80,11 @@ async function createSimulatedTransactionLog(rpcParams, mainContract, contractTr
     const blockRef = rpcParams[1];
 
     let transactionLog = {
-        functionName: txObject.inputDecoded ? txObject.inputDecoded.method : nullll,
+        functionName: txObject.inputDecoded ? txObject.inputDecoded.method : null,
         transactionHash: "SIMULATED_TX",
         blockNumber: (typeof blockRef === 'string' && blockRef.startsWith("0x")) ? web3.utils.hexToNumber(blockRef) : blockRef,
-        contractAddress: txObject.to,
-        sender: txObject.from,
+        contractAddress: txObject.to ? txObject.to : "Contract Creation (Deployment)",
+        sender: txObject.from ? txObject.from : "0x0000000000000000000000000000000000000000",
         gasUsed: 0,
         timestamp: new Date().toISOString(),
         inputs: txObject.inputDecoded ? decodeInputs(txObject.inputDecoded, web3) : [],
@@ -118,6 +110,7 @@ async function createSimulatedTransactionLog(rpcParams, mainContract, contractTr
 
         transactionLog.storageState = storageVal ? storageVal.decodedValues:[];
         transactionLog.internalTxs = storageVal ? storageVal.internalTxs:[];
+        transactionLog.gasUsed = storageVal ? storageVal.gasUsed : 0;
 
         let storeAbi = {
             contractName: contractTree?.contractName || "",
@@ -184,7 +177,17 @@ async function getSimulatedTraceStorageFromErigon(httpStream, networkData, funct
     let previousTrace = null;
     
     const parser = JSONStream.parse("result.structLogs.*");
+    const gasParser = JSONStream.parse("result.gas"); // parser per il gas
+    let capturedGas = 0;
     httpStream.pipe(parser);
+    httpStream.pipe(gasParser);
+
+    // parsing per ottenere il gas
+    gasParser.on("data", (gasHex) => {
+        if (gasHex) {
+            capturedGas = web3.utils.hexToNumber(gasHex);
+        }
+    });
 
     function getOrCreateIndexForDepth(depth) {
         if (!depthToIndexMap.has(depth)) {
@@ -373,7 +376,8 @@ async function getSimulatedTraceStorageFromErigon(httpStream, networkData, funct
 
         let result = {
             decodedValues: internalStorage,
-            internalTxs: internalTxs
+            internalTxs: internalTxs,
+            gasUsed: capturedGas
         };
         sstoreObject = null;
         return result;
@@ -421,10 +425,8 @@ async function decodeSimulatedInternalTransaction(internalCalls, web3, networkDa
         const response = await searchAbi(query);
         
         if (!response) {
-            // Usa le tue utility per scaricare l'ABI se non esiste
             await handleAbiFetch(element, addressTo, networkData.apiKey, networkData.endpoint, web3);
         } else {
-            // Usa l'ABI locale per tradurre il payload
             await handleAbiFromDb(element, response, web3);
         }
     }
@@ -533,7 +535,7 @@ function createShatrace(singleObject,sstoreBuffer,web3) {
             sstoreBuffer.splice(sstoreBuffer.indexOf(singleObject.trackBuffer[i].finalKey), 1);
         }
     }
-    singleObject.finalShaTraces=regroupShatrace(singleObject.finalShaTraces)
+    singleObject.finalShaTraces = regroupShatrace(singleObject.finalShaTraces)
     delete singleObject.trackBuffer;
 } 
 
