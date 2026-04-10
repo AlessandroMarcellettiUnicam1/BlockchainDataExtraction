@@ -11,6 +11,11 @@ const { optimizedDecodeValues } = require("../optimizedDecodeValues");
 const { handleAbiFetch, handleAbiFromDb, decodeInternalRecursive } = require("../decodeInternalTransaction");
 const { connectDB } = require("../../config/db");
 
+// BiIng seralization
+BigInt.prototype.toJSON = function() {
+    return this.toString();
+};
+
 async function processSimulation(params, targetAddress, networkData) {
     try {
         let queryResult;
@@ -106,7 +111,8 @@ async function createSimulatedTransactionLog(rpcParams, mainContract, contractTr
             transactionLog.functionName,
             mainContract,
             contractTree,
-            web3
+            web3,
+            rpcParams
         );
 
         transactionLog.storageState = storageVal ? storageVal.decodedValues:[];
@@ -162,7 +168,7 @@ async function createSimulatedTransactionLog(rpcParams, mainContract, contractTr
     return transactionLog;
 }
 
-async function getSimulatedTraceStorageFromErigon(httpStream, networkData, functionName, mainContract, contractTree, web3) {
+async function getSimulatedTraceStorageFromErigon(httpStream, networkData, functionName, mainContract, contractTree, web3, rpcParams) {
     let functionStorage = {};
     let mapForStorage = {};
     let depthToIndexMap = new Map();
@@ -384,10 +390,12 @@ async function getSimulatedTraceStorageFromErigon(httpStream, networkData, funct
             : [];
         
         let internalTxs = [];
-        if (internalCalls.length > 0) {
-            internalTxs = await decodeSimulatedInternalTransaction(params, null, web3, networkData);
-            assignStorageToTheInternal(internalTxs, mapForStorage);
-            await decodeInteralTxsStorage(internalTxs, web3);
+        if (rpcParams) {
+            internalTxs = await decodeSimulatedInternalTransaction(rpcParams, null, networkData, web3);
+            if (internalTxs && internalTxs.length > 0) {
+                assignStorageToTheInternal(internalTxs, mapForStorage);
+                await decodeInteralTxsStorage(internalTxs, web3, networkData); // added network data
+            }
         }
 
         let result = {
@@ -446,14 +454,15 @@ async function decodeSimulatedInternalTransaction(params, smartContract, network
     return internalCalls;
 }
 
-async function debugTraceCallInternal(params) {
+async function debugTraceCallInternal(params, web3Endpoint) {
     try {
         const payload = {
             jsonrpc: "2.0",
             method: "debug_traceCall",
             params: [
-                transactionHash,
-                { tracer: "callTracer" }
+                params[0],
+                params[1], 
+                { tracer: "callTracer" } // Forziamo il tracer
             ],
             id: 1
         };
@@ -461,8 +470,19 @@ async function debugTraceCallInternal(params) {
         const response = await axios.post(web3Endpoint, payload, {
             headers: { "Content-Type": "application/json" }
         });
+
+        // STAMPA DI DEBUG: Vediamo cosa risponde VERAMENTE il nodo
+        console.log("=== RISPOSTA CALL TRACER ===");
+        if (response.data.error) {
+            console.error("ERRORE RPC DAL NODO:", response.data.error);
+            return [];
+        } else if (response.data.result) {
+            // Stampiamo un'anteprima del risultato per controllare se c'è l'array 'calls'
+            console.log("Result type:", response.data.result.type, "| Revert?", response.data.result.error || "No");
+            console.log("Numero di chiamate interne trovate:", response.data.result.calls ? response.data.result.calls.length : 0);
+        }
             
-        return response.data.result.calls;
+        return response.data.result && response.data.result.calls ? response.data.result.calls : [];
     } 
     catch (err) {
         console.error("debugInternalTransaction error:", err.message);
@@ -587,17 +607,18 @@ function assignStorageToTheInternal(internalTxs,mapForStorage,index=2) {
     }
 }
 
-async function decodeInteralTxsStorage(internalTxs,web3){
+async function decodeInteralTxsStorage(internalTxs, web3, networkData){
     for(let txs of internalTxs){
         const query = { contractAddress: txs.to.toLowerCase() };
         let queryResult = await searchAbi(query);
-        let contractTree = await getContractTree(null, txs.to, null, null, queryResult);
+        // changed nulls variables with networkData endpoint and apyKey
+        let contractTree = await getContractTree(null, txs.to, networkData.endpoint, networkData.apiKey, queryResult);
         let storageState = contractTree && contractTree.storageLayoutFlag 
                 ? await optimizedDecodeValues(null, contractTree.fullContractTree, txs.finalShaTraces, txs.functionStorage, txs.activity, txs.contractCalledName, web3, contractTree.contractCompiled)
                 : [];
         txs.storageState=storageState;
         if(txs.calls && txs.calls.length>0){
-            await decodeInteralTxsStorage(txs.calls,web3)
+            await decodeInteralTxsStorage(txs.calls,web3, networkData);
         }
     }
 }
