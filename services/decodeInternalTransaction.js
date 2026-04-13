@@ -317,7 +317,6 @@ async function handleAbiFromDbErigon(element, response, web3) {
         if (!element.activity) {
             await handleUnverifiedContract(element, web3);
         }
-        console.log("Tempo Decoding: ",Date.now()-timeBeforeDecodingInput)
     }
 }
 
