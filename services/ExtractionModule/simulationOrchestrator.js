@@ -76,7 +76,7 @@ async function processSimulation(params, targetAddress, networkData) {
         return simulationResult;
     }
     catch (err) {
-        console.error("Errore in processSimulation:", err);
+        console.error(`[Errore di Sistema] Fallimento critico durante l'orchestrazione della simulazione: ${err.message}`);
         throw err;
     }
 }
@@ -172,7 +172,7 @@ async function createSimulatedTransactionLog(rpcParams, mainContract, contractTr
         }
     }
     catch (err) {
-        console.error("Errore durante il salvataggio del log: ", err);
+        console.error("[Errore di Sistema] Errore durante il salvataggio del log: ", err.message);
         throw err; 
     }
     finally {
@@ -220,12 +220,12 @@ async function getSimulatedTraceStorageFromErigon(httpStream, networkData, funct
                 }
             }
         } catch (e) {
-            console.error("errore di conversione del gas:", e);
+            console.error(`[Parser] Avviso: Fallimento durante la formattazione dei dati sul gas consumato`);
         }
     });
 
     gasParser.on("error", (err) => {
-        console.error("errore interno al parser del gas:", err);
+        console.error("[Parser] Errore di decodifica JSON dal flusso del nodo RPC.:", err.message);
     });
 
     function getOrCreateIndexForDepth(depth) {
@@ -266,7 +266,7 @@ async function getSimulatedTraceStorageFromErigon(httpStream, networkData, funct
         });
 
         parser.on("error", (error) => {
-            console.error("Error parsing stream:", error);
+            console.error("[Nodo RPC] Errore durante il parsing dello stream del log: ", error.message);
             reject(error);
         });
     });
@@ -274,9 +274,9 @@ async function getSimulatedTraceStorageFromErigon(httpStream, networkData, funct
     function processTrace(trace, nextTrace) {
         const currentIndex = getOrCreateIndexForDepth(trace.depth);
 
-        if (trace.op === "REVERT") {
-            console.log("LA TRANSAZIONE HA FATTO REVERT!");
-        }
+        // if (trace.op === "REVERT") {
+        //     console.log("[EVM] Transazione interrotta (REVERT). Condizione logica non soddisfatta.");
+        // }
         
         if (trace.op === "KECCAK256") {
             bufferPC = trace.pc;
@@ -360,7 +360,7 @@ async function getSimulatedTraceStorageFromErigon(httpStream, networkData, funct
 
     try {
         finalShaTraces = trackBuffer;
-        console.log("Raw Storage Keys catturate:", sstoreBuffer.length);
+        console.log(`[Estrazione] Individuate ${sstoreBuffer.length} istruzioni di scrittura (SSTORE)`);
 
         for (let i = 0; i < trackBuffer.length; i++) {
             if (sstoreBuffer.includes(trackBuffer[i].finalKey)) {
@@ -424,7 +424,7 @@ async function getSimulatedTraceStorageFromErigon(httpStream, networkData, funct
         return result;
     }
     catch (err) {
-        console.log("errore ", err);
+        console.log("[Estrazione] Errore durante la ricostruzione dei layout di memoria: ", err.message);
         throw err;
     }
     finally {
@@ -465,7 +465,7 @@ async function decodeSimulatedInternalTransaction(params, smartContract, network
         await connectDB(networkData.networkName);
         await decodeInternalRecursive(internalCalls, smartContract, networkData, web3, 0, "0", null, null, seenEvent, true);
     } else {
-        console.log("smart contract uploaded manually");
+        console.log("[Analisi] Esecuzione isolata. Interazione interna omessa o contratto pre-caricato.");
     }
 
     return internalCalls;
@@ -488,21 +488,20 @@ async function debugTraceCallInternal(params, web3Endpoint) {
             headers: { "Content-Type": "application/json" }
         });
 
-        // STAMPA DI DEBUG: Vediamo cosa risponde VERAMENTE il nodo
-        console.log("=== RISPOSTA CALL TRACER ===");
+
         if (response.data.error) {
-            console.error("ERRORE RPC DAL NODO:", response.data.error);
+            console.error(`[Nodo RPC] Interrogazione respinta: ${response.data.error.message}`);
             return [];
         } else if (response.data.result) {
             // Stampiamo un'anteprima del risultato per controllare se c'è l'array 'calls'
-            console.log("Result type:", response.data.result.type, "| Revert?", response.data.result.error || "No");
-            console.log("Numero di chiamate interne trovate:", response.data.result.calls ? response.data.result.calls.length : 0);
+            console.log(`[EVM] Stato esecuzione: ${response.data.result.type} - Errore EVM: ${response.data.result.error || "Nessuno"}`);
+            console.log(`[Estrazione] Intercettate ${response.data.result.calls ? response.data.result.calls.length : 0} transazioni interne (Internal Txs).`)
         }
             
         return response.data.result && response.data.result.calls ? response.data.result.calls : [];
     } 
     catch (err) {
-        console.error("debugInternalTransaction error:", err.message);
+        console.error("[Nodo RPC] Fallimento dell'API debug_traceCall.", err.message);
         throw err;
     }
 }
