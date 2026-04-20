@@ -158,20 +158,22 @@ async function createSimulatedTransactionLog(rpcParams, mainContract, contractTr
         };
 
         if (!transactionLog.functionName && transactionLog.internalTxs && transactionLog.internalTxs.length > 0) {
-            if (transactionLog.internalTxs[0].type == "DELEGATECALL") {
-                const addressTo = transactionLog.internalTxs[0].to;
+            // ricerca approfondita del DELEGATECALL, che non cerca sono nel primo spazio
+            const firstDelegateCall = transactionLog.internalTxs.find(tx => tx.type === "DELEGATECALL");
+
+            if (firstDelegateCall) {
+                const addressTo = firstDelegateCall.to;
+                
                 const query = { contractAddress: addressTo.toLowerCase() };
                 const response = await searchAbi(query);
 
                 if (response) {
                     storeAbi.proxy = '1';
                     storeAbi.proxyImplementation = query.contractAddress;
-
                     decodeTransactionInputs(txObject, response.abi, web3);
 
                     if (txObject.inputDecoded) {
                         transactionLog.functionName = txObject.inputDecoded.method;
-                        // decodifica completa migliorata
                         transactionLog.inputs = decodeInputs(txObject.inputDecoded, web3);
                     }
                 }
