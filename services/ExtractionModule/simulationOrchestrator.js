@@ -415,9 +415,27 @@ async function getSimulatedTraceStorageFromErigon(httpStream, networkData, funct
         const rootShaTraces = mapForStorage["1"] ? mapForStorage["1"].finalShaTraces : [];
         const rootFunctionStorage = mapForStorage["1"] ? mapForStorage["1"].functionStorage : {};
 
-        let internalStorage = contractTree && contractTree.storageLayoutFlag
-            ? await optimizedDecodeValues(sstoreObject, contractTree.fullContractTree, rootShaTraces, rootFunctionStorage, functionName, mainContract, web3, contractTree.contractCompiled)
-            : [];
+        let internalStorage = [];
+        if (contractTree && contractTree.storageLayoutFlag) {
+            // caso 1 con decodifica avanzata
+            internalStorage = await optimizedDecodeValues(sstoreObject, contractTree.fullContractTree, rootShaTraces, rootFunctionStorage, functionName, mainContract, web3, contractTree.contractCompiled);
+        } 
+        else if (rootShaTraces && rootShaTraces.length > 0) {
+            // caso 2 con il fallback in cui è fallita la compilazione, cattura delle modifiche grezze
+            addSystemLog(`[Avviso] Storage Layout non disponibile. Generazione Raw Storage fallback.`);
+    
+            internalStorage = rootShaTraces.map(trace => {
+                // conversione dell'indice hex in numero decimale
+                const decSlot = web3.utils.hexToNumberString("0x" + trace.hexStorageIndex);
+        
+                return {
+                    variableName: `Raw_Slot_[${decSlot}]`,
+                    variableRawValue: "0x" + trace.finalKey,
+                    variableValue: "0x" + trace.finalKey,
+                    slot: trace.hexStorageIndex
+                };
+            });
+        }
         
         let internalTxs = [];
         if (rpcParams) {
@@ -579,7 +597,8 @@ async function decodeInteralTxsStorage(internalTxs, web3, networkData){
         const query = { contractAddress: txs.to.toLowerCase() };
         let queryResult = await searchAbi(query);
         // changed nulls variables with networkData endpoint and apyKey
-    let contractTree = await getContractTree(null, txs.to, networkData.endpoint, networkData.apiKey, queryResult);        let storageState = contractTree && contractTree.storageLayoutFlag 
+        let contractTree = await getContractTree(null, txs.to, networkData.endpoint, networkData.apiKey, queryResult);        
+        let storageState = contractTree && contractTree.storageLayoutFlag 
                 ? await optimizedDecodeValues(null, contractTree.fullContractTree, txs.finalShaTraces, txs.functionStorage, txs.activity, txs.contractCalledName, web3, contractTree.contractCompiled)
                 : [];
         txs.storageState=storageState;
