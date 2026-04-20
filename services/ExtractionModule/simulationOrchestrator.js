@@ -11,6 +11,8 @@ const { optimizedDecodeValues } = require("../optimizedDecodeValues");
 const { handleAbiFetch, handleAbiFromDb, decodeInternalRecursive } = require("../decodeInternalTransaction");
 const { connectDB } = require("../../config/db");
 const { decodeInput, regroupShatrace, createShatrace, assignStorageToTheInternal } = require("./workerWithOption");
+const { addSystemLog, logStorage } = require("../../utils/logger");
+
 
 // BiIng seralization
 BigInt.prototype.toJSON = function() {
@@ -18,67 +20,75 @@ BigInt.prototype.toJSON = function() {
 };
 
 async function processSimulation(params, targetAddress, networkData) {
-    try {
-        let queryResult;
-        let contractTree = null;
+    const sessionLogs = [];
 
-        if (targetAddress && targetAddress !== "0x" && targetAddress !== "") {
-            const query = { contractAddress: targetAddress.toLowerCase() };
-            let dbResponse = await searchAbi(query);
+    return logStorage.run(sessionLogs, async () => { 
+        try {
+            let queryResult;
+            let contractTree = null;
 
-            if (!dbResponse || dbResponse?.abi?.includes("Contract source code not verified")) {
-                const urlSeparator = networkData.endpoint.includes('?') ? '&' : '?';
+            if (targetAddress && targetAddress !== "0x" && targetAddress !== "") {
+                const query = { contractAddress: targetAddress.toLowerCase() };
+                let dbResponse = await searchAbi(query);
+
+                if (!dbResponse || dbResponse?.abi?.includes("Contract source code not verified")) {
+                    const urlSeparator = networkData.endpoint.includes('?') ? '&' : '?';
                 
-                const axiosResponse = await axios.get(
-                    `${networkData.endpoint}${urlSeparator}module=contract&action=getsourcecode&address=${targetAddress}&apikey=${networkData.apiKey}`
+                    const axiosResponse = await axios.get(
+                        `${networkData.endpoint}${urlSeparator}module=contract&action=getsourcecode&address=${targetAddress}&apikey=${networkData.apiKey}`
+                    );
+                
+                    const axiosResult = axiosResponse.data.result[0];
+
+                    queryResult = {
+                        contractName: axiosResult.ContractName,
+                        abi: axiosResult.ABI,
+                        proxy: axiosResult.Proxy,
+                        proxyImplementation: '',
+                        sourceCode: axiosResult.SourceCode,
+                        contractAddress: targetAddress,
+                        compilerVersion: axiosResult.CompilerVersion,
+                    };
+                }
+                else {
+                    queryResult = dbResponse;
+                }
+
+                contractTree = await getContractTree(
+                    null,
+                    targetAddress,
+                    networkData.endpoint,
+                    networkData.apiKey,
+                    queryResult
                 );
-                
-                const axiosResult = axiosResponse.data.result[0];
-
-                queryResult = {
-                    contractName: axiosResult.ContractName,
-                    abi: axiosResult.ABI,
-                    proxy: axiosResult.Proxy,
-                    proxyImplementation: '',
-                    sourceCode: axiosResult.SourceCode,
-                    contractAddress: targetAddress,
-                    compilerVersion: axiosResult.CompilerVersion,
-                };
-            }
+            } 
             else {
-                queryResult = dbResponse;
+                queryResult = { contractName: "Contract Creation", abi: [], proxy: "0" };
             }
 
-            contractTree = await getContractTree(
-                null,
-                targetAddress,
-                networkData.endpoint,
-                networkData.apiKey,
-                queryResult
-            );
-        } 
-        else {
-            queryResult = { contractName: "Contract Creation", abi: [], proxy: "0" };
-        }
+            const txObject = params[0];
+            txObject.input = txObject.data || txObject.input;
 
-        const txObject = params[0];
-        txObject.input = txObject.data || txObject.input;
+            decodeInput(txObject, contractTree);
 
-        decodeInput(txObject, contractTree);
-
-        const simulationResult = await createSimulatedTransactionLog(
+            const simulationResult = await createSimulatedTransactionLog(
                 params,
                 queryResult.contractName,
                 contractTree,
                 networkData
             );
 
-        return simulationResult;
-    }
-    catch (err) {
-        console.error(`[Errore di Sistema] Fallimento critico durante l'orchestrazione della simulazione: ${err.message}`);
-        throw err;
-    }
+            return {
+                data: simulationResult,
+                logs: sessionLogs
+            };
+        }
+        catch (err) {
+            addSystemLog(`[Errore di Sistema] Fallimento critico durante l'orchestrazione della simulazione: ${err.message}`, "error");
+            err.logs = sessionLogs;
+            throw err;
+        }
+    });
 }
 
 async function createSimulatedTransactionLog(rpcParams, mainContract, contractTree, networkData)  {

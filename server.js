@@ -1556,7 +1556,7 @@ app.post("/api/simulate", async (req, res) => {
 		const params = req.body.params;
 
 		if (!params || !Array.isArray(params) || params.length === 0 || !params[0]) {
-			return res.status(400).json("Parametri non validi");
+			return res.status(400).json({ error: "Parametri non validi", logs: [] });
 		}
 
 		const txObject = params[0];
@@ -1577,8 +1577,9 @@ app.post("/api/simulate", async (req, res) => {
 	catch (err){
 		console.error("Simulation error: " + err);
 		return res.status(400).json({
-			error: err.message
-		});
+            error: err.message,
+            logs: err.logs || [] 
+        });
 	}
 	finally {
 		if (mongoose.connection.readyState !== 0) {
