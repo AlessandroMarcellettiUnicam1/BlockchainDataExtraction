@@ -158,7 +158,7 @@ async function createSimulatedTransactionLog(rpcParams, mainContract, contractTr
         };
 
         if (!transactionLog.functionName && transactionLog.internalTxs && transactionLog.internalTxs.length > 0) {
-            // ricerca approfondita del DELEGATECALL, che non cerca sono nel primo spazio
+            // ricerca approfondita del DELEGATECALL, che non cerca solo nel primo spazio
             const firstDelegateCall = transactionLog.internalTxs.find(tx => tx.type === "DELEGATECALL");
 
             if (firstDelegateCall) {
@@ -510,7 +510,7 @@ async function debugTraceCallInternal(params, web3Endpoint) {
             params: [
                 params[0],
                 params[1], 
-                { tracer: "callTracer" } // Forziamo il tracer
+                { tracer: "callTracer" } // tracer forzato
             ],
             id: 1
         };
@@ -524,7 +524,6 @@ async function debugTraceCallInternal(params, web3Endpoint) {
             addSystemLog(`[Nodo RPC] Interrogazione respinta: ${response.data.error.message}`, 'error');
             return [];
         } else if (response.data.result) {
-            // Stampiamo un'anteprima del risultato per controllare se c'è l'array 'calls'
             addSystemLog(`[EVM] Stato esecuzione: ${response.data.result.type} - Errore EVM: ${response.data.result.error || "Nessuno"}`);
             addSystemLog(`[Estrazione] Intercettate ${response.data.result.calls ? response.data.result.calls.length : 0} transazioni interne (Internal Txs).`);
         }
