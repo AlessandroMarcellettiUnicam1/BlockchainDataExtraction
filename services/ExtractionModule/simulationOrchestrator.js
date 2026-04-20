@@ -11,7 +11,8 @@ const { optimizedDecodeValues } = require("../optimizedDecodeValues");
 const { handleAbiFetch, handleAbiFromDb, decodeInternalRecursive } = require("../decodeInternalTransaction");
 const { connectDB } = require("../../config/db");
 const { decodeInput, regroupShatrace, createShatrace, assignStorageToTheInternal } = require("./workerWithOption");
-const { addSystemLog, logStorage } = require("../../utils/logger");
+const { addSystemLog } = require("../contractUtils/logger");
+
 
 
 // BiIng seralization
@@ -182,7 +183,7 @@ async function createSimulatedTransactionLog(rpcParams, mainContract, contractTr
         }
     }
     catch (err) {
-        console.error("[Errore di Sistema] Errore durante il salvataggio del log: ", err.message);
+        addSystemLog(`[Errore di Sistema] Errore durante il salvataggio del log: ${err.message}`, 'error');
         throw err; 
     }
     finally {
@@ -230,12 +231,12 @@ async function getSimulatedTraceStorageFromErigon(httpStream, networkData, funct
                 }
             }
         } catch (e) {
-            console.error(`[Parser] Avviso: Fallimento durante la formattazione dei dati sul gas consumato`);
+            addSystemLog("[Parser] Avviso: Fallimento durante la formattazione dei dati sul gas consumato", 'error');
         }
     });
 
     gasParser.on("error", (err) => {
-        console.error("[Parser] Errore di decodifica JSON dal flusso del nodo RPC.:", err.message);
+        addSystemLog(`[Parser] Errore di decodifica JSON dal flusso del nodo RPC: ${err.message}`, 'error');
     });
 
     function getOrCreateIndexForDepth(depth) {
@@ -276,7 +277,7 @@ async function getSimulatedTraceStorageFromErigon(httpStream, networkData, funct
         });
 
         parser.on("error", (error) => {
-            console.error("[Nodo RPC] Errore durante il parsing dello stream del log: ", error.message);
+            addSystemLog(`[Nodo RPC] Errore durante il parsing dello stream del log: ${error.message}`, 'error');
             reject(error);
         });
     });
@@ -370,7 +371,7 @@ async function getSimulatedTraceStorageFromErigon(httpStream, networkData, funct
 
     try {
         finalShaTraces = trackBuffer;
-        console.log(`[Estrazione] Individuate ${sstoreBuffer.length} istruzioni di scrittura (SSTORE)`);
+        addSystemLog(`[Estrazione] Individuate ${sstoreBuffer.length} istruzioni di scrittura (SSTORE)`);
 
         for (let i = 0; i < trackBuffer.length; i++) {
             if (sstoreBuffer.includes(trackBuffer[i].finalKey)) {
@@ -434,7 +435,7 @@ async function getSimulatedTraceStorageFromErigon(httpStream, networkData, funct
         return result;
     }
     catch (err) {
-        console.log("[Estrazione] Errore durante la ricostruzione dei layout di memoria: ", err.message);
+        addSystemLog(`[Estrazione] Errore durante la ricostruzione dei layout di memoria: ${err.message}`, 'error');
         throw err;
     }
     finally {
@@ -475,7 +476,7 @@ async function decodeSimulatedInternalTransaction(params, smartContract, network
         await connectDB(networkData.networkName);
         await decodeInternalRecursive(internalCalls, smartContract, networkData, web3, 0, "0", null, null, seenEvent, true);
     } else {
-        console.log("[Analisi] Esecuzione isolata. Interazione interna omessa o contratto pre-caricato.");
+        addSystemLog("[Analisi] Esecuzione isolata. Interazione interna omessa o contratto pre-caricato.");
     }
 
     return internalCalls;
@@ -500,18 +501,18 @@ async function debugTraceCallInternal(params, web3Endpoint) {
 
 
         if (response.data.error) {
-            console.error(`[Nodo RPC] Interrogazione respinta: ${response.data.error.message}`);
+            addSystemLog(`[Nodo RPC] Interrogazione respinta: ${response.data.error.message}`, 'error');
             return [];
         } else if (response.data.result) {
             // Stampiamo un'anteprima del risultato per controllare se c'è l'array 'calls'
-            console.log(`[EVM] Stato esecuzione: ${response.data.result.type} - Errore EVM: ${response.data.result.error || "Nessuno"}`);
-            console.log(`[Estrazione] Intercettate ${response.data.result.calls ? response.data.result.calls.length : 0} transazioni interne (Internal Txs).`)
+            addSystemLog(`[EVM] Stato esecuzione: ${response.data.result.type} - Errore EVM: ${response.data.result.error || "Nessuno"}`);
+            addSystemLog(`[Estrazione] Intercettate ${response.data.result.calls ? response.data.result.calls.length : 0} transazioni interne (Internal Txs).`);
         }
             
         return response.data.result && response.data.result.calls ? response.data.result.calls : [];
     } 
     catch (err) {
-        console.error("[Nodo RPC] Fallimento dell'API debug_traceCall.", err.message);
+        addSystemLog(`[Nodo RPC] Fallimento dell'API debug_traceCall: ${err.message}`, 'error');
         throw err;
     }
 }
