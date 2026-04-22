@@ -671,5 +671,6 @@ async function decodeInteralTxsStorage(internalTxs, web3, networkData){
 // }
 
 module.exports={
-    processSimulation
+    processSimulation,
+    makeRpcCallStreaming
 }
