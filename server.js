@@ -61,6 +61,7 @@ const {
 } = require("./query/queryFunctions");
 const { error } = require("console");
 const { processSimulation } = require("./services/ExtractionModule/simulationOrchestrator");
+const { getMempoolTxs, getSequentialMempoolTxs } = require("./services/ExtractionModule/mempoolSimulator");
 
 function flattenTransaction(inputData) {
 	 const result = [];
@@ -1599,3 +1600,45 @@ app.listen(port, () => {
 // docker volume rm $(docker volume ls -q)
 // docker network rm $(docker network ls -q | grep -v "bridge\|host\|none")
 // docker system prune -a --volumes -f
+
+// Assicurati di aver importato la tua funzione WebSocket e il DB
+// const { getMempoolTxs } = require('../services/mempoolScanner');
+// const { connectDB } = require('../../config/db');
+
+app.get("/api/mempool-snapshot", async (req, res) => {
+    try {
+        await connectDB("Mainnet");
+
+        const requestedLimit = req.query.limit ? parseInt(req.query.limit, 10) : 100;
+        const safeLimit = Math.min(requestedLimit, 200);
+
+        // Accesso diretto alla variabile WebSocket corretta
+        const wsUrl = process.env.WS_ALCHEMY_MAINNET_URL;
+
+        if (!wsUrl || !wsUrl.startsWith('ws')) {
+            return res.status(500).json({ 
+                success: false, 
+                error: "Configurazione URL WebSocket mancante o non valida nel file .env" 
+            });
+        }
+
+        console.log(`Richiesta snapshot mempool: limite ${safeLimit} txs...`);
+
+        const transactions = await getSequentialMempoolTxs(wsUrl, safeLimit);
+
+        return res.status(200).json({
+            success: true,
+            network: "Mainnet",
+            count: transactions.length,
+            data: transactions
+        });
+
+    } catch (err) {
+        console.error("Errore snapshot mempool:", err);
+        return res.status(500).json({
+            success: false,
+            error: "Impossibile recuperare la mempool",
+            details: err.message || err
+        });
+    }
+});
