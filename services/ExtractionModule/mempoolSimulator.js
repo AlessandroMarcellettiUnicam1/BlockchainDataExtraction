@@ -1,8 +1,11 @@
 const { isAxiosError } = require('axios');
 const { Web3 } = require('web3');
+const { adaptMempoolTx } = require('../simulationUtils/txAdapter');
 
+
+// ottieni le prime n transazioni pending nella mempool tramite una coda
 async function getMempoolTxs(url, limit = 100) {
-    return new Promise(async (resolve, reject) => {
+   return new Promise(async (resolve, reject) => {
 
         const options = {
             reconnect: { auto: true, delay: 5000, maxAttempts: 10 }
@@ -79,7 +82,9 @@ async function getMempoolTxs(url, limit = 100) {
     });
 }
 
-
+function simulateMempool(transactions, networkData) {
+    
+}
 
 module.exports = {
     getMempoolTxs

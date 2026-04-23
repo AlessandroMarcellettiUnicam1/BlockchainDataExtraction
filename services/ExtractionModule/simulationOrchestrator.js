@@ -11,7 +11,7 @@ const { optimizedDecodeValues } = require("../optimizedDecodeValues");
 const { handleAbiFetch, handleAbiFromDb, decodeInternalRecursive } = require("../decodeInternalTransaction");
 const { connectDB } = require("../../config/db");
 const { decodeInput, regroupShatrace, createShatrace, assignStorageToTheInternal } = require("./workerWithOption");
-const { addSystemLog, logStorage } = require("../contractUtils/logger");
+const { addSystemLog, logStorage } = require("../simulationUtils/logger");
 
 
 

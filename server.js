@@ -1610,7 +1610,7 @@ app.get("/api/mempool-snapshot", async (req, res) => {
         await connectDB("Mainnet");
 
         const requestedLimit = req.query.limit ? parseInt(req.query.limit, 10) : 100;
-        const safeLimit = Math.min(requestedLimit, 200);
+        const safeLimit = Math.min(requestedLimit, 500);
 
         // Accesso diretto alla variabile WebSocket corretta
         const wsUrl = process.env.WS_ALCHEMY_MAINNET_URL;
