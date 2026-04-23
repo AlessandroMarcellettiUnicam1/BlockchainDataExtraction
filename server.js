@@ -1624,7 +1624,7 @@ app.get("/api/mempool-snapshot", async (req, res) => {
 
         console.log(`Richiesta snapshot mempool: limite ${safeLimit} txs...`);
 
-        const transactions = await getSequentialMempoolTxs(wsUrl, safeLimit);
+        const transactions = await getMempoolTxs(wsUrl, safeLimit);
 
         return res.status(200).json({
             success: true,
