@@ -1,12 +1,6 @@
 const { isAxiosError } = require('axios');
 const { Web3 } = require('web3');
 
-function simulatePendingTxs() {
-
-}
-
-
-
 async function getMempoolTxs(url, limit = 100) {
     return new Promise(async (resolve, reject) => {
 
@@ -85,9 +79,10 @@ async function getMempoolTxs(url, limit = 100) {
     });
 }
 
+
+
 module.exports = {
-    getMempoolTxs,
-    getSequentialMempoolTxs
+    getMempoolTxs
 }
 
 /*
