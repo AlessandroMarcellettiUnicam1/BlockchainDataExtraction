@@ -1628,7 +1628,7 @@ app.get("/api/get-mempool-txs", async (req, res) => {
     }
 });
 
-app.post("api/simulate/mempool-txs", async (req, res) => {
+app.post("/api/simulate/mempool-txs", async (req, res) => {
 	try {
 		await connectDB("Mainnet");
 
