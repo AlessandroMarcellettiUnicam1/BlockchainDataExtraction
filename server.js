@@ -124,6 +124,7 @@ function flattenTransaction(inputData) {
   
   return result;
 }
+
 // app.post("/api/generateGraph", (req, res) => {
 // 	const jsonData = req.body.jsonData;
 // 	const edges = req.body.edges;
@@ -458,6 +459,7 @@ function flattenTransaction(inputData) {
 // 		edgeFilter: edgeValues,
 // 	});
 // });
+
 app.post("/api/generateGraph", (req, res) => {
 	const jsonData = req.body.jsonData;
 	const edges = req.body.edges;
@@ -634,6 +636,7 @@ app.post("/api/generateGraph", (req, res) => {
 		edgeFilter: edgeValues,
 	});
 });
+
 app.post("/api/ocelMap", (req, res) => {
 	const ocelMap = req.body;
 	let ocel = {
@@ -650,6 +653,7 @@ app.post("/api/ocelMap", (req, res) => {
 	});
 	res.send(ocel);
 });
+
 app.post("/api/xes", async (req, res) => {
 	const jsonToTranslate = req.body.jsonToXes;
 	const { caseId, activityKey, timestamp } = req.body.objectsToXes;
@@ -676,6 +680,7 @@ app.post("/api/xes", async (req, res) => {
 	//     }
 	// });
 });
+
 app.post("/api/query", async (req, res) => {
 	const query = req.body;
 
@@ -733,6 +738,7 @@ app.post("/api/uploadDataInDb",async (req,res)=>{
 		res.status(500).json({ error: error.message });
 	}
 });
+
 // Route: Home Page
 /*app.post("/submit", upload.single("file"), async (req, res) => {
     // Old parameters (standard) con option incluso
@@ -1021,6 +1027,7 @@ app.post("/ocel-download", (req, res) => {
 		}
 	});
 });
+
 app.post("/xes-translator", (req, res) => {
 	const filename = "xesLogs.xes";
 	fs.writeFileSync(filename, req.body.jsonLog.xesString);
@@ -1208,6 +1215,7 @@ function findAllValuesByKey(obj, key) {
 	recursiveSearch(obj);
 	return results;
 }
+
 app.post("/jsonocel-download", (req, res) => {
 	const jsonToDownload = req.body.ocel;
 	const filename = "ocelLogs.jsonocel";

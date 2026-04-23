@@ -88,7 +88,7 @@ async function simulateMempoolTxs(transactions, networkData) {
 
     for (const tx of transactions) {
         const payload = adaptMempoolTx(tx);
-        const targetAddress = payload.to || null;
+        const targetAddress = payload[0].to || null;
 
         try {
             const simulation = await processSimulation(payload, targetAddress, networkData);
@@ -99,11 +99,11 @@ async function simulateMempoolTxs(transactions, networkData) {
             });
         }
         catch (error) {
-            console.warn(`[Batch] Fallimento TX ${rawTx.hash}: ${error.message}`);
+            console.warn(`[Batch] Fallimento TX ${tx.hash}: ${error.message}`);
             simulatedTxs.push({
                 hash: tx.hash,
                 status: "failed",
-                result: simulation
+                result: error.message
             });
         }
 
