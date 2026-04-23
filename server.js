@@ -61,7 +61,8 @@ const {
 } = require("./query/queryFunctions");
 const { error } = require("console");
 const { processSimulation } = require("./services/ExtractionModule/simulationOrchestrator");
-const { getMempoolTxs, getSequentialMempoolTxs } = require("./services/ExtractionModule/mempoolSimulator");
+const { getMempoolTxs, getSequentialMempoolTxs, simulateMempoolTxs } = require("./services/ExtractionModule/mempoolSimulator");
+const { net } = require("web3");
 
 function flattenTransaction(inputData) {
 	 const result = [];
@@ -1589,23 +1590,7 @@ app.post("/api/simulate", async (req, res) => {
 	}
 });
 
-// Start the server
-app.listen(port, () => {
-	console.log(`Server running at http://localhost:${port}`);
-});
-
-// docker stop $(docker ps -q)
-// docker rm $(docker ps -aq)
-// docker rmi $(docker images -q)
-// docker volume rm $(docker volume ls -q)
-// docker network rm $(docker network ls -q | grep -v "bridge\|host\|none")
-// docker system prune -a --volumes -f
-
-// Assicurati di aver importato la tua funzione WebSocket e il DB
-// const { getMempoolTxs } = require('../services/mempoolScanner');
-// const { connectDB } = require('../../config/db');
-
-app.get("/api/mempool-snapshot", async (req, res) => {
+app.get("/api/get-mempool-txs", async (req, res) => {
     try {
         await connectDB("Mainnet");
 
@@ -1642,3 +1627,50 @@ app.get("/api/mempool-snapshot", async (req, res) => {
         });
     }
 });
+
+app.post("api/simulate/mempool-txs", async (req, res) => {
+	try {
+		await connectDB("Mainnet");
+
+		// array proveniente dal frontend
+		const transactions = req.body.transactions;
+
+		const networkData = {
+            web3Endpoint: process.env.WEB3_ALCHEMY_MAINNET_URL,
+            apiKey: process.env.API_KEY_ETHERSCAN,
+            endpoint: process.env.ETHERSCAN_MAINNET_ENDPOINT,
+            networkName: "Mainnet"
+        };
+
+		console.log(`Avvio simulazione batch per ${transactions.length} transazioni...`);
+		const results = await simulateMempoolTxs(transactions, networkData);
+
+		return res.status(200).json({
+            success: true,
+            totalProcessed: results.length,
+            data: results
+        });
+	}
+	catch (err) {
+		console.error("Errore critico nel controller batch:", err);
+        return res.status(500).json({
+            success: false,
+            error: "Fallimento dell'orchestrazione batch",
+            details: err.message
+        });
+	}
+});
+
+// Start the server
+app.listen(port, () => {
+	console.log(`Server running at http://localhost:${port}`);
+});
+
+// docker stop $(docker ps -q)
+// docker rm $(docker ps -aq)
+// docker rmi $(docker images -q)
+// docker volume rm $(docker volume ls -q)
+// docker network rm $(docker network ls -q | grep -v "bridge\|host\|none")
+// docker system prune -a --volumes -f
+
+

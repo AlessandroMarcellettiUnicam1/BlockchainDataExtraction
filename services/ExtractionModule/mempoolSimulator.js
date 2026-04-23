@@ -1,6 +1,7 @@
 const { isAxiosError } = require('axios');
 const { Web3 } = require('web3');
 const { adaptMempoolTx } = require('../simulationUtils/txAdapter');
+const { processSimulation } = require('./simulationOrchestrator');
 
 
 // ottieni le prime n transazioni pending nella mempool tramite una coda
@@ -82,16 +83,42 @@ async function getMempoolTxs(url, limit = 100) {
     });
 }
 
-function simulateMempool(transactions, networkData) {
-    
+async function simulateMempoolTxs(transactions, networkData) {
+    const simulatedTxs = [];
+
+    for (const tx of transactions) {
+        const payload = adaptMempoolTx(tx);
+        const targetAddress = payload.to || null;
+
+        try {
+            const simulation = await processSimulation(payload, targetAddress, networkData);
+            simulatedTxs.push({
+                hash: tx.hash,
+                status: "success",
+                result: simulation
+            });
+        }
+        catch (error) {
+            console.warn(`[Batch] Fallimento TX ${rawTx.hash}: ${error.message}`);
+            simulatedTxs.push({
+                hash: tx.hash,
+                status: "failed",
+                result: simulation
+            });
+        }
+
+        // await delay(250);
+    }
+    return simulatedTxs;
 }
 
 module.exports = {
-    getMempoolTxs
+    getMempoolTxs,
+    simulateMempoolTxs
 }
 
 /*
-async function (url, limit = 100) {
+async function getMempoolTxs(url, limit = 100) {
     return new Promise(async (resolve, reject) => {
         const web3 = new Web3(url);
         const txs = [];
