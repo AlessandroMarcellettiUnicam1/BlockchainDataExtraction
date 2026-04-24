@@ -231,6 +231,8 @@ async function createTransactionLog(tx, mainContract, contractTree, smartContrac
                 sourceCode: contractTree.sourceCode,
                 compilerVersion: contractTree.compilerVersion
             };
+            delete transactionLog['finalShaTraces'];
+            delete transactionLog['functionStorage'];
             //forse a questo punto basta controllare solo se il contratto è un proxy o no
             if(transactionLog.functionName==null && transactionLog.internalTxs && transactionLog.internalTxs.length>0){
                 if(transactionLog.internalTxs[0].type=="DELEGATECALL"){
@@ -1012,6 +1014,8 @@ async function decodeInteralTxsStorage(internalTxs,web3){
         }
        
         txs.storageState=storageState;
+        delete txs['finalShaTraces'];
+        delete txs['functionStorage'];
         const timeAfterDecodeStorageInternal=Date.now()
         timePerformance.time_decodeStorage_internalTx+=timeAfterDecodeStorageInternal-timeBeforeDecodeStorageInteral;
         
