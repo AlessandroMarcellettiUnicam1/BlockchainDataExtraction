@@ -103,7 +103,9 @@ async function simulateMempoolTxs(transactions, networkData) {
             simulatedTxs.push({
                 hash: tx.hash,
                 status: "failed",
-                result: error.message
+                result: {
+                    error_details: error.message
+                }
             });
         }
 
