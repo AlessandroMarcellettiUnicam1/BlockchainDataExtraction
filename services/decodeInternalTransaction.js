@@ -468,7 +468,7 @@ async function decodeInternalTransaction(internalCalls, smartContract, web3, net
  * @param {*} depth 
  * @param {*} callId 
  */
-async function decodeInternalRecursive(internalCalls, smartContract, networkData, web3, depth, callId,transactionHash,blockNumber,seenEvent) {
+async function decodeInternalRecursive(internalCalls, smartContract, networkData, web3, depth, callId,transactionHash,blockNumber,seenEvent, simulation = false) {
     let idDepth = 1;
     
     for (const element of internalCalls) {
@@ -491,16 +491,19 @@ async function decodeInternalRecursive(internalCalls, smartContract, networkData
         } else {
             await handleAbiFromDbErigon(element, response, web3);
         }
-        let eventInternal=await getEventsFromInternal(transactionHash,blockNumber,addressTo,networkData,web3);
-        if(eventInternal.length==0){
-            eventInternal=await getEventsFromInternal(transactionHash,blockNumber,element.from,networkData,web3);
-        }
-        eventInternal.forEach((event)=>{
-            if (!seenEvent.has(event.eventSignature)) {
-                element.events.push(event)
-                seenEvent.add(event.eventSignature)
+
+        if (!simulation) {
+            let eventInternal=await getEventsFromInternal(transactionHash,blockNumber,addressTo,networkData,web3);
+            if(eventInternal.length==0){
+                eventInternal=await getEventsFromInternal(transactionHash,blockNumber,element.from,networkData,web3);
             }
-        })
+            eventInternal.forEach((event)=>{
+                if (!seenEvent.has(event.eventSignature)) {
+                    element.events.push(event)
+                    seenEvent.add(event.eventSignature)
+                }
+            })
+        }
         // Clean up input fields
         if (element.inputs && element.inputs.length > 0) {
             delete element.inputsCall;
@@ -513,7 +516,7 @@ async function decodeInternalRecursive(internalCalls, smartContract, networkData
         // Recursively process nested calls
         if (element.calls && element.calls.length > 0) {
             await decodeInternalRecursive(element.calls, smartContract, networkData, 
-                web3, depth + 1, element.callId,transactionHash,blockNumber,seenEvent);
+                web3, depth + 1, element.callId,transactionHash,blockNumber,seenEvent, simulation);
         }
     }
 }
@@ -581,5 +584,8 @@ async function newDecodedInternalTransaction(transactionHash, smartContract, net
 
 module.exports = { 
     decodeInternalTransaction,      
-    newDecodedInternalTransaction   
+    newDecodedInternalTransaction,
+    handleAbiFetch,
+    decodeInternalRecursive,
+    handleAbiFromDb
 };

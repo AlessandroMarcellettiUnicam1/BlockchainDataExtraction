@@ -59,6 +59,10 @@ const {
     formatInternalTransactionsForTreeView,
     formatCallForTreeView
 } = require("./query/queryFunctions");
+const { error } = require("console");
+const { processSimulation } = require("./services/ExtractionModule/simulationOrchestrator");
+const { getMempoolTxs, getSequentialMempoolTxs, simulateMempoolTxs } = require("./services/ExtractionModule/mempoolSimulator");
+const { net } = require("web3");
 
 function flattenTransaction(inputData) {
 	 const result = [];
@@ -120,6 +124,7 @@ function flattenTransaction(inputData) {
   
   return result;
 }
+
 // app.post("/api/generateGraph", (req, res) => {
 // 	const jsonData = req.body.jsonData;
 // 	const edges = req.body.edges;
@@ -454,6 +459,7 @@ function flattenTransaction(inputData) {
 // 		edgeFilter: edgeValues,
 // 	});
 // });
+
 app.post("/api/generateGraph", (req, res) => {
 	const jsonData = req.body.jsonData;
 	const edges = req.body.edges;
@@ -630,6 +636,7 @@ app.post("/api/generateGraph", (req, res) => {
 		edgeFilter: edgeValues,
 	});
 });
+
 app.post("/api/ocelMap", (req, res) => {
 	const ocelMap = req.body;
 	let ocel = {
@@ -646,6 +653,7 @@ app.post("/api/ocelMap", (req, res) => {
 	});
 	res.send(ocel);
 });
+
 app.post("/api/xes", async (req, res) => {
 	const jsonToTranslate = req.body.jsonToXes;
 	const { caseId, activityKey, timestamp } = req.body.objectsToXes;
@@ -672,6 +680,7 @@ app.post("/api/xes", async (req, res) => {
 	//     }
 	// });
 });
+
 app.post("/api/query", async (req, res) => {
 	const query = req.body;
 
@@ -729,6 +738,7 @@ app.post("/api/uploadDataInDb",async (req,res)=>{
 		res.status(500).json({ error: error.message });
 	}
 });
+
 // Route: Home Page
 /*app.post("/submit", upload.single("file"), async (req, res) => {
     // Old parameters (standard) con option incluso
@@ -1036,6 +1046,7 @@ app.post("/ocel-download", (req, res) => {
 		}
 	});
 });
+
 app.post("/xes-translator", (req, res) => {
 	const filename = "xesLogs.xes";
 	fs.writeFileSync(filename, req.body.jsonLog.xesString);
@@ -1223,6 +1234,7 @@ function findAllValuesByKey(obj, key) {
 	recursiveSearch(obj);
 	return results;
 }
+
 app.post("/jsonocel-download", (req, res) => {
 	const jsonToDownload = req.body.ocel;
 	const filename = "ocelLogs.jsonocel";
@@ -1567,6 +1579,114 @@ app.post("/api/transactions", async (req,res)=>{
     }
 });
 
+app.post("/api/simulate", async (req, res) => {
+	try {
+		await connectDB("Mainnet");
+		const params = req.body.params;
+
+		if (!params || !Array.isArray(params) || params.length === 0 || !params[0]) {
+			return res.status(400).json({ error: "Parametri non validi", logs: [] });
+		}
+
+		const txObject = params[0];
+
+		const targetAddress = txObject.to || null;
+
+		const networkData = {
+            web3Endpoint: process.env.WEB3_ALCHEMY_MAINNET_URL,
+            apiKey: process.env.API_KEY_ETHERSCAN,
+            endpoint: process.env.ETHERSCAN_MAINNET_ENDPOINT,
+            networkName: "Mainnet"
+        };
+
+		const result = await processSimulation(params, targetAddress, networkData);
+
+		return res.status(200).json(result);
+	}
+	catch (err){
+		console.error("Simulation error: " + err);
+		return res.status(400).json({
+            error: err.message,
+            logs: err.logs || [] 
+        });
+	}
+	finally {
+		if (mongoose.connection.readyState !== 0) {
+            await mongoose.disconnect();
+        }
+	}
+});
+
+app.get("/api/get-mempool-txs", async (req, res) => {
+    try {
+        await connectDB("Mainnet");
+
+        const requestedLimit = req.query.limit ? parseInt(req.query.limit, 10) : 100;
+        const safeLimit = Math.min(requestedLimit, 500);
+
+        // Accesso diretto alla variabile WebSocket corretta
+        const wsUrl = process.env.WS_ALCHEMY_MAINNET_URL;
+
+        if (!wsUrl || !wsUrl.startsWith('ws')) {
+            return res.status(500).json({ 
+                success: false, 
+                error: "Configurazione URL WebSocket mancante o non valida nel file .env" 
+            });
+        }
+
+        console.log(`Richiesta snapshot mempool: limite ${safeLimit} txs...`);
+
+        const transactions = await getMempoolTxs(wsUrl, safeLimit);
+
+        return res.status(200).json({
+            success: true,
+            network: "Mainnet",
+            count: transactions.length,
+            data: transactions
+        });
+
+    } catch (err) {
+        console.error("Errore snapshot mempool:", err);
+        return res.status(500).json({
+            success: false,
+            error: "Impossibile recuperare la mempool",
+            details: err.message || err
+        });
+    }
+});
+
+app.post("/api/simulate/mempool-txs", async (req, res) => {
+	try {
+		await connectDB("Mainnet");
+
+		// array proveniente dal frontend
+		const transactions = req.body.transactions;
+
+		const networkData = {
+            web3Endpoint: process.env.WEB3_ALCHEMY_MAINNET_URL,
+            apiKey: process.env.API_KEY_ETHERSCAN,
+            endpoint: process.env.ETHERSCAN_MAINNET_ENDPOINT,
+            networkName: "Mainnet"
+        };
+
+		console.log(`Avvio simulazione batch per ${transactions.length} transazioni...`);
+		const results = await simulateMempoolTxs(transactions, networkData);
+
+		return res.status(200).json({
+            success: true,
+            totalProcessed: results.length,
+            data: results
+        });
+	}
+	catch (err) {
+		console.error("Errore critico nel controller batch:", err);
+        return res.status(500).json({
+            success: false,
+            error: "Fallimento dell'orchestrazione batch",
+            details: err.message
+        });
+	}
+});
 
 // Start the server
 app.listen(port, () => {
@@ -1579,3 +1699,5 @@ app.listen(port, () => {
 // docker volume rm $(docker volume ls -q)
 // docker network rm $(docker network ls -q | grep -v "bridge\|host\|none")
 // docker system prune -a --volumes -f
+
+

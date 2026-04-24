@@ -66,7 +66,7 @@ async function processTransaction(tx, mainContract, contractTree, contractAddres
  */
 function decodeInput(tx,contractTree){
     if (tx.input == "0x") {
-        tx.methodId = "Tranfer";
+        tx.methodId = "Transfer";
     } else if (contractTree?.contractAbi && (typeof contractTree.contractAbi !== 'object' || Object.keys(contractTree.contractAbi).length > 0)) {
         decodeTransactionInputs(tx, contractTree.contractAbi);
     }
@@ -286,11 +286,11 @@ async function createTransactionLog(tx, mainContract, contractTree, smartContrac
                 collectionName+=addressRange[i].substring(0,5).toLowerCase(); 
             }
            await saveTransaction(transactionLog,collectionName)
-        }else if(addressRange && addressRange.length==1){
+        } else if(addressRange && addressRange.length==1){
             await saveTransaction(transactionLog,addressRange[0].toLowerCase());
         }else{
            await saveTransaction(transactionLog, tx.to!=''?tx.to:tx.from);
-        }
+        } 
         
 
     }finally{
@@ -309,9 +309,6 @@ async function createTransactionLog(tx, mainContract, contractTree, smartContrac
         }
         transactionLog=null;
     }
-
-
-
     return ;
 }
 /**
@@ -946,6 +943,7 @@ async function getTraceStorageFromErigon(httpStream, networkData,functionName,tr
         if (global.gc) global.gc();
     }
 }
+
 function createShatrace(singleObject,sstoreBuffer,web3){
     singleObject.finalShaTraces=singleObject.trackBuffer;
 
@@ -1090,4 +1088,13 @@ process.on('unhandledRejection', (reason, promise) => {
     console.error('Unhandled Rejection in worker at:', promise, 'reason:', reason);
     process.exit(1);
 });
+
+module.exports = {
+    makeRpcCallStreaming,
+    decodeInput,
+    regroupShatrace,
+    createShatrace,
+    assignStorageToTheInternal,
+    decodeInteralTxsStorage
+}
 

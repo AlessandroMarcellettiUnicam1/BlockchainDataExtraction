@@ -188,6 +188,7 @@ async function getAllTransactions(oldParams, newParams) {
         await cleanupResources();
     }
 }
+
 /**
  * 
  * @param {*} smartContract 
@@ -228,6 +229,7 @@ async function getContractTree(smartContract,impl_contract,endpoint,apiKey,query
     //console.log("\n\n\n\n contract tree (inner): " + contractTree.contractCompiled + "abcdefg\n\n\n\n");
     return contractTree;
 }
+
 /**
  * Recursive function to get all the trasaction in a block range
  * @param {*} networkData 
@@ -371,10 +373,10 @@ async function getStorageData(contractTransactions, mainContract, contractTree, 
         }
        
         return [];
-    }catch(err){
+    } catch(err){
         console.log(err)
         return;
-    }finally{
+    } finally{
         if (transactionsFiltered) {
             transactionsFiltered.length = 0;
             transactionsFiltered = null;
@@ -386,8 +388,8 @@ async function getStorageData(contractTransactions, mainContract, contractTree, 
         }
 
     }
-    
 }
+
 function runWorkerForTx(tx, mainContract, contractTree, contractAddress, smartContract, option, networkData,addressRange) {
     const workerPath = path.join(__dirname, 'workerWithOption.js');
     
