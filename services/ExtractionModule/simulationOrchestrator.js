@@ -146,6 +146,7 @@ async function createSimulatedTransactionLog(rpcParams, mainContract, contractTr
         transactionLog.storageState = storageVal ? storageVal.decodedValues:[];
         transactionLog.internalTxs = storageVal ? storageVal.internalTxs:[];
         transactionLog.gasUsed = storageVal ? storageVal.gasUsed : 0;
+        // const rawEventsList = storageVal ? storageVal.rawEvents : [];
 
         let storeAbi = {
             contractName: contractTree?.contractName || "",
@@ -212,6 +213,7 @@ async function getSimulatedTraceStorageFromErigon(httpStream, networkData, funct
     let keccakBeforeAdd = {};
     let finalShaTraces = [];
     let previousTrace = null;
+    let rawEvents = [];
     
     const parser = JSONStream.parse("result.structLogs.*");
     const gasParser = JSONStream.parse("result.gas"); // parser per il gas
@@ -368,10 +370,59 @@ async function getSimulatedTraceStorageFromErigon(httpStream, networkData, funct
             for (const slot in trace.storage) {
                 mapForStorage[currentIndex].functionStorage[slot] = trace.storage[slot];
             }
-        }
+
+        } 
+        // else if (trace.op.startsWith("LOG")) { // parsing manuale degli eventi 
+        //     const topicCount = parseInt(trace.op.replace("LOG", ""));
+        //     const stackLen = trace.stack.length;
+            
+        //     const offsetHex = trace.stack[stackLen - 1];
+        //     const lengthHex = trace.stack[stackLen - 2];
+        //     const offsetBytes = web3.utils.hexToNumber("0x" + offsetHex);
+        //     const lengthBytes = web3.utils.hexToNumber("0x" + lengthHex);
+            
+        //     let topics = [];
+        //     for (let i = 0; i < topicCount; i++) {
+        //         topics.push("0x" + trace.stack[stackLen - 3 - i]);
+        //     }
+            
+        //     let stringMemory = trace.memory.join("");
+        //     let data = "0x";
+        //     if (lengthBytes > 0) {
+        //         data += stringMemory.slice(offsetBytes * 2, (offsetBytes + lengthBytes) * 2);
+        //     }
+            
+        //     rawEvents.push({
+        //         address: mapForStorage[currentIndex] ? "0x" + mapForStorage[currentIndex].contractAddress : "Unknown",
+        //         topics: topics,
+        //         data: data
+        //     });
+        // } 
     }
 
     try {
+
+        if (!mapForStorage["1"]) {
+            addSystemLog("[Estrazione] Traccia EVM vuota. Recupero il motivo dell'interruzione tramite callTracer...", "warn");
+            
+            let internalTxs = [];
+            if (rpcParams) {
+                try {
+                    // Esegue la chiamata secondaria (callTracer) per estrarre l'errore
+                    internalTxs = await decodeSimulatedInternalTransaction(rpcParams, null, networkData, web3);
+                } catch (e) {
+                    addSystemLog(`[Estrazione] Impossibile recuperare i dettagli del Revert: ${e.message}`, "warn");
+                }
+            }
+
+            return {
+                decodedValues: [],
+                internalTxs: internalTxs, // Ora contiene i dettagli dell'errore estratti dal callTracer
+                gasUsed: capturedGas,
+                rawEvents: rawEvents
+            };
+        }
+
         finalShaTraces = trackBuffer;
         addSystemLog(`[Estrazione] Individuate ${sstoreBuffer.length} istruzioni di scrittura (SSTORE)`);
 
@@ -524,8 +575,15 @@ async function debugTraceCallInternal(params, web3Endpoint) {
             addSystemLog(`[Nodo RPC] Interrogazione respinta: ${response.data.error.message}`, 'error');
             return [];
         } else if (response.data.result) {
-            addSystemLog(`[EVM] Stato esecuzione: ${response.data.result.type} - Errore EVM: ${response.data.result.error || "Nessuno"}`);
-            addSystemLog(`[Estrazione] Intercettate ${response.data.result.calls ? response.data.result.calls.length : 0} transazioni interne (Internal Txs).`);
+            // Estrazione avanzata dell'errore EVM e del motivo del revert
+            const evmError = response.data.result.error || "Nessuno";
+            const revertReason = response.data.result.revertReason ? ` (Motivo: ${response.data.result.revertReason})` : "";
+            
+            addSystemLog(`[EVM] Stato esecuzione: ${response.data.result.type || "CALL"} - Errore EVM: ${evmError}${revertReason}`);
+            
+            if (response.data.result.calls) {
+                addSystemLog(`[Estrazione] Intercettate ${response.data.result.calls.length} transazioni interne (Internal Txs).`);
+            }
         }
             
         return response.data.result && response.data.result.calls ? response.data.result.calls : [];

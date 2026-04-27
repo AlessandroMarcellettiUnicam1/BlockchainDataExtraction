@@ -938,8 +938,8 @@ function createShatrace(singleObject,sstoreBuffer,web3){
 
 function assignStorageToTheInternal(internalTxs,mapForStorage,index=2){
     for(let txs of internalTxs){
-        txs.finalShaTraces=mapForStorage[index].finalShaTraces;
-        txs.functionStorage=mapForStorage[index].functionStorage;
+        txs.finalShaTraces = mapForStorage[index]?.finalShaTraces || [];
+        txs.functionStorage = mapForStorage[index]?.functionStorage || {};
         index++;
         if(txs.calls && txs.calls.length>0){
             assignStorageToTheInternal(txs.calls,mapForStorage,index);

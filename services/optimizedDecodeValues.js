@@ -17,17 +17,26 @@ let contractCompiled;
  * @returns {Promise<Array>} - A promise that resolves to an array of decoded values.
  */
 async function optimizedDecodeValues(sstore, contractTree, shaTraces, functionStorage, functionName, mainContract, web3Variable, contractCompiledPassed) {
+    const safeShaTraces = (shaTraces && Array.isArray(shaTraces)) ? shaTraces : [];
+    const safeFunctionStorage = (functionStorage && typeof functionStorage === 'object') ? functionStorage : {};
+    
     web3 = web3Variable;
     contractCompiled = contractCompiledPassed;
     mainContractName = mainContract
     let shatracesProcessed = new Set();
     let resultOfPreprocessing = []
-    if (functionStorage != {}) {
-        decodeComplexData(shaTraces, contractTree, functionName,functionStorage, mainContract, shatracesProcessed, resultOfPreprocessing)
+
+    const hasStorageKeys = Object.keys(safeFunctionStorage).length > 0;
+    const hasTraces = safeShaTraces.length > 0;
+
+    if (hasStorageKeys || hasTraces) {
+        decodeComplexData(safeShaTraces, contractTree, functionName,safeFunctionStorage, mainContract, shatracesProcessed, resultOfPreprocessing)
         //tiro fuori che cosa ho dentro il function storage in base agli slot di memori che leggo 
         
         // Separate found and missing keys
-        let result = decodingSimpleStorage(mainContract, functionStorage, shatracesProcessed, contractTree, functionName, resultOfPreprocessing)
+        let result = decodingSimpleStorage(mainContract, safeFunctionStorage, shatracesProcessed, contractTree, functionName, resultOfPreprocessing)
+        if (!result || !Array.isArray(result)) return [];
+        
         result=result.filter(item => item !== undefined);
         result = result.map(obj => {
             const { name, value, decodedValue, slot, offset, contentSlot, ...rest } = obj;
@@ -58,6 +67,7 @@ async function optimizedDecodeValues(sstore, contractTree, shaTraces, functionSt
         return result;
     }
 
+    return [];
 }
 function decodeComplexData(shaTraces, contractTree, functionName,functionStorage, mainContract, shatracesProcessed, resultOfPreprocessing) {
     for (const shatrace of shaTraces) {
