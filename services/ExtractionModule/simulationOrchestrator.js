@@ -427,6 +427,9 @@ async function getSimulatedTraceStorageFromErigon(httpStream, networkData, funct
         addSystemLog(`[Estrazione] Individuate ${sstoreBuffer.length} istruzioni di scrittura (SSTORE)`);
 
         for (let i = 0; i < trackBuffer.length; i++) {
+            // controllo di sicurezza
+            if (!trackBuffer[i] || !trackBuffer[i].finalKey) continue;
+
             if (sstoreBuffer.includes(trackBuffer[i].finalKey)) {
                 const trace = {
                     finalKey: trackBuffer[i].finalKey,
@@ -439,6 +442,17 @@ async function getSimulatedTraceStorageFromErigon(httpStream, networkData, funct
                 let test = i;
 
                 while (flag === false) {
+                    // se entriamo in una casella vuota, vai alla precedente
+                    if (!trackBuffer[test] || !trackBuffer[test].hexStorageIndex) {
+                        if (test > 0) {
+                            test--;
+                            continue; // salta il resto e ricomincia
+                        } else {
+                            flag = true;
+                            continue;
+                        }
+                    }
+
                     if (!(web3.utils.hexToNumber("0x" + trackBuffer[test].hexStorageIndex) < 300)) {
                         if (test > 0) {
                             test--;
@@ -451,7 +465,10 @@ async function getSimulatedTraceStorageFromErigon(httpStream, networkData, funct
                         finalShaTraces.push(trace);
                     }
                 }
-                finalShaTraces.push(trace);
+                // controllo per non pushare due volte la stessa traccia
+                if (!finalShaTraces.find(t => t.finalKey === trace.finalKey)) {
+                     finalShaTraces.push(trace);
+                }
                 sstoreBuffer.splice(sstoreBuffer.indexOf(trackBuffer[i].finalKey), 1);
             }
         }
