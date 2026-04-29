@@ -69,7 +69,8 @@ const transactionSchema = new mongoose.Schema({
     ],
     events: [
         eventSchema
-    ]
+    ],
+    status: { type: String, default: "Success"}
 }, { versionKey: false });
 
 const filterExtractionSchema = new mongoose.Schema({
