@@ -372,32 +372,6 @@ async function getSimulatedTraceStorageFromErigon(httpStream, networkData, funct
             }
 
         } 
-        // else if (trace.op.startsWith("LOG")) { // parsing manuale degli eventi 
-        //     const topicCount = parseInt(trace.op.replace("LOG", ""));
-        //     const stackLen = trace.stack.length;
-            
-        //     const offsetHex = trace.stack[stackLen - 1];
-        //     const lengthHex = trace.stack[stackLen - 2];
-        //     const offsetBytes = web3.utils.hexToNumber("0x" + offsetHex);
-        //     const lengthBytes = web3.utils.hexToNumber("0x" + lengthHex);
-            
-        //     let topics = [];
-        //     for (let i = 0; i < topicCount; i++) {
-        //         topics.push("0x" + trace.stack[stackLen - 3 - i]);
-        //     }
-            
-        //     let stringMemory = trace.memory.join("");
-        //     let data = "0x";
-        //     if (lengthBytes > 0) {
-        //         data += stringMemory.slice(offsetBytes * 2, (offsetBytes + lengthBytes) * 2);
-        //     }
-            
-        //     rawEvents.push({
-        //         address: mapForStorage[currentIndex] ? "0x" + mapForStorage[currentIndex].contractAddress : "Unknown",
-        //         topics: topics,
-        //         data: data
-        //     });
-        // } 
     }
 
     try {
@@ -408,7 +382,7 @@ async function getSimulatedTraceStorageFromErigon(httpStream, networkData, funct
             let internalTxs = [];
             if (rpcParams) {
                 try {
-                    // Esegue la chiamata secondaria (callTracer) per estrarre l'errore
+                    // chiamata per estrarre l'errore
                     internalTxs = await decodeSimulatedInternalTransaction(rpcParams, null, networkData, web3);
                 } catch (e) {
                     addSystemLog(`[Estrazione] Impossibile recuperare i dettagli del Revert: ${e.message}`, "warn");
@@ -417,7 +391,7 @@ async function getSimulatedTraceStorageFromErigon(httpStream, networkData, funct
 
             return {
                 decodedValues: [],
-                internalTxs: internalTxs, // Ora contiene i dettagli dell'errore estratti dal callTracer
+                internalTxs: internalTxs,
                 gasUsed: capturedGas,
                 rawEvents: rawEvents
             };
