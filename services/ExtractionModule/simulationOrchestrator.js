@@ -146,6 +146,7 @@ async function createSimulatedTransactionLog(rpcParams, mainContract, contractTr
         transactionLog.storageState = storageVal ? storageVal.decodedValues:[];
         transactionLog.internalTxs = storageVal ? storageVal.internalTxs:[];
         transactionLog.gasUsed = storageVal ? storageVal.gasUsed : 0;
+        // const rawEventsList = storageVal ? storageVal.rawEvents : [];
 
         let storeAbi = {
             contractName: contractTree?.contractName || "",
@@ -212,6 +213,7 @@ async function getSimulatedTraceStorageFromErigon(httpStream, networkData, funct
     let keccakBeforeAdd = {};
     let finalShaTraces = [];
     let previousTrace = null;
+    let rawEvents = [];
     
     const parser = JSONStream.parse("result.structLogs.*");
     const gasParser = JSONStream.parse("result.gas"); // parser per il gas
@@ -368,14 +370,40 @@ async function getSimulatedTraceStorageFromErigon(httpStream, networkData, funct
             for (const slot in trace.storage) {
                 mapForStorage[currentIndex].functionStorage[slot] = trace.storage[slot];
             }
-        }
+
+        } 
     }
 
     try {
+
+        if (!mapForStorage["1"]) {
+            addSystemLog("[Estrazione] Traccia EVM vuota. Recupero il motivo dell'interruzione tramite callTracer...", "warn");
+            
+            let internalTxs = [];
+            if (rpcParams) {
+                try {
+                    // chiamata per estrarre l'errore
+                    internalTxs = await decodeSimulatedInternalTransaction(rpcParams, null, networkData, web3);
+                } catch (e) {
+                    addSystemLog(`[Estrazione] Impossibile recuperare i dettagli del Revert: ${e.message}`, "warn");
+                }
+            }
+
+            return {
+                decodedValues: [],
+                internalTxs: internalTxs,
+                gasUsed: capturedGas,
+                rawEvents: rawEvents
+            };
+        }
+
         finalShaTraces = trackBuffer;
         addSystemLog(`[Estrazione] Individuate ${sstoreBuffer.length} istruzioni di scrittura (SSTORE)`);
 
         for (let i = 0; i < trackBuffer.length; i++) {
+            // controllo di sicurezza
+            if (!trackBuffer[i] || !trackBuffer[i].finalKey) continue;
+
             if (sstoreBuffer.includes(trackBuffer[i].finalKey)) {
                 const trace = {
                     finalKey: trackBuffer[i].finalKey,
@@ -388,6 +416,17 @@ async function getSimulatedTraceStorageFromErigon(httpStream, networkData, funct
                 let test = i;
 
                 while (flag === false) {
+                    // se entriamo in una casella vuota, vai alla precedente
+                    if (!trackBuffer[test] || !trackBuffer[test].hexStorageIndex) {
+                        if (test > 0) {
+                            test--;
+                            continue; // salta il resto e ricomincia
+                        } else {
+                            flag = true;
+                            continue;
+                        }
+                    }
+
                     if (!(web3.utils.hexToNumber("0x" + trackBuffer[test].hexStorageIndex) < 300)) {
                         if (test > 0) {
                             test--;
@@ -400,7 +439,10 @@ async function getSimulatedTraceStorageFromErigon(httpStream, networkData, funct
                         finalShaTraces.push(trace);
                     }
                 }
-                finalShaTraces.push(trace);
+                // controllo per non pushare due volte la stessa traccia
+                if (!finalShaTraces.find(t => t.finalKey === trace.finalKey)) {
+                     finalShaTraces.push(trace);
+                }
                 sstoreBuffer.splice(sstoreBuffer.indexOf(trackBuffer[i].finalKey), 1);
             }
         }
@@ -524,8 +566,15 @@ async function debugTraceCallInternal(params, web3Endpoint) {
             addSystemLog(`[Nodo RPC] Interrogazione respinta: ${response.data.error.message}`, 'error');
             return [];
         } else if (response.data.result) {
-            addSystemLog(`[EVM] Stato esecuzione: ${response.data.result.type} - Errore EVM: ${response.data.result.error || "Nessuno"}`);
-            addSystemLog(`[Estrazione] Intercettate ${response.data.result.calls ? response.data.result.calls.length : 0} transazioni interne (Internal Txs).`);
+            // Estrazione avanzata dell'errore EVM e del motivo del revert
+            const evmError = response.data.result.error || "Nessuno";
+            const revertReason = response.data.result.revertReason ? ` (Motivo: ${response.data.result.revertReason})` : "";
+            
+            addSystemLog(`[EVM] Stato esecuzione: ${response.data.result.type || "CALL"} - Errore EVM: ${evmError}${revertReason}`);
+            
+            if (response.data.result.calls) {
+                addSystemLog(`[Estrazione] Intercettate ${response.data.result.calls.length} transazioni interne (Internal Txs).`);
+            }
         }
             
         return response.data.result && response.data.result.calls ? response.data.result.calls : [];
