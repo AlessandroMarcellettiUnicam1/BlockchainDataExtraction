@@ -20,7 +20,7 @@ BigInt.prototype.toJSON = function() {
     return this.toString();
 };
 
-async function processSimulation(params, targetAddress, networkData) {
+async function processSimulation(params, targetAddress, networkData, hash = null) {
     const sessionLogs = [];
 
     return logStorage.run(sessionLogs, async () => { 
@@ -76,7 +76,8 @@ async function processSimulation(params, targetAddress, networkData) {
                 params,
                 queryResult.contractName,
                 contractTree,
-                networkData
+                networkData,
+                hash
             );
 
             return {
@@ -92,7 +93,7 @@ async function processSimulation(params, targetAddress, networkData) {
     });
 }
 
-async function createSimulatedTransactionLog(rpcParams, mainContract, contractTree, networkData)  {
+async function createSimulatedTransactionLog(rpcParams, mainContract, contractTree, networkData, hash = null)  {
     let web3 = new Web3(networkData.web3Endpoint);
     const txObject = rpcParams[0];
     const blockRef = rpcParams[1];
@@ -115,7 +116,7 @@ async function createSimulatedTransactionLog(rpcParams, mainContract, contractTr
 
     let transactionLog = {
         functionName: txObject.inputDecoded ? txObject.inputDecoded.method : null,
-        transactionHash: "SIMULATED_TX",
+        transactionHash: hash,
         blockNumber: resolvedBlockNumber,
         contractAddress: txObject.to ? txObject.to : "Contract Creation (Deployment)",
         sender: txObject.from ? txObject.from : "0x0000000000000000000000000000000000000000",
@@ -125,7 +126,8 @@ async function createSimulatedTransactionLog(rpcParams, mainContract, contractTr
         value: txObject.value || "0x0",
         storageState: [],
         internalTxs: [],
-        events: []
+        events: [],
+        status: "Success"
     }
 
     let storageVal = null;
@@ -183,6 +185,30 @@ async function createSimulatedTransactionLog(rpcParams, mainContract, contractTr
 
         if (contractTree && storeAbi.proxyImplementation !== '') {
             await saveAbi(storeAbi);
+        }
+
+        if (storageVal && storageVal.status) {
+            transactionLog.status = storageVal.status;
+        } else {
+            // Cerca errori nelle transazioni interne
+            const findDeepError = (calls) => {
+                if (!calls || calls.length === 0) return null;
+                for (let call of calls) {
+                    if (call.error) return call.error;
+                    const deep = findDeepError(call.calls);
+                    if (deep) return deep;
+                }
+                return null;
+            };
+
+            const deepErr = findDeepError(transactionLog.internalTxs);
+            if (deepErr) {
+                const errStr = deepErr.toLowerCase();
+                if (errStr.includes("out of gas")) transactionLog.status = "Out of Gas";
+                else if (errStr.includes("invalid opcode")) transactionLog.status = "Invalid Opcode";
+                else if (errStr.includes("bad jump destination")) transactionLog.status = "Bad Jump Destination";
+                else transactionLog.status = "Reverted";
+            }
         }
     }
     catch (err) {
@@ -377,14 +403,30 @@ async function getSimulatedTraceStorageFromErigon(httpStream, networkData, funct
     try {
 
         if (!mapForStorage["1"]) {
-            addSystemLog("[Estrazione] Traccia EVM vuota. Recupero il motivo dell'interruzione tramite callTracer...", "warn");
+            addSystemLog("[Estrazione] Traccia EVM vuota. ", "warn");
             
+            let finalStatus = "RPC Rejected"; // fallback di base
             let internalTxs = [];
             if (rpcParams) {
                 try {
                     // chiamata per estrarre l'errore
-                    internalTxs = await decodeSimulatedInternalTransaction(rpcParams, null, networkData, web3);
-                } catch (e) {
+                    const diagnosis = await decodeSimulatedInternalTransaction(rpcParams, null, networkData, web3);
+                    internalTxs = diagnosis.calls || [];
+
+                    if (diagnosis.isRpcError) {
+                        finalStatus = "RPC Rejected";
+                    } else if (diagnosis.isEvmError) {
+                        const errStr = (diagnosis.errorMessage || "").toLowerCase();
+                        if (errStr.includes("revert")) finalStatus = "Reverted";
+                        else if (errStr.includes("out of gas")) finalStatus = "Out of Gas";
+                        else if (errStr.includes("invalid opcode")) finalStatus = "Invalid Opcode";
+                        else if (errStr.includes("bad jump destination")) finalStatus = "Bad Jump Destination";
+                        else finalStatus = "Reverted"; // revert generico
+                    } else {
+                        finalStatus = "Success"; // Nessun errore, es. trasferimento ETH base
+                    }
+                } 
+                catch (e) {
                     addSystemLog(`[Estrazione] Impossibile recuperare i dettagli del Revert: ${e.message}`, "warn");
                 }
             }
@@ -393,7 +435,7 @@ async function getSimulatedTraceStorageFromErigon(httpStream, networkData, funct
                 decodedValues: [],
                 internalTxs: internalTxs,
                 gasUsed: capturedGas,
-                rawEvents: rawEvents
+                status: finalStatus
             };
         }
 
@@ -467,24 +509,46 @@ async function getSimulatedTraceStorageFromErigon(httpStream, networkData, funct
             addSystemLog(`[Avviso] Storage Layout non disponibile. Generazione Raw Storage fallback.`);
     
             internalStorage = rootShaTraces.map(trace => {
-                // conversione dell'indice hex in numero decimale
-                const decSlot = web3.utils.hexToNumberString("0x" + trace.hexStorageIndex);
+                let decSlot = "Unknown";
+                
+                if (trace && trace.hexStorageIndex && trace.hexStorageIndex !== "undefined") {
+                    try {
+                        decSlot = web3.utils.hexToNumberString("0x" + trace.hexStorageIndex);
+                    } catch (e) {
+                        // Salta silenziosamente l'errore di validazione per questo singolo slot
+                    }
+                }
+                
+                const finalKey = trace?.finalKey || "0";
         
                 return {
                     variableName: `Raw_Slot_[${decSlot}]`,
-                    variableRawValue: "0x" + trace.finalKey,
-                    variableValue: "0x" + trace.finalKey,
-                    slot: trace.hexStorageIndex
+                    variableRawValue: "0x" + finalKey,
+                    variableValue: "0x" + finalKey,
+                    slot: trace?.hexStorageIndex || "Unknown"
                 };
             });
         }
         
         let internalTxs = [];
+        let rootStatusOverride = undefined; // variabile per salvare l'errore
         if (rpcParams) {
-            internalTxs = await decodeSimulatedInternalTransaction(rpcParams, null, networkData, web3);
+            const diagnosis = await decodeSimulatedInternalTransaction(rpcParams, null, networkData, web3);
+            
+            internalTxs = diagnosis.calls || []; 
+
+            // controllo se la transazione radice ha fatto revert a metà
+            if (diagnosis.isEvmError) {
+                const errStr = (diagnosis.errorMessage || "").toLowerCase();
+                if (errStr.includes("out of gas")) rootStatusOverride = "Out of Gas";
+                else if (errStr.includes("invalid opcode")) rootStatusOverride = "Invalid Opcode";
+                else if (errStr.includes("bad jump destination")) rootStatusOverride = "Bad Jump Destination";
+                else rootStatusOverride = "Reverted";
+            }
+
             if (internalTxs && internalTxs.length > 0) {
                 assignStorageToTheInternal(internalTxs, mapForStorage);
-                await decodeInteralTxsStorage(internalTxs, web3, networkData); // added network data
+                await decodeInteralTxsStorage(internalTxs, web3, networkData); 
             }
         }
 
@@ -493,6 +557,11 @@ async function getSimulatedTraceStorageFromErigon(httpStream, networkData, funct
             internalTxs: internalTxs,
             gasUsed: capturedGas
         };
+
+        if (rootStatusOverride) {
+            result.status = rootStatusOverride;
+        }
+        
         sstoreObject = null;
         return result;
     }
@@ -531,7 +600,9 @@ function debugTraceCallErigonStreaming(params, url) {
 
 // funzione semplificata senza recupero degli eventi
 async function decodeSimulatedInternalTransaction(params, smartContract, networkData, web3) {
-    const internalCalls = await debugTraceCallInternal(params, networkData.web3Endpoint);
+    const diagnosis = await debugTraceCallInternal(params, networkData.web3Endpoint);
+
+    const internalCalls = diagnosis.calls || [];
 
     if (!smartContract && internalCalls) {
         let seenEvent = new Set();
@@ -541,7 +612,7 @@ async function decodeSimulatedInternalTransaction(params, smartContract, network
         addSystemLog("[Analisi] Esecuzione isolata. Interazione interna omessa o contratto pre-caricato.");
     }
 
-    return internalCalls;
+    return diagnosis;
 }
 
 async function debugTraceCallInternal(params, web3Endpoint) {
@@ -561,23 +632,27 @@ async function debugTraceCallInternal(params, web3Endpoint) {
             headers: { "Content-Type": "application/json" }
         });
 
+        let diagnosis = {
+            isRpcError: false,
+            isEvmError: false,
+            errorMessage: null,
+            calls: []
+        }
 
         if (response.data.error) {
-            addSystemLog(`[Nodo RPC] Interrogazione respinta: ${response.data.error.message}`, 'error');
-            return [];
+            diagnosis.isRpcError = true;
+            diagnosis.errorMessage = response.data.error.message;
+            addSystemLog(`[Nodo RPC] Rifiuto: ${response.data.error.message}`, 'error');
         } else if (response.data.result) {
-            // Estrazione avanzata dell'errore EVM e del motivo del revert
-            const evmError = response.data.result.error || "Nessuno";
-            const revertReason = response.data.result.revertReason ? ` (Motivo: ${response.data.result.revertReason})` : "";
-            
-            addSystemLog(`[EVM] Stato esecuzione: ${response.data.result.type || "CALL"} - Errore EVM: ${evmError}${revertReason}`);
-            
-            if (response.data.result.calls) {
-                addSystemLog(`[Estrazione] Intercettate ${response.data.result.calls.length} transazioni interne (Internal Txs).`);
+            if (response.data.result.error) {
+                diagnosis.isEvmError = true;
+                diagnosis.errorMessage = response.data.result.revertReason || response.data.result.error;
+                addSystemLog(`[EVM] Errore: ${diagnosis.errorMessage}`, 'warn');
             }
+            diagnosis.calls = response.data.result.calls || [];
         }
             
-        return response.data.result && response.data.result.calls ? response.data.result.calls : [];
+        return diagnosis;
     } 
     catch (err) {
         addSystemLog(`[Nodo RPC] Fallimento dell'API debug_traceCall: ${err.message}`, 'error');

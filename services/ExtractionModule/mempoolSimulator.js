@@ -91,21 +91,28 @@ async function simulateMempoolTxs(transactions, networkData) {
         const targetAddress = payload[0].to || null;
 
         try {
-            const simulation = await processSimulation(payload, targetAddress, networkData);
-            simulatedTxs.push({
-                hash: tx.hash,
-                status: "success",
-                result: simulation
-            });
+            const simulation = await processSimulation(payload, targetAddress, networkData, tx.hash);
+            simulatedTxs.push(simulation);
         }
         catch (error) {
             console.warn(`[Batch] Fallimento TX ${tx.hash}: ${error.message}`);
             simulatedTxs.push({
-                hash: tx.hash,
-                status: "failed",
-                result: {
-                    error_details: error.message
-                }
+                data: {
+                    functionName: null,
+                    transactionHash: tx.hash,
+                    blockNumber: tx.blockNumber || null,
+                    contractAddress: tx.to || "Contract Creation (Deployment)",
+                    sender: tx.from || "0x0000000000000000000000000000000000000000",
+                    gasUsed: 0,
+                    timestamp: new Date().toISOString(),
+                    inputs: [],
+                    value: tx.value ? tx.value.toString() : "0x0", 
+                    storageState: [],
+                    internalTxs: [],
+                    events: [],
+                    status: "System Error"
+                },
+                logs: [`Errore interno: ${error.message}`]
             });
         }
 

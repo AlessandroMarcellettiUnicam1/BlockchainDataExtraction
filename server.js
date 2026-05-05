@@ -1591,11 +1591,6 @@ app.post("/api/simulate", async (req, res) => {
             logs: err.logs || [] 
         });
 	}
-	finally {
-		if (mongoose.connection.readyState !== 0) {
-            await mongoose.disconnect();
-        }
-	}
 });
 
 app.get("/api/get-mempool-txs", async (req, res) => {
