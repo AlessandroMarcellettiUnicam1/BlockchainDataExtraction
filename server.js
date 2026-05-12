@@ -7,6 +7,7 @@ const { stringify } = require("csv-stringify");
 const multer = require("multer");
 const jsonToCsv = require("json-2-csv");
 const jp = require("jsonpath");
+const redisClient = require('./config/redisClient');
 
 // const { getAllTransactions } = require("./services/main");
 const { getOneTransaction } = require("./services/mainOnyTransaction")
@@ -124,6 +125,14 @@ function flattenTransaction(inputData) {
   
   return result;
 }
+
+redisClient.on('connect', () => {
+    console.log('Connesso a Redis con successo!');
+});
+
+redisClient.on('error', (err) => {
+    console.error('Errore di connessione a Redis:', err);
+});
 
 // app.post("/api/generateGraph", (req, res) => {
 // 	const jsonData = req.body.jsonData;
