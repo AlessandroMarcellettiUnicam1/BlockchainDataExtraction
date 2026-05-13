@@ -8,6 +8,8 @@ const multer = require("multer");
 const jsonToCsv = require("json-2-csv");
 const jp = require("jsonpath");
 const redisClient = require('./config/redisClient');
+const axios = require('axios');
+const crypto = require('crypto');
 
 // const { getAllTransactions } = require("./services/main");
 const { getOneTransaction } = require("./services/mainOnyTransaction")
@@ -1671,6 +1673,32 @@ app.post("/api/simulate/mempool-txs", async (req, res) => {
             details: err.message
         });
 	}
+});
+
+app.post('/api/generate-base-xes', async (req, res) => {
+	try {
+		// payload che viene dal frontend
+		const payload = req.body;
+		const pythonResponse = await axios.post('http://coblockly-backend:8000/api/convertToXes', payload) 
+
+		if (!pythonResponse.data.success) {
+			throw new Error(pythonResponse.data.error || "Errore durante la conversione");
+		}
+
+		const sessionId = crypto.randomUUID();
+		const xesString = pythonResponse.data.xes_string;
+		await redisClient.set(`session:${sessionId}:xes`, xesString);
+		res.status(200).json({ success: true, sessionId: sessionId });
+	}
+	catch (error) {
+        if (error.response) {
+            console.error("Errore da Python (Status", error.response.status, "):");
+            console.error(JSON.stringify(error.response.data, null, 2)); 
+        } else {
+            console.error("Errore Node:", error.message);
+        }
+        res.status(500).json({ success: false, error: "Errore durante la generazione XES." });
+    }
 });
 
 // Start the server
