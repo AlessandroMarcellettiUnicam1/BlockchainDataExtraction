@@ -16,6 +16,7 @@ const upload = multer({ dest: "uploads/" });
 const port = 8000;
 const { setEventTypes } = require("./ocelMapping/eventTypes");
 const {queryJsonPath} = require("./jsonQuery/jsonQuery");
+
 app.use(cors());
 
 // Middleware: Logging for every request
@@ -654,32 +655,111 @@ app.post("/api/ocelMap", (req, res) => {
 	res.send(ocel);
 });
 
-app.post("/api/xes", async (req, res) => {
-	const jsonToTranslate = req.body.jsonToXes;
-	const { caseId, activityKey, timestamp } = req.body.objectsToXes;
-	let xes = {
-		xesString: null,
-	};
-	xes.xesString = jsonToXes(jsonToTranslate, caseId.value, activityKey.value);
-	res.send(xes);
-	// const filename = "xesLogs.json"
-	// // const xesString = jsonToXesString(jsonToTranslate);
-	// const formattedFileName = encodeURIComponent(filename);
-	// fs.writeFileSync(filename, xesString);
+//OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOO
 
-	// res.setHeader('Content-Disposition', `attachment; filename="${formattedFileName}"`);
-	// res.setHeader('Content-Type', 'application/octet-stream');
+  app.post("/api/xes/keys", upload.single("jsonFile"), async (req, res) => {
+	console.log("HIT /api/xes/keys");
+	try {
+		if (!req.file) {
+			return res.status(400).json({ message: "Missing jsonFile" });
+		}
 
-	// res.sendFile(path.resolve(filename), (err) => {
-	//     if (err) {
-	//         console.error(err);
-	//         res.status(err.status).end();
-	//     } else {
-	//         fs.unlinkSync(path.resolve(filename));
-	//         console.log('File sent successfully');
-	//     }
-	// });
+		const raw = fs.readFileSync(req.file.path, "utf8");
+		const jsonToTranslate = JSON.parse(raw);
+
+		const firstItem = Array.isArray(jsonToTranslate)
+			? jsonToTranslate[0]
+			: jsonToTranslate;
+
+		if (!firstItem || typeof firstItem !== "object") {
+			return res.status(400).json({ message: "Invalid JSON structure" });
+		}
+
+		const keys = Array.from(extractKeysFromSample(firstItem)).sort();
+		res.json({ keys });
+	} catch (error) {
+		console.error("Error extracting keys:", error);
+		res.status(500).json({
+			message: error.message || "Impossible to extract keys from file",
+		});
+	} finally {
+		if (req.file?.path) {
+			fs.unlink(req.file.path, () => {});
+		}
+	}
+}); 
+
+
+//per prova
+/* app.post("/api/xes/keys", upload.single("jsonFile"), async (req, res) => {
+	try {
+		console.log("HIT /api/xes/keys");
+
+		res.json({
+			keys: ["sender", "functionName", "timestamp"]
+		});
+	} catch (error) {
+		console.error(error);
+		res.status(500).json({
+			message: "Errore backend"
+		});
+	}
+}); */
+
+ app.post("/api/xes", upload.single("jsonFile"), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ message: "Missing jsonFile" });
+    }
+
+    const jsonToTranslate = JSON.parse(fs.readFileSync(req.file.path, "utf8"));
+    const objectsToXes = JSON.parse(req.body.objectsToXes || "{}");
+    const { caseId, activityKey, timestamp } = objectsToXes;
+
+    const xes = {
+      xesString: jsonToXes(
+        jsonToTranslate,
+        caseId?.value,
+        activityKey?.value,
+        timestamp?.value
+      ),
+    };
+
+    res.send(xes);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: error.message || "Failed to create XES" });
+  }
 });
+//OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOO
+
+//limite body per il file
+/* app.use(express.json({ limit: "50mb" }));
+app.use(express.urlencoded({ extended: true, limit: "50mb" }));
+
+app.post("/api/xes", async (req, res) => {
+	try {
+		const jsonToTranslate = req.body.jsonToXes;
+		const { caseId, activityKey, timestamp } = req.body.objectsToXes || {};
+
+		const xes = {
+			xesString: null,
+		};
+
+		xes.xesString = jsonToXes(
+			jsonToTranslate,
+			caseId?.value,
+			activityKey?.value,
+			timestamp?.value
+		);
+
+		res.send(xes);
+	} catch (error) {
+		console.error(error);
+		res.status(500).send({ message: error.message || "Failed to create XES" });
+	}
+}); */
+//OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOO
 
 app.post("/api/query", async (req, res) => {
 	const query = req.body;
@@ -1068,7 +1148,282 @@ app.post("/xes-translator", (req, res) => {
 	});
 });
 
-function jsonToXes(jsonToTranslate, caseIdKey, activityKey) {
+
+
+//OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOO
+
+function extractKeysFromSample(obj, prefix = "", keys = new Set(), depth = 0) {
+	if (obj == null || depth > 3) return keys;
+
+	if (Array.isArray(obj)) {
+		if (obj.length > 0) {
+			extractKeysFromSample(obj[0], prefix, keys, depth + 1);
+		}
+		return keys;
+	}
+
+	if (typeof obj !== "object") return keys;
+
+	for (const [key, value] of Object.entries(obj)) {
+		const fullKey = prefix ? `${prefix}.${key}` : key;
+		keys.add(fullKey);
+
+		if (value && typeof value === "object") {
+			extractKeysFromSample(value, fullKey, keys, depth + 1);
+		}
+	}
+
+	return keys;
+}
+
+function escapeXml(value) {
+ return String(value)
+	.replace(/&/g, "&amp;")
+	.replace(/</g, "&lt;")	
+	.replace(/>/g, "&gt;")
+	.replace(/"/g, "&quot;")
+	.replace(/'/g, "&apos;");
+}
+
+function normalizeTimestamp(value) {
+	if (value == null) return null;
+
+	if (value instanceof Date) {
+		return Number.isNaN(value.getTime()) ? null : value.toISOString();
+	}
+
+	if (typeof value === "object" && value.$date) {
+		return normalizeTimestamp(value.$date);
+	}
+
+	const s = String(value).trim();
+	if (!s) return null;
+
+	if (/^[-+]?\d+$/.test(s)) {
+		const n = Number(s);
+		const d = Math.abs(n) >= 1e12 ? new Date(n) : new Date(n * 1000);
+		return Number.isNaN(d.getTime()) ? null : d.toISOString();
+	}
+
+	const d = new Date(s);
+	if (!Number.isNaN(d.getTime())) {
+		return d.toISOString();
+	}
+
+	return null;
+}
+
+function xesAttribute(key, value) {
+	if (value == null) return null;
+
+	if (value instanceof Date) {
+		return `\t\t\t<date key="${escapeXml(key)}" value="${value.toISOString()}"/>`;
+	}
+
+	if (typeof value === "boolean") {
+		return `\t\t\t<boolean key="${escapeXml(key)}" value="${String(value).toLowerCase()}"/>`;
+	}
+
+	if (typeof value === "number" && Number.isInteger(value)) {
+		return `\t\t\t<int key="${escapeXml(key)}" value="${value}"/>`;
+	}
+
+	if (typeof value === "number") {
+		return `\t\t\t<float key="${escapeXml(key)}" value="${value}"/>`;
+	}
+
+	return `\t\t\t<string key="${escapeXml(key)}" value="${escapeXml(value)}"/>`;
+}
+
+function generateKeyValueStrings(obj, caseId, activityKey, keyToCheck = "") {
+	const result = [];
+
+	if (typeof obj === "object" && obj !== null) {
+		for (let key in obj) {
+			if (key === caseId || key === activityKey) continue;
+
+			let newKeyToCheck = keyToCheck ? `${keyToCheck}_${key}` : key;
+			const currentValue = obj[key];
+
+			if (Array.isArray(currentValue)) {
+				currentValue.forEach((item, index) => {
+					const arrayKey = `${newKeyToCheck}[${index}]`;
+					result.push(
+						...generateKeyValueStrings(item, caseId, activityKey, arrayKey)
+					);
+				});
+			} else if (typeof currentValue === "object" && currentValue !== null) {
+				result.push(
+					...generateKeyValueStrings(
+						currentValue,
+						caseId,
+						activityKey,
+						newKeyToCheck
+					)
+				);
+			} else {
+				let newKeyToCheckCut = newKeyToCheck;
+				if (newKeyToCheck.includes("[")) {
+					newKeyToCheckCut = newKeyToCheck.split("[")[0];
+				}
+
+				switch (newKeyToCheckCut) {
+					case "inputs":
+						result.push(xesAttribute(newKeyToCheck, currentValue));
+						break;
+					case "events":
+						if (
+							!(
+								newKeyToCheck.split("_eventValues")[1]?.includes("1") ||
+								newKeyToCheck.split("_eventValues")[1]?.includes("2") ||
+								newKeyToCheck.split("_eventValues")[1]?.includes("0") ||
+								newKeyToCheck.split("_eventValues")[1]?.includes("_length")
+							)
+						) {
+							newKeyToCheck = newKeyToCheck.replace("events", "BCEvent");
+							result.push(xesAttribute(newKeyToCheck, currentValue));
+						}
+						break;
+					case "internalTxs":
+						newKeyToCheck = newKeyToCheck.replace("internalTxs", "Int");
+						result.push(xesAttribute(newKeyToCheck, currentValue));
+						break;
+					case "storageState":
+						newKeyToCheck = newKeyToCheck.replace("storageState", "stateVar");
+						result.push(xesAttribute(newKeyToCheck, currentValue));
+						break;
+					default:
+						if (newKeyToCheck.toLowerCase().includes("timestamp")) {
+							const ts = normalizeTimestamp(currentValue);
+							if (ts) {
+								result.push(`\t\t\t<date key="${escapeXml(newKeyToCheck)}" value="${escapeXml(ts)}"/>`);
+							}
+						} else {
+							result.push(xesAttribute(newKeyToCheck, currentValue));
+						}
+						break;
+				}
+			}
+		}
+	} else {
+		switch (keyToCheck) {
+			case "inputs":
+				result.push(xesAttribute(keyToCheck, obj));
+				break;
+			case "events":
+				keyToCheck = keyToCheck.replace("events", "BCEvent");
+				result.push(xesAttribute(keyToCheck, obj));
+				break;
+			case "internalTxs":
+				keyToCheck = keyToCheck.replace("internalTxs", "Int");
+				result.push(xesAttribute(keyToCheck, obj));
+				break;
+			case "storageState":
+				keyToCheck = keyToCheck.replace("storageState", "stateVar");
+				result.push(xesAttribute(keyToCheck, obj));
+				break;
+			default:
+				if (keyToCheck.toLowerCase().includes("timestamp")) {
+					const ts = normalizeTimestamp(obj);
+					if (ts) {
+						result.push(`\t\t\t<date key="${escapeXml(keyToCheck)}" value="${escapeXml(ts)}"/>`);
+					}
+				} else {
+					result.push(xesAttribute(keyToCheck, obj));
+				}
+				break;
+		}
+	}
+
+	return result.filter(Boolean);
+}
+
+function findAllValuesByKey(obj, key) {
+	let results = [];
+
+	function recursiveSearch(o) {
+		if (typeof o !== "object" || o === null) return;
+
+		if (key in o) {
+			results.push(o[key]);
+		}
+
+		for (let k in o) {
+			if (Array.isArray(o[k])) {
+				o[k].forEach((item) => recursiveSearch(item));
+			} else if (typeof o[k] === "object" && o[k] !== null) {
+				recursiveSearch(o[k]);
+			}
+		}
+	}
+
+	recursiveSearch(obj);
+	return results;
+}
+
+function jsonToXes(jsonToTranslate, caseIdKey, activityKey, timestampKey = "") {
+	const trace = {};
+
+	jsonToTranslate.forEach((entry) => {
+		const caseIds = findAllValuesByKey(entry, caseIdKey);
+		const activities = findAllValuesByKey(entry, activityKey);
+		const timestamps = timestampKey ? findAllValuesByKey(entry, timestampKey) : [];
+
+		for (let i = 0; i < caseIds.length; i++) {
+			const caseId = caseIds[i];
+			const activity = activities[i];
+			const ts = timestamps[i] ?? timestamps[0] ?? null;
+
+			if (caseId == null || activity == null) continue;
+
+			if (caseId in trace) {
+				trace[caseId].push({ [activityKey]: activity, timestamp: ts, entry });
+			} else {
+				trace[caseId] = [{ [activityKey]: activity, timestamp: ts, entry }];
+			}
+		}
+	});
+
+	let stringResult = [];
+
+	for (const key in trace) {
+		stringResult.push(`\t<trace>`);
+		stringResult.push(`\t\t<string key="concept:name" value="${escapeXml(key)}"/>`);
+
+		trace[key].forEach((entry) => {
+			stringResult.push(`\t\t<event>`);
+			stringResult.push(
+				`\t\t\t<string key="concept:name" value="${escapeXml(entry[activityKey])}"/>`
+			);
+
+			if (entry.timestamp != null) {
+				const normalizedTimestamp = normalizeTimestamp(entry.timestamp);
+				if (normalizedTimestamp) {
+					stringResult.push(
+						`\t\t\t<date key="time:timestamp" value="${escapeXml(normalizedTimestamp)}"/>`
+					);
+				}
+			}
+
+			/* generateKeyValueStrings(entry.entry, caseIdKey, activityKey).forEach((elem) => {
+				stringResult.push(elem);
+			}); */
+
+			stringResult.push(`\t\t</event>`);
+		});
+
+		stringResult.push(`\t</trace>`);
+	}
+
+	let finalResult = `<?xml version="1.0" encoding="UTF-8"?>\n<log xmlns="http://www.xes-standard.org/">\n`;
+	finalResult += stringResult.join("\n");
+	finalResult += `\n</log>`;
+
+	return finalResult;
+}
+//OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOO
+
+/* function jsonToXes(jsonToTranslate, caseIdKey, activityKey) {
 	const trace = {};
 	jsonToTranslate.forEach((entry) => {
 		let caseIds = findAllValuesByKey(entry, caseIdKey); // Get all case IDs
@@ -1234,7 +1589,7 @@ function findAllValuesByKey(obj, key) {
 	recursiveSearch(obj);
 	return results;
 }
-
+ */
 app.post("/jsonocel-download", (req, res) => {
 	const jsonToDownload = req.body.ocel;
 	const filename = "ocelLogs.jsonocel";

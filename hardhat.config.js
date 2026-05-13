@@ -64,11 +64,11 @@ extendEnvironment((hre) => {
 })
 
 /** @type import('hardhat/config').HardhatUserConfig */
-module.exports = {
+/* module.exports = {
   defaultNetwork: "hardhat",
   networks: {
     hardhat: {
-      chains: {
+       chains: {
         137: {
           hardforkHistory: {
             berlin: 10000000,
@@ -81,7 +81,7 @@ module.exports = {
             london: 20000000,
           },
         }
-      },
+      }, 
       forking: {
         url: process.env.WEB3_ALCHEMY_MAINNET_URL,
         blockNumber: 12427648,
@@ -100,4 +100,20 @@ module.exports = {
     // }
   },
   solidity: "0.8.26",
+}; */
+module.exports = {
+  defaultNetwork: "hardhat",
+  networks: {
+    hardhat: {
+      chainId: 1,
+      forking: {
+        // Assicurati che questa variabile non sia vuota o indefinita
+        url: process.env.WEB3_ALCHEMY_MAINNET_URL || "https://alchemy.com",
+        blockNumber: 12427648,
+        enabled: true
+      }
+    }
+  },
+  solidity: "0.8.26",
 };
+
