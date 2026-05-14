@@ -7,7 +7,7 @@ const { stringify } = require("csv-stringify");
 const multer = require("multer");
 const jsonToCsv = require("json-2-csv");
 const jp = require("jsonpath");
-const redisClient = require('./config/redisClient');
+const {redisClient} = require("./config/redisClient");
 const axios = require('axios');
 const crypto = require('crypto');
 
