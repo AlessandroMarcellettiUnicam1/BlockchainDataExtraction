@@ -22,6 +22,7 @@
     "async_hooks": "^1.0.0",
     "axios": "^1.7.4",
     "body-parser": "^1.20.3",
+    "bullmq": "^5.76.8",
     "childprocess": "^2.0.2",
     "cors": "^2.8.5",
     "csv-stringify": "^6.4.6",
