@@ -10,6 +10,7 @@ const jp = require("jsonpath");
 const {redisClient} = require("./config/redisClient");
 const axios = require('axios');
 const crypto = require('crypto');
+const systemEvents = require('./config/sse');
 
 // const { getAllTransactions } = require("./services/main");
 const { getOneTransaction } = require("./services/mainOnyTransaction")
@@ -66,6 +67,7 @@ const { error } = require("console");
 const { processSimulation } = require("./services/ExtractionModule/simulationOrchestrator");
 const { getMempoolTxs, getSequentialMempoolTxs, simulateMempoolTxs } = require("./services/ExtractionModule/mempoolSimulator");
 const { net } = require("web3");
+const { startMempoolListener, stopMempoolListener } = require("./services/realTimeCompliance/mempoolListener");
 
 function flattenTransaction(inputData) {
 	 const result = [];
@@ -1702,7 +1704,7 @@ app.post('/api/generate-base-xes', async (req, res) => {
 		const columns = pythonResponse.data.columns;
 
 		// await redisClient.set(`session:${sessionId}:xes`, xesString);
-		await redisClient.setEx(`session:${sessionId}:xes`, 7200, xesString); // creo nuova sessione che scade dopo 2 ore
+		await redisClient.setex(`session:${sessionId}:xes`, 7200, xesString); // creo nuova sessione che scade dopo 2 ore
 
 		res.status(200).json({ 
             success: true, 
@@ -1734,6 +1736,84 @@ app.post('/api/start-compliance-monitoring', async (req, res) => {
 	- mapping per la conversione (mapping)
 	- la regola (parsedRule)
 	*/
+
+	try {
+		const {
+			sessionId,
+			addressFilters,
+			validAddress,
+			mapping,
+			parsedRule
+		} = req.body;
+
+		if (!sessionId || !validAddress) {
+            return res.status(400).json({ error: "Parametri mancanti" });
+        }
+
+		// salvo mapping e regola che serviranno per il worker
+		await redisClient.set(
+            `session:${sessionId}:config`, 
+            JSON.stringify({ mapping, parsedRule })
+        );
+
+		const url = process.env.WS_ALCHEMY_MAINNET_URL;
+
+		//avvio il listener della mempool
+		startMempoolListener(sessionId, url, validAddress, addressFilters)
+			.catch(err => console.error(`[Listener Error] ${err.message}`));
+
+		// TODO: avvio del worker
+
+		res.status(200).json({ success: true, message: "Monitoraggio avviato" });
+	}
+	catch (err) {
+		console.error("Errore avvio monitoraggio:", err);
+        res.status(500).json({ success: false, error: "Errore interno" });
+	}
+});
+
+app.post('/api/stop-compliance-monitoring', async (req, res) => {
+	try {
+        const { sessionId } = req.body;
+
+        if (!sessionId) {
+            return res.status(400).json({ error: "Session ID mancante" });
+        }
+
+        // Invoca la funzione di spegnimento e pulizia
+        await stopMempoolListener(sessionId);
+
+        console.log(`[Monitoraggio] Sessione ${sessionId} fermata con successo.`);
+        res.status(200).json({ success: true, message: "Monitoraggio interrotto con successo" });
+        
+    } catch (error) {
+        console.error(`[Monitoraggio] Errore spegnimento sessione:`, error);
+        res.status(500).json({ success: false, error: "Errore interno durante l'interruzione" });
+    }
+});
+
+app.get('/api/stream-mempool/:sessionId', (req, res) => {
+    const { sessionId } = req.params;
+
+    // Imposta gli header speciali per mantenere la connessione aperta (SSE)
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.flushHeaders();
+
+    // Funzione che invia i dati al browser formattati secondo lo standard SSE
+    const sendTxToClient = (tx) => {
+        res.write(`data: ${JSON.stringify(tx)}\n\n`);
+    };
+
+    // Ascolta gli eventi generati dal listener per questa specifica sessione
+    const eventName = `new-tx-${sessionId}`;
+    systemEvents.on(eventName, sendTxToClient);
+
+    // Pulizia: quando l'utente chiude la pagina o stoppa, rimuovi il listener
+    req.on('close', () => {
+        systemEvents.off(eventName, sendTxToClient);
+    });
 });
 
 // Start the server
