@@ -85,3 +85,18 @@ async function startMempoolListener(sessionId, url, validAddress, addressFilters
         throw new Error(`Inizializzazione listener fallita: ${err.message}`);    
     }
 }
+
+async function stopMempoolListener(sessionId) {
+    const session = activeSubscriptions.get(sessionId);
+    if (session) {
+        session.isCapturing = false;
+        await session.subscription.unsubscribe();
+        session.provider.disconnect();
+        activeSubscriptions.delete(sessionId);
+    }
+}
+
+module.exports = {
+    startMempoolListener,
+    stopMempoolListener
+}
