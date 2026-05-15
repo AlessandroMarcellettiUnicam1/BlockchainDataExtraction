@@ -1679,6 +1679,7 @@ app.post('/api/generate-base-xes', async (req, res) => {
 	try {
 		// payload che viene dal frontend
 		const payload = req.body;
+		payload.extract_columns = true;
 		const pythonResponse = await axios.post('http://coblockly-backend:8000/api/convertToXes', payload) 
 
 		if (!pythonResponse.data.success) {
@@ -1687,8 +1688,17 @@ app.post('/api/generate-base-xes', async (req, res) => {
 
 		const sessionId = crypto.randomUUID();
 		const xesString = pythonResponse.data.xes_string;
-		await redisClient.set(`session:${sessionId}:xes`, xesString);
-		res.status(200).json({ success: true, sessionId: sessionId });
+		const columns = pythonResponse.data.columns;
+
+		// await redisClient.set(`session:${sessionId}:xes`, xesString);
+		await redisClient.setEx(`session:${sessionId}:xes`, 3600, xesString); // timer per eliminare sessioni vecchie automaticamente
+
+		res.status(200).json({ 
+            success: true, 
+            sessionId: sessionId,
+            columns: columns,
+			xes: xesString
+        });
 	}
 	catch (error) {
         if (error.response) {
