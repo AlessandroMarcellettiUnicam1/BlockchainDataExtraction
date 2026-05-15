@@ -1680,6 +1680,17 @@ app.post('/api/generate-base-xes', async (req, res) => {
 		// payload che viene dal frontend
 		const payload = req.body;
 		payload.extract_columns = true;
+
+		// elimino la sessione precedente se ne esiste una 
+		if (payload.previousSessionId) {
+            try {
+                await redisClient.del(`session:${payload.previousSessionId}:xes`);
+                console.log(`[Redis] Sessione precedente ${payload.previousSessionId} eliminata con successo.`);
+            } catch (delErr) {
+                console.warn(`[Redis] Impossibile eliminare la vecchia sessione: ${delErr.message}`);
+            }
+        }
+
 		const pythonResponse = await axios.post('http://coblockly-backend:8000/api/convertToXes', payload) 
 
 		if (!pythonResponse.data.success) {
@@ -1691,13 +1702,12 @@ app.post('/api/generate-base-xes', async (req, res) => {
 		const columns = pythonResponse.data.columns;
 
 		// await redisClient.set(`session:${sessionId}:xes`, xesString);
-		await redisClient.setEx(`session:${sessionId}:xes`, 3600, xesString); // timer per eliminare sessioni vecchie automaticamente
+		await redisClient.setEx(`session:${sessionId}:xes`, 7200, xesString); // creo nuova sessione che scade dopo 2 ore
 
 		res.status(200).json({ 
             success: true, 
             sessionId: sessionId,
-            columns: columns,
-			xes: xesString
+            columns: columns
         });
 	}
 	catch (error) {
@@ -1709,6 +1719,21 @@ app.post('/api/generate-base-xes', async (req, res) => {
         }
         res.status(500).json({ success: false, error: "Errore durante la generazione XES." });
     }
+});
+
+app.post('/api/start-compliance-monitoring', async (req, res) => {
+
+	// gli vengono passati tutti i dati che servono ovvero
+	// nella request avremmo: sessionId, 
+	/*
+	nella request ci sarà:
+	sessionId
+	filtri per mempool: addressFilters, validAddress
+	lo xes lo prendo da redis
+	per il worker:
+	- mapping per la conversione (mapping)
+	- la regola (parsedRule)
+	*/
 });
 
 // Start the server
