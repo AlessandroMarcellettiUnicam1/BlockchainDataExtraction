@@ -1735,6 +1735,7 @@ app.post('/api/start-compliance-monitoring', async (req, res) => {
 	per il worker:
 	- mapping per la conversione (mapping)
 	- la regola (parsedRule)
+	- il mapping per il controllo della regola (logMapping)
 	*/
 
 	try {
@@ -1743,7 +1744,8 @@ app.post('/api/start-compliance-monitoring', async (req, res) => {
 			addressFilters,
 			validAddress,
 			mapping,
-			parsedRule
+			parsedRule,
+			logMapping
 		} = req.body;
 
 		if (!sessionId || !validAddress) {
