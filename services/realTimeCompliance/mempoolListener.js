@@ -57,9 +57,9 @@ async function startMempoolListener(sessionId, url, validAddress, addressFilters
                         const fromLower = tx.from.toLowerCase();
                         const filterAddress = validAddress.toLowerCase();
 
-                        if (toLower === filterAddress || fromLower === filterAddress) {
-                            console.log(`[DEBUG FILTRO] Trovato indirizzo! Mode: "${addressFilters}" | filterAddress: "${filterAddress}" | Tx To: "${toLower}" | Match To?: ${toLower === filterAddress}`);
-                        }
+                        // if (toLower === filterAddress || fromLower === filterAddress) {
+                        //     console.log(`[DEBUG FILTRO] Trovato indirizzo! Mode: "${addressFilters}" | filterAddress: "${filterAddress}" | Tx To: "${toLower}" | Match To?: ${toLower === filterAddress}`);
+                        // }
 
                         let match = false;
                         if (addressFilters === "from" && fromLower === filterAddress) match = true;
@@ -67,7 +67,7 @@ async function startMempoolListener(sessionId, url, validAddress, addressFilters
                         else if (addressFilters === "both" && (fromLower === filterAddress || toLower === filterAddress)) match = true;
 
                         if (match) {
-                        console.log(`[Match] La transazione da ${tx.to} a ${tx.from} ha fatto match`);
+                        //console.log(`[Match] La transazione da ${tx.to} a ${tx.from} ha fatto match`);
                         const adaptedPayload = adaptMempoolTx(tx);
 
                         // aggiungo la transazione in coda
@@ -92,7 +92,7 @@ async function startMempoolListener(sessionId, url, validAddress, addressFilters
             isProcessing = false;
         }
     }
-    catch {
+    catch (err) {
         throw new Error(`Inizializzazione listener fallita: ${err.message}`);    
     }
 }
