@@ -4,6 +4,7 @@ const systemEvents = require('../../config/sse');
 const { processSimulation } = require('../ExtractionModule/simulationOrchestrator');
 const { connectDB } = require('../../config/db');
 const axios = require('axios');
+const { config } = require('dotenv');
 require('dotenv').config();
 
 console.log('[Worker] Worker inizializzato, in attesa di transazioni in coda...');
@@ -35,10 +36,55 @@ const rtcWorker = new Worker('mempool-queue', async (job) => {
         };
 
         console.log(`[Worker] Avvio simulazione per ${hash} verso il target ${targetAddress}...`);
-
         const simulationResult = await processSimulation(params, targetAddress, networkData, hash);
-
         console.log(`[Worker] Simulazione completata per ${hash}. Emetto i risultati al frontend...`);
+
+        if (simulationResult.data.success === "System error") {
+             console.warn(`[Worker] Simulazione fallita (System error) per ${hash}. Ignoro l'append XES.`);
+             return { success: false, reason: "System error", hash };
+        }
+
+        // recupero il mapping e lo xes base da Redis
+        const configData = await redisClient.get(`session:${sessionId}:config`);
+        const baseXes = await redisClient.get(`session:${sessionId}:xes`);
+
+        if (!configData || !baseXes) {
+            throw new Error("Configurazione o Log Base mancanti in Redis");
+        }
+
+        const { mapping } = JSON.parse(configData);
+
+        const pythonPayload = {
+            data: [simulationResult.data],
+            case_col: mapping.case_col,
+            activity_col: mapping.activity_col,
+            time_col: mapping.time_col,
+            xes_name: `live_tx_${hash}`,
+            extract_columns: false 
+        };
+
+        console.log(`[Worker] Invio transazione ${hash} a Python per conversione XES...`);
+        const pythonResponse = await axios.post('http://coblockly-backend:8000/api/convertToXes', pythonPayload);
+
+        if (!pythonResponse.data.success) {
+            throw new Error(pythonResponse.data.error || "Errore sconosciuto in Python");
+        }
+
+        const singleTxXes = pythonResponse.data.xes_string;
+
+        console.log(`[Worker] Eseguo l'append della transazione al Log Base...`);
+        const updatedBaseXes = appendXes(baseXes, singleTxXes);
+
+        await redisClient.setex(`session:${sessionId}:xes`, 7200, updatedBaseXes);
+        console.log(`[Worker] XES Base aggiornato su Redis per sessione ${sessionId}.`);
+
+        return { 
+            success: true, 
+            sessionId: sessionId, 
+            hash: hash,
+            target: targetAddress,
+            simulationData: simulationResult.data
+        };
 
         /*
         1. prendo il mapping da redis
@@ -52,22 +98,6 @@ const rtcWorker = new Worker('mempool-queue', async (job) => {
 
         5. aggiorno lo xes base su Redis
         */
-
-
-        // systemEvents.emit(`new-tx-${sessionId}`, {
-        //     type: 'SIMULATION_RESULT',
-        //     hash: hash,
-        //     target: targetAddress,
-        //     simulationData: simulationResult.data 
-        // });
-
-        // return { 
-        //     success: true, 
-        //     sessionId: sessionId, 
-        //     hash: hash,
-        //     target: targetAddress,
-        //     simulationData: simulationResult.data
-        // };
 
     } catch (err) {
         console.error(`[Worker] Errore durante la simulazione per ${hash}:`, err.message);
