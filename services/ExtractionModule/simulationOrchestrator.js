@@ -531,26 +531,26 @@ async function getSimulatedTraceStorageFromErigon(httpStream, networkData, funct
         }
         
         let internalTxs = [];
-        let rootStatusOverride = undefined; // variabile per salvare l'errore
-        if (rpcParams) {
-            const diagnosis = await decodeSimulatedInternalTransaction(rpcParams, null, networkData, web3);
+        // let rootStatusOverride = undefined; // variabile per salvare l'errore
+        // if (rpcParams) {
+        //     const diagnosis = await decodeSimulatedInternalTransaction(rpcParams, null, networkData, web3);
             
-            internalTxs = diagnosis.calls || []; 
+        //     internalTxs = diagnosis.calls || []; 
 
-            // controllo se la transazione radice ha fatto revert a metà
-            if (diagnosis.isEvmError) {
-                const errStr = (diagnosis.errorMessage || "").toLowerCase();
-                if (errStr.includes("out of gas")) rootStatusOverride = "Out of Gas";
-                else if (errStr.includes("invalid opcode")) rootStatusOverride = "Invalid Opcode";
-                else if (errStr.includes("bad jump destination")) rootStatusOverride = "Bad Jump Destination";
-                else rootStatusOverride = "Reverted";
-            }
+        //     // controllo se la transazione radice ha fatto revert a metà
+        //     if (diagnosis.isEvmError) {
+        //         const errStr = (diagnosis.errorMessage || "").toLowerCase();
+        //         if (errStr.includes("out of gas")) rootStatusOverride = "Out of Gas";
+        //         else if (errStr.includes("invalid opcode")) rootStatusOverride = "Invalid Opcode";
+        //         else if (errStr.includes("bad jump destination")) rootStatusOverride = "Bad Jump Destination";
+        //         else rootStatusOverride = "Reverted";
+        //     }
 
-            if (internalTxs && internalTxs.length > 0) {
-                assignStorageToTheInternal(internalTxs, mapForStorage);
-                await decodeInteralTxsStorage(internalTxs, web3, networkData); 
-            }
-        }
+        //     if (internalTxs && internalTxs.length > 0) {
+        //         assignStorageToTheInternal(internalTxs, mapForStorage);
+        //         await decodeInteralTxsStorage(internalTxs, web3, networkData); 
+        //     }
+        // }
 
         let result = {
             decodedValues: internalStorage,
@@ -558,9 +558,9 @@ async function getSimulatedTraceStorageFromErigon(httpStream, networkData, funct
             gasUsed: capturedGas
         };
 
-        if (rootStatusOverride) {
-            result.status = rootStatusOverride;
-        }
+        // if (rootStatusOverride) {
+        //     result.status = rootStatusOverride;
+        // }
         
         sstoreObject = null;
         return result;

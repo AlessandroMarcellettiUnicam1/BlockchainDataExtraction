@@ -11,6 +11,8 @@ const {redisClient} = require("./config/redisClient");
 const axios = require('axios');
 const crypto = require('crypto');
 const systemEvents = require('./config/sse');
+const { connectionOptions, txQueue, mempoolQueueEvents } = require('./config/redisClient');
+
 
 // const { getAllTransactions } = require("./services/main");
 const { getOneTransaction } = require("./services/mainOnyTransaction")
@@ -1816,6 +1818,20 @@ app.get('/api/stream-mempool/:sessionId', (req, res) => {
     req.on('close', () => {
         systemEvents.off(eventName, sendTxToClient);
     });
+});
+
+mempoolQueueEvents.on('completed', ({ jobId, returnvalue }) => {
+    // Se il worker ha restituito i dati correttamente...
+    if (returnvalue && returnvalue.success && returnvalue.sessionId) {
+        console.log(`[Server] Risultati per ${returnvalue.hash} ricevuti da Redis. Inoltro via SSE...`);
+        
+        systemEvents.emit(`new-tx-${returnvalue.sessionId}`, {
+            type: 'SIMULATION_RESULT',
+            hash: returnvalue.hash,
+            target: returnvalue.target,
+            simulationData: returnvalue.simulationData
+        });
+    }
 });
 
 // Start the server

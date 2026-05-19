@@ -52,7 +52,7 @@ async function startMempoolListener(sessionId, url, validAddress, addressFilters
                     if (tx && tx.to && tx.from) {
                         // check dei filtri
 
-                        console.log(`[Analisi] Controllando Tx: From ${tx.from} -> To ${tx.to}`);
+                        // console.log(`[Analisi] Controllando Tx: From ${tx.from} -> To ${tx.to}`);
                         const toLower = tx.to.toLowerCase();
                         const fromLower = tx.from.toLowerCase();
                         const filterAddress = validAddress.toLowerCase();
@@ -67,22 +67,22 @@ async function startMempoolListener(sessionId, url, validAddress, addressFilters
                         else if (addressFilters === "both" && (fromLower === filterAddress || toLower === filterAddress)) match = true;
 
                         if (match) {
-                        //console.log(`[Match] La transazione da ${tx.to} a ${tx.from} ha fatto match`);
-                        const adaptedPayload = adaptMempoolTx(tx);
+                            console.log(`[Match] La transazione da ${tx.to} a ${tx.from} ha fatto match`);
+                            const adaptedPayload = adaptMempoolTx(tx);
 
-                        // aggiungo la transazione in coda
-                        await txQueue.add('simulate-tx', {
-                                sessionId: sessionId,
-                                hash: tx.hash,
-                                payload: adaptedPayload
-                            }, { 
-                                removeOnComplete: true,
-                                removeOnFail: false 
-                            });
+                            // aggiungo la transazione in coda
+                            await txQueue.add('simulate-tx', {
+                                    sessionId: sessionId,
+                                    hash: tx.hash,
+                                    payload: adaptedPayload
+                                }, { 
+                                    removeOnComplete: true,
+                                    removeOnFail: false 
+                                });
 
-                        // invio la transazione al canale per trasmetterla dinamicamente al frontend
-                        systemEvents.emit(`new-tx-${sessionId}`, tx);
-                    }
+                            // invio la transazione al canale per trasmetterla dinamicamente al frontend
+                            systemEvents.emit(`new-tx-${sessionId}`, tx);
+                        }
                     }
                 }
                 catch (err) {
@@ -104,6 +104,7 @@ async function stopMempoolListener(sessionId) {
         await session.subscription.unsubscribe();
         session.provider.disconnect();
         activeSubscriptions.delete(sessionId);
+        await txQueue.drain(true); // svuoto la coda
     }
 }
 
