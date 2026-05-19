@@ -689,23 +689,6 @@ app.post("/api/ocelMap", (req, res) => {
 	}
 }); 
 
-
-//per prova
-/* app.post("/api/xes/keys", upload.single("jsonFile"), async (req, res) => {
-	try {
-		console.log("HIT /api/xes/keys");
-
-		res.json({
-			keys: ["sender", "functionName", "timestamp"]
-		});
-	} catch (error) {
-		console.error(error);
-		res.status(500).json({
-			message: "Errore backend"
-		});
-	}
-}); */
-
  app.post("/api/xes", upload.single("jsonFile"), async (req, res) => {
   try {
     if (!req.file) {
@@ -731,34 +714,6 @@ app.post("/api/ocelMap", (req, res) => {
     res.status(500).json({ message: error.message || "Failed to create XES" });
   }
 });
-//OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOO
-
-//limite body per il file
-/* app.use(express.json({ limit: "50mb" }));
-app.use(express.urlencoded({ extended: true, limit: "50mb" }));
-
-app.post("/api/xes", async (req, res) => {
-	try {
-		const jsonToTranslate = req.body.jsonToXes;
-		const { caseId, activityKey, timestamp } = req.body.objectsToXes || {};
-
-		const xes = {
-			xesString: null,
-		};
-
-		xes.xesString = jsonToXes(
-			jsonToTranslate,
-			caseId?.value,
-			activityKey?.value,
-			timestamp?.value
-		);
-
-		res.send(xes);
-	} catch (error) {
-		console.error(error);
-		res.status(500).send({ message: error.message || "Failed to create XES" });
-	}
-}); */
 //OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOO
 
 app.post("/api/query", async (req, res) => {
@@ -1148,8 +1103,6 @@ app.post("/xes-translator", (req, res) => {
 	});
 });
 
-
-
 //OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOO
 
 function extractKeysFromSample(obj, prefix = "", keys = new Set(), depth = 0) {
@@ -1176,13 +1129,44 @@ function extractKeysFromSample(obj, prefix = "", keys = new Set(), depth = 0) {
 	return keys;
 }
 
+const LIST_OBJECT_FIELDS = new Set(["events", "internalTxs", "inputs", "calls"]);
+
 function escapeXml(value) {
- return String(value)
-	.replace(/&/g, "&amp;")
-	.replace(/</g, "&lt;")	
-	.replace(/>/g, "&gt;")
-	.replace(/"/g, "&quot;")
-	.replace(/'/g, "&apos;");
+	return String(value)
+		.replace(/&/g, "&amp;")
+		.replace(/</g, "&lt;")
+		.replace(/>/g, "&gt;")
+		.replace(/"/g, "&quot;")
+		.replace(/'/g, "&apos;");
+}
+
+function isPlainObject(value) {
+	return (
+		value !== null &&
+		typeof value === "object" &&
+		!Array.isArray(value) &&
+		Object.prototype.toString.call(value) === "[object Object]"
+	);
+}
+
+function isMongoScalarObject(value) {
+	if (!isPlainObject(value)) return false;
+	const keys = Object.keys(value);
+	if (keys.length !== 1) return false;
+	return ["$oid", "$date", "$numberInt", "$numberLong", "$numberDouble", "$numberDecimal"].includes(keys[0]);
+}
+
+function normalizeMongoScalar(value) {
+	if (!isMongoScalarObject(value)) return value;
+
+	if ("$oid" in value) return value.$oid;
+	if ("$date" in value) return value.$date;
+	if ("$numberInt" in value) return Number.parseInt(value.$numberInt, 10);
+	if ("$numberLong" in value) return Number(value.$numberLong);
+	if ("$numberDouble" in value) return Number(value.$numberDouble);
+	if ("$numberDecimal" in value) return Number(value.$numberDecimal);
+
+	return value;
 }
 
 function normalizeTimestamp(value) {
@@ -1192,7 +1176,7 @@ function normalizeTimestamp(value) {
 		return Number.isNaN(value.getTime()) ? null : value.toISOString();
 	}
 
-	if (typeof value === "object" && value.$date) {
+	if (isPlainObject(value) && value.$date) {
 		return normalizeTimestamp(value.$date);
 	}
 
@@ -1214,382 +1198,213 @@ function normalizeTimestamp(value) {
 }
 
 function xesAttribute(key, value) {
-	if (value == null) return null;
+	const normalized = normalizeMongoScalar(value);
+	if (normalized == null) return null;
+
+	if (normalized instanceof Date) {
+		return `\t\t\t<date key="${escapeXml(key)}" value="${escapeXml(normalized.toISOString())}"/>`;
+	}
+
+	if (typeof normalized === "boolean") {
+		return `\t\t\t<boolean key="${escapeXml(key)}" value="${String(normalized).toLowerCase()}"/>`;
+	}
+
+	if (typeof normalized === "number" && Number.isInteger(normalized)) {
+		return `\t\t\t<int key="${escapeXml(key)}" value="${normalized}"/>`;
+	}
+
+	if (typeof normalized === "number") {
+		return `\t\t\t<float key="${escapeXml(key)}" value="${normalized}"/>`;
+	}
+
+	if (typeof normalized === "object") {
+		return `\t\t\t<string key="${escapeXml(key)}" value="${escapeXml(JSON.stringify(normalized))}"/>`;
+	}
+
+	return `\t\t\t<string key="${escapeXml(key)}" value="${escapeXml(normalized)}"/>`;
+}
+
+function flattenRowForXes(input, prefix = "", out = {}) {
+	const value = normalizeMongoScalar(input);
+
+	if (value == null) {
+		return out;
+	}
+
+	// Arrays are kept as a single XES string, like the Python LIST_OBJECT_FIELDS behavior.
+	if (Array.isArray(value)) {
+		if (prefix) {
+			out[prefix] = JSON.stringify(value);
+		}
+		return out;
+	}
 
 	if (value instanceof Date) {
-		return `\t\t\t<date key="${escapeXml(key)}" value="${value.toISOString()}"/>`;
+		if (prefix) out[prefix] = value;
+		return out;
 	}
 
-	if (typeof value === "boolean") {
-		return `\t\t\t<boolean key="${escapeXml(key)}" value="${String(value).toLowerCase()}"/>`;
+	if (typeof value !== "object") {
+		if (prefix) out[prefix] = value;
+		return out;
 	}
 
-	if (typeof value === "number" && Number.isInteger(value)) {
-		return `\t\t\t<int key="${escapeXml(key)}" value="${value}"/>`;
+	// Special list/object fields are serialized as a single string, not expanded.
+	if (prefix && LIST_OBJECT_FIELDS.has(prefix.toLowerCase())) {
+		out[prefix] = JSON.stringify(value);
+		return out;
 	}
 
-	if (typeof value === "number") {
-		return `\t\t\t<float key="${escapeXml(key)}" value="${value}"/>`;
+	for (const [key, child] of Object.entries(value)) {
+		const nextPrefix = prefix ? `${prefix}.${key}` : key;
+
+		// If the child is an array, keep it compact.
+		if (Array.isArray(child)) {
+			out[nextPrefix] = JSON.stringify(child);
+			continue;
+		}
+
+		// Flatten plain objects.
+		if (isPlainObject(child) && !isMongoScalarObject(child)) {
+			flattenRowForXes(child, nextPrefix, out);
+			continue;
+		}
+
+		// Scalars / dates / mongo wrappers
+		const normalizedChild = normalizeMongoScalar(child);
+		out[nextPrefix] = normalizedChild;
 	}
 
-	return `\t\t\t<string key="${escapeXml(key)}" value="${escapeXml(value)}"/>`;
+	return out;
 }
 
-function generateKeyValueStrings(obj, caseId, activityKey, keyToCheck = "") {
-	const result = [];
-
-	if (typeof obj === "object" && obj !== null) {
-		for (let key in obj) {
-			if (key === caseId || key === activityKey) continue;
-
-			let newKeyToCheck = keyToCheck ? `${keyToCheck}_${key}` : key;
-			const currentValue = obj[key];
-
-			if (Array.isArray(currentValue)) {
-				currentValue.forEach((item, index) => {
-					const arrayKey = `${newKeyToCheck}[${index}]`;
-					result.push(
-						...generateKeyValueStrings(item, caseId, activityKey, arrayKey)
-					);
-				});
-			} else if (typeof currentValue === "object" && currentValue !== null) {
-				result.push(
-					...generateKeyValueStrings(
-						currentValue,
-						caseId,
-						activityKey,
-						newKeyToCheck
-					)
-				);
-			} else {
-				let newKeyToCheckCut = newKeyToCheck;
-				if (newKeyToCheck.includes("[")) {
-					newKeyToCheckCut = newKeyToCheck.split("[")[0];
-				}
-
-				switch (newKeyToCheckCut) {
-					case "inputs":
-						result.push(xesAttribute(newKeyToCheck, currentValue));
-						break;
-					case "events":
-						if (
-							!(
-								newKeyToCheck.split("_eventValues")[1]?.includes("1") ||
-								newKeyToCheck.split("_eventValues")[1]?.includes("2") ||
-								newKeyToCheck.split("_eventValues")[1]?.includes("0") ||
-								newKeyToCheck.split("_eventValues")[1]?.includes("_length")
-							)
-						) {
-							newKeyToCheck = newKeyToCheck.replace("events", "BCEvent");
-							result.push(xesAttribute(newKeyToCheck, currentValue));
-						}
-						break;
-					case "internalTxs":
-						newKeyToCheck = newKeyToCheck.replace("internalTxs", "Int");
-						result.push(xesAttribute(newKeyToCheck, currentValue));
-						break;
-					case "storageState":
-						newKeyToCheck = newKeyToCheck.replace("storageState", "stateVar");
-						result.push(xesAttribute(newKeyToCheck, currentValue));
-						break;
-					default:
-						if (newKeyToCheck.toLowerCase().includes("timestamp")) {
-							const ts = normalizeTimestamp(currentValue);
-							if (ts) {
-								result.push(`\t\t\t<date key="${escapeXml(newKeyToCheck)}" value="${escapeXml(ts)}"/>`);
-							}
-						} else {
-							result.push(xesAttribute(newKeyToCheck, currentValue));
-						}
-						break;
-				}
-			}
-		}
-	} else {
-		switch (keyToCheck) {
-			case "inputs":
-				result.push(xesAttribute(keyToCheck, obj));
-				break;
-			case "events":
-				keyToCheck = keyToCheck.replace("events", "BCEvent");
-				result.push(xesAttribute(keyToCheck, obj));
-				break;
-			case "internalTxs":
-				keyToCheck = keyToCheck.replace("internalTxs", "Int");
-				result.push(xesAttribute(keyToCheck, obj));
-				break;
-			case "storageState":
-				keyToCheck = keyToCheck.replace("storageState", "stateVar");
-				result.push(xesAttribute(keyToCheck, obj));
-				break;
-			default:
-				if (keyToCheck.toLowerCase().includes("timestamp")) {
-					const ts = normalizeTimestamp(obj);
-					if (ts) {
-						result.push(`\t\t\t<date key="${escapeXml(keyToCheck)}" value="${escapeXml(ts)}"/>`);
-					}
-				} else {
-					result.push(xesAttribute(keyToCheck, obj));
-				}
-				break;
-		}
-	}
-
-	return result.filter(Boolean);
+function serializeRowIfNeeded(row) {
+	const flattened = flattenRowForXes(row);
+	return flattened;
 }
 
-function findAllValuesByKey(obj, key) {
-	let results = [];
+function getValueByKey(row, key) {
+	if (!key) return undefined;
+	if (Object.prototype.hasOwnProperty.call(row, key)) return row[key];
 
-	function recursiveSearch(o) {
-		if (typeof o !== "object" || o === null) return;
-
-		if (key in o) {
-			results.push(o[key]);
-		}
-
-		for (let k in o) {
-			if (Array.isArray(o[k])) {
-				o[k].forEach((item) => recursiveSearch(item));
-			} else if (typeof o[k] === "object" && o[k] !== null) {
-				recursiveSearch(o[k]);
-			}
-		}
+	// Fallback for dotted keys if needed
+	if (key.includes(".")) {
+		return key.split(".").reduce((acc, part) => {
+			if (acc == null) return undefined;
+			return acc[part];
+		}, row);
 	}
 
-	recursiveSearch(obj);
-	return results;
+	return undefined;
+}
+
+function buildRowList(jsonToTranslate) {
+	const inputArray = Array.isArray(jsonToTranslate) ? jsonToTranslate : [jsonToTranslate];
+	return inputArray.map((row) => serializeRowIfNeeded(row));
 }
 
 function jsonToXes(jsonToTranslate, caseIdKey, activityKey, timestampKey = "") {
-	const trace = {};
+	
 
-	jsonToTranslate.forEach((entry) => {
-		const caseIds = findAllValuesByKey(entry, caseIdKey);
-		const activities = findAllValuesByKey(entry, activityKey);
-		const timestamps = timestampKey ? findAllValuesByKey(entry, timestampKey) : [];
-
-		for (let i = 0; i < caseIds.length; i++) {
-			const caseId = caseIds[i];
-			const activity = activities[i];
-			const ts = timestamps[i] ?? timestamps[0] ?? null;
-
-			if (caseId == null || activity == null) continue;
-
-			if (caseId in trace) {
-				trace[caseId].push({ [activityKey]: activity, timestamp: ts, entry });
-			} else {
-				trace[caseId] = [{ [activityKey]: activity, timestamp: ts, entry }];
-			}
-		}
-	});
-
-	let stringResult = [];
-
-	for (const key in trace) {
-		stringResult.push(`\t<trace>`);
-		stringResult.push(`\t\t<string key="concept:name" value="${escapeXml(key)}"/>`);
-
-		trace[key].forEach((entry) => {
-			stringResult.push(`\t\t<event>`);
-			stringResult.push(
-				`\t\t\t<string key="concept:name" value="${escapeXml(entry[activityKey])}"/>`
-			);
-
-			if (entry.timestamp != null) {
-				const normalizedTimestamp = normalizeTimestamp(entry.timestamp);
-				if (normalizedTimestamp) {
-					stringResult.push(
-						`\t\t\t<date key="time:timestamp" value="${escapeXml(normalizedTimestamp)}"/>`
-					);
-				}
-			}
-
-			/* generateKeyValueStrings(entry.entry, caseIdKey, activityKey).forEach((elem) => {
-				stringResult.push(elem);
-			}); */
-
-			stringResult.push(`\t\t</event>`);
-		});
-
-		stringResult.push(`\t</trace>`);
+	const rows = buildRowList(jsonToTranslate);
+	
+	if (rows.length > 0) {
+		
 	}
 
-	let finalResult = `<?xml version="1.0" encoding="UTF-8"?>\n<log xmlns="http://www.xes-standard.org/">\n`;
-	finalResult += stringResult.join("\n");
+	const traces = new Map();
+
+	rows.forEach((row, index) => {
+		const caseValue = getValueByKey(row, caseIdKey);
+		const activityValue = getValueByKey(row, activityKey);
+		const timestampValue = timestampKey ? getValueByKey(row, timestampKey) : null;
+
+		if (caseValue == null || activityValue == null) {
+			
+			return;
+		}
+
+		const traceKey =
+			typeof caseValue === "object" ? JSON.stringify(caseValue) : String(caseValue);
+
+		if (!traces.has(traceKey)) {
+			traces.set(traceKey, []);
+		}
+
+		traces.get(traceKey).push({
+			row,
+			activityValue,
+			timestampValue,
+		});
+	});
+
+	
+
+	// Sort events inside each trace by timestamp when possible
+	for (const [traceKey, events] of traces.entries()) {
+		events.sort((a, b) => {
+			const ta = normalizeTimestamp(a.timestampValue);
+			const tb = normalizeTimestamp(b.timestampValue);
+
+			if (!ta && !tb) return 0;
+			if (!ta) return 1;
+			if (!tb) return -1;
+			return new Date(ta).getTime() - new Date(tb).getTime();
+		});
+	}
+
+	const xmlParts = [];
+	for (const [traceKey, events] of traces.entries()) {
+		xmlParts.push(`\t<trace>`);
+		xmlParts.push(`\t\t<string key="concept:name" value="${escapeXml(traceKey)}"/>`);
+
+		events.forEach((event, eventIndex) => {
+			xmlParts.push(`\t\t<event>`);
+
+			const conceptName =
+				typeof event.activityValue === "object"
+					? JSON.stringify(event.activityValue)
+					: String(event.activityValue);
+
+			xmlParts.push(`\t\t\t<string key="concept:name" value="${escapeXml(conceptName)}"/>`);
+
+			const normalizedTimestamp = normalizeTimestamp(event.timestampValue);
+			if (normalizedTimestamp) {
+				xmlParts.push(
+					`\t\t\t<date key="time:timestamp" value="${escapeXml(normalizedTimestamp)}"/>`
+				);
+			}
+
+			for (const [key, value] of Object.entries(event.row)) {
+				if (key === caseIdKey || key === activityKey || key === timestampKey) continue;
+
+				// Keep the big list-like fields compact
+				if (LIST_OBJECT_FIELDS.has(key.toLowerCase())) {
+					xmlParts.push(xesAttribute(key, JSON.stringify(value)));
+					continue;
+				}
+
+				// Add every other column with the right type
+				const attr = xesAttribute(key, value);
+				if (attr) xmlParts.push(attr);
+			}
+
+			
+
+			xmlParts.push(`\t\t</event>`);
+		});
+
+		xmlParts.push(`\t</trace>`);
+	}
+
+	let finalResult = `<?xml version="1.0" encoding="UTF-8"?>\n<log xmlns="http://www.xes-standard.org/" xes.version="1.0" xes.features="nested-attributes">\n`;
+	finalResult += xmlParts.join("\n");
 	finalResult += `\n</log>`;
 
 	return finalResult;
 }
 //OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOO
 
-/* function jsonToXes(jsonToTranslate, caseIdKey, activityKey) {
-	const trace = {};
-	jsonToTranslate.forEach((entry) => {
-		let caseIds = findAllValuesByKey(entry, caseIdKey); // Get all case IDs
-		let activities = findAllValuesByKey(entry, activityKey); // Get all activities
-		// Match occurrences one by one
-		for (let i = 0; i < caseIds.length; i++) {
-			let caseId = caseIds[i];
-			let activity = activities[i];
-
-			if (caseId in trace) {
-				trace[caseId].push({ [activityKey]: activity, entry: entry });
-			} else {
-				trace[caseId] = [{ [activityKey]: activity, entry: entry }];
-			}
-		}
-	});
-	let stringResult = [];
-	let index = 0;
-	for (const key in trace) {
-		stringResult.push(`\t<trace>`);
-		stringResult.push(`\t<string key="concept:name" value="${key}"/>`);
-		trace[key].forEach((entry) => {
-			stringResult.push(`\t\t<event>`);
-			stringResult.push(
-				`\t\t<string key="concept:name" value="${entry[activityKey]}"/>`
-			);
-			generateKeyValueStrings(
-				entry.entry,
-				caseIdKey,
-				activityKey,
-				index,
-				caseIdKey
-			).forEach((elemt) => {
-				stringResult.push(elemt);
-			});
-			stringResult.push(`\t\t</event>`);
-			// stringResult.push(generateKeyValueStrings(entry.entry,caseIdKey,activityKey));
-		});
-		stringResult.push(`\t</trace>`);
-	}
-	let finalResult = `<?xml version="1.0" encoding="UTF-8"?>\n<log xmlns="http://www.xes-standard.org/">\n`;
-	finalResult += stringResult.join("\n");
-	finalResult += `\n</log>`;
-
-	return finalResult;
-}
-
-function generateKeyValueStrings(obj, caseId, activityKey, keyToCheck = "") {
-	let result = [];
-
-	if (typeof obj === "object" && obj !== null) {
-		for (let key in obj) {
-			let newKeyToCheck = keyToCheck ? `${keyToCheck}_${key}` : key;
-
-			if (Array.isArray(obj[key])) {
-				obj[key].forEach((item, index) => {
-					let arrayKey = `${newKeyToCheck}[${index}]`;
-					result.push(
-						...generateKeyValueStrings(item, caseId, activityKey, arrayKey)
-					);
-				});
-			} else if (typeof obj[key] === "object" && obj[key] !== null) {
-				result.push(
-					...generateKeyValueStrings(
-						obj[key],
-						caseId,
-						activityKey,
-						newKeyToCheck
-					)
-				);
-			} else if (key !== caseId && key !== activityKey) {
-				let newKeyToCheckCut = newKeyToCheck;
-				if (newKeyToCheck.includes("[")) {
-					newKeyToCheckCut = newKeyToCheck.split("[")[0];
-				}
-				switch (newKeyToCheckCut) {
-					case "inputs":
-						result.push(
-							`\t\t\t<string key="${newKeyToCheck}" value="${obj[key]}"/>`
-						);
-						break;
-					case "events":
-						if (
-							!(
-								newKeyToCheck.split("_eventValues")[1]?.includes("1") ||
-								newKeyToCheck.split("_eventValues")[1]?.includes("2") ||
-								newKeyToCheck.split("_eventValues")[1]?.includes("0") ||
-								newKeyToCheck.split("_eventValues")[1]?.includes("_length")
-							)
-						) {
-							newKeyToCheck = newKeyToCheck.replace("events", "BCEvent");
-							result.push(
-								`\t\t\t<string key="${newKeyToCheck}" value="${obj[key]}"/>`
-							);
-						}
-						break;
-					case "internalTxs":
-						newKeyToCheck = newKeyToCheck.replace("internalTxs", "Int");
-						result.push(
-							`\t\t\t<string key="${newKeyToCheck}" value="${obj[key]}"/>`
-						);
-						break;
-					case "storageState":
-						newKeyToCheck = newKeyToCheck.replace("storageState", "stateVar");
-						result.push(
-							`\t\t\t<string key="${newKeyToCheck}" value="${obj[key]}"/>`
-						);
-						break;
-					default:
-						result.push(
-							`\t\t\t<string key="${newKeyToCheck}" value="${obj[key]}"/>`
-						);
-						break;
-				}
-			}
-		}
-	} else {
-		switch (keyToCheck) {
-			case "inputs":
-				result.push(`\t\t\t<string key="${keyToCheck}" value="${obj}"/>`);
-				break;
-			case "events":
-				keyToCheck = keyToCheck.replace("events", "BCEvent");
-				result.push(`\t\t\t<string key="${keyToCheck}" value="${obj}"/>`);
-				break;
-			case "internalTxs":
-				keyToCheck = keyToCheck.replace("internalTxs", "Int");
-				result.push(`\t\t\t<string key="${keyToCheck}" value="${obj}"/>`);
-				break;
-			case "storageState":
-				keyToCheck = keyToCheck.replace("storageState", "stateVar");
-				result.push(`\t\t\t<string key="${keyToCheck}" value="${obj}"/>`);
-				break;
-			default:
-				result.push(`\t\t\t<string key="${keyToCheck}" value="${obj}"/>`);
-				break;
-		}
-		// result.push(`<string  key="${keyToCheck}" value="${obj}"/>`);
-	}
-
-	return result;
-}
-
-function findAllValuesByKey(obj, key) {
-	let results = [];
-
-	function recursiveSearch(o) {
-		if (typeof o !== "object" || o === null) return;
-
-		if (key in o) {
-			results.push(o[key]);
-		}
-
-		for (let k in o) {
-			if (typeof o[k] === "object") {
-				recursiveSearch(o[k]);
-			} else if (Array.isArray(o[k])) {
-				o[k].forEach((item) => recursiveSearch(item));
-			}
-		}
-	}
-
-	recursiveSearch(obj);
-	return results;
-}
- */
 app.post("/jsonocel-download", (req, res) => {
 	const jsonToDownload = req.body.ocel;
 	const filename = "ocelLogs.jsonocel";
@@ -1610,7 +1425,6 @@ app.post("/jsonocel-download", (req, res) => {
 			res.status(err.status).end();
 		} else {
 			fs.unlinkSync(path.resolve(filename));
-			console.log("File sent successfully");
 		}
 	});
 });
@@ -1638,7 +1452,6 @@ app.post("/csvocel-download", (req, res) => {
 			res.status(err.status).end();
 		} else {
 			fs.unlinkSync(path.resolve(filename));
-			console.log("File sent successfully");
 		}
 	});
 	// fs.writeFileSync(filename, csvRow)
@@ -1989,7 +1802,6 @@ app.get("/api/get-mempool-txs", async (req, res) => {
             });
         }
 
-        console.log(`Richiesta snapshot mempool: limite ${safeLimit} txs...`);
 
         const transactions = await getMempoolTxs(wsUrl, safeLimit);
 
@@ -2024,7 +1836,6 @@ app.post("/api/simulate/mempool-txs", async (req, res) => {
             networkName: "Mainnet"
         };
 
-		console.log(`Avvio simulazione batch per ${transactions.length} transazioni...`);
 		const results = await simulateMempoolTxs(transactions, networkData);
 
 		return res.status(200).json({
