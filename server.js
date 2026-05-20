@@ -1821,6 +1821,34 @@ app.get('/api/stream-mempool/:sessionId', (req, res) => {
     });
 });
 
+// app.get('/api/download-xes/:sessionId', async (req, res) => {
+//     try {
+//         const { sessionId } = req.params;
+
+//         if (!sessionId) {
+//             return res.status(400).json({ error: "Session ID mancante" });
+//         }
+
+//         // Recupera il log aggiornato da Redis
+//         const xesData = await redisClient.get(`session:${sessionId}:xes`);
+
+//         if (!xesData) {
+//             return res.status(404).json({ error: "File XES non trovato o sessione scaduta." });
+//         }
+
+//         // Imposta gli header per forzare il download del file
+//         res.setHeader('Content-disposition', `attachment; filename=live_compliance_${sessionId}.xes`);
+//         res.setHeader('Content-type', 'application/xml');
+        
+//         // Invia il file di testo
+//         res.send(xesData);
+
+//     } catch (error) {
+//         console.error(`[Download XES] Errore:`, error);
+//         res.status(500).json({ error: "Errore interno durante il download" });
+//     }
+// });
+
 mempoolQueueEvents.on('completed', ({ jobId, returnvalue }) => {
     // Se il worker ha restituito i dati correttamente...
     if (returnvalue && returnvalue.success && returnvalue.sessionId) {

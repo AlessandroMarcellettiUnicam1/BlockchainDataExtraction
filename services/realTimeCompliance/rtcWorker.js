@@ -1,5 +1,5 @@
 const { Worker } = require('bullmq');
-const { connectionOptions } = require('../../config/redisClient');
+const { connectionOptions, redisClient } = require('../../config/redisClient');
 const systemEvents = require('../../config/sse');
 const { processSimulation } = require('../ExtractionModule/simulationOrchestrator');
 const { connectDB } = require('../../config/db');
