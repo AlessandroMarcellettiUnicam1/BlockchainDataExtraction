@@ -26,6 +26,7 @@
     "childprocess": "^2.0.2",
     "cors": "^2.8.5",
     "csv-stringify": "^6.4.6",
+    "dexie": "^4.4.2",
     "dotenv": "^16.4.5",
     "ethereum-input-data-decoder": "^0.4.2",
     "express": "^4.21.1",

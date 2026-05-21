@@ -1685,6 +1685,15 @@ app.post('/api/generate-base-xes', async (req, res) => {
 		const payload = req.body;
 		payload.extract_columns = true;
 
+		// snellimento internal per leggerezza dello xes
+		if (Array.isArray(payload.data)) {
+            payload.data.forEach(tx => {
+                tx.internalTxs = [];
+                tx.events = [];
+                // tx.storageState = []; 
+            });
+        }
+
 		// elimino la sessione precedente se ne esiste una 
 		if (payload.previousSessionId) {
             try {
@@ -1727,19 +1736,6 @@ app.post('/api/generate-base-xes', async (req, res) => {
 });
 
 app.post('/api/start-compliance-monitoring', async (req, res) => {
-
-	// gli vengono passati tutti i dati che servono ovvero
-	// nella request avremmo: sessionId, 
-	/*
-	nella request ci sarà:
-	sessionId
-	filtri per mempool: addressFilters, validAddress
-	lo xes lo prendo da redis
-	per il worker:
-	- mapping per la conversione (mapping)
-	- la regola (parsedRule)
-	- il mapping per il controllo della regola (logMapping)
-	*/
 
 	try {
 		const {
@@ -1821,6 +1817,32 @@ app.get('/api/stream-mempool/:sessionId', (req, res) => {
     });
 });
 
+mempoolQueueEvents.on('completed', ({ jobId, returnvalue }) => {
+    // Se il worker ha restituito i dati correttamente...
+    if (returnvalue && returnvalue.success && returnvalue.sessionId) {
+        console.log(`[Server] Risultati per ${returnvalue.hash} ricevuti da Redis. Inoltro via SSE...`);
+        
+        systemEvents.emit(`new-tx-${returnvalue.sessionId}`, {
+            type: 'SIMULATION_RESULT',
+			sessionId: returnvalue.sessionId,
+            hash: returnvalue.hash,
+			complianceResult: returnvalue.complianceResult
+        });
+    }
+});
+
+// Start the server
+app.listen(port, () => {
+	console.log(`Server running at http://localhost:${port}`);
+});
+
+// docker stop $(docker ps -q)
+// docker rm $(docker ps -aq)
+// docker rmi $(docker images -q)
+// docker volume rm $(docker volume ls -q)
+// docker network rm $(docker network ls -q | grep -v "bridge\|host\|none")
+// docker system prune -a --volumes -f
+
 // app.get('/api/download-xes/:sessionId', async (req, res) => {
 //     try {
 //         const { sessionId } = req.params;
@@ -1848,31 +1870,5 @@ app.get('/api/stream-mempool/:sessionId', (req, res) => {
 //         res.status(500).json({ error: "Errore interno durante il download" });
 //     }
 // });
-
-mempoolQueueEvents.on('completed', ({ jobId, returnvalue }) => {
-    // Se il worker ha restituito i dati correttamente...
-    if (returnvalue && returnvalue.success && returnvalue.sessionId) {
-        console.log(`[Server] Risultati per ${returnvalue.hash} ricevuti da Redis. Inoltro via SSE...`);
-        
-        systemEvents.emit(`new-tx-${returnvalue.sessionId}`, {
-            type: 'SIMULATION_RESULT',
-            hash: returnvalue.hash,
-            target: returnvalue.target,
-            simulationData: returnvalue.simulationData
-        });
-    }
-});
-
-// Start the server
-app.listen(port, () => {
-	console.log(`Server running at http://localhost:${port}`);
-});
-
-// docker stop $(docker ps -q)
-// docker rm $(docker ps -aq)
-// docker rmi $(docker images -q)
-// docker volume rm $(docker volume ls -q)
-// docker network rm $(docker network ls -q | grep -v "bridge\|host\|none")
-// docker system prune -a --volumes -f
 
 

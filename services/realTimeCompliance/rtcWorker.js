@@ -52,7 +52,7 @@ const rtcWorker = new Worker('mempool-queue', async (job) => {
             throw new Error("Configurazione o Log Base mancanti in Redis");
         }
 
-        const { mapping } = JSON.parse(configData);
+        const { mapping, parsedRule, logMapping } = JSON.parse(configData);
 
         const pythonPayload = {
             data: [simulationResult.data],
@@ -78,27 +78,22 @@ const rtcWorker = new Worker('mempool-queue', async (job) => {
         await redisClient.setex(`session:${sessionId}:xes`, 7200, updatedBaseXes);
         console.log(`[Worker] XES Base aggiornato su Redis per sessione ${sessionId}.`);
 
+        const rulePayload = {
+            xes_string: updatedBaseXes,
+            rule: typeof parsedRule === 'string' ? parsedRule : JSON.stringify(parsedRule),
+            mapping: logMapping
+        }
+
+        const ruleResponse = await axios.post('http://coblockly-backend:8000/api/verifyRuleLive', rulePayload);
+        console.log(`[Worker] Regola verificata per la transazione ${hash} nella sessione ${sessionId}.`);
+
         return { 
             success: true, 
             sessionId: sessionId, 
             hash: hash,
-            target: targetAddress,
-            simulationData: simulationResult.data
+            complianceResult: ruleResponse.data
         };
-
-        /*
-        1. prendo il mapping da redis
-
-        2. faccio la chiamata API allo script python, in cui gli passo simulationResult, il mapping e false 
-            per non estrarre le colonne (che posso anche non mettere perchè di default è false)
-
-        3. mi recupero lo XES base da Redis
         
-        4. chiamo la funzione per fare l'append
-
-        5. aggiorno lo xes base su Redis
-        */
-
     } catch (err) {
         console.error(`[Worker] Errore durante la simulazione per ${hash}:`, err.message);
         throw err;
