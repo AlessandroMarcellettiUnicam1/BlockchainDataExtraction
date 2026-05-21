@@ -731,6 +731,94 @@ async function decodeInteralTxsStorage(internalTxs, web3, networkData){
     }
 }
 
+async function mockProcessSimulation(params, targetAddress, networkData, hash = null) {
+    const sessionLogs = [];
+    
+    try {
+        const txObject = params[0];
+        txObject.input = txObject.data || txObject.input;
+        const blockRef = params[1];
+        let web3 = new Web3(networkData.web3Endpoint);
+        
+        let queryResult;
+        let contractTree = null;
+
+        // 1. Tentativo di recupero ABI per la decodifica base
+        if (targetAddress && targetAddress !== "0x" && targetAddress !== "") {
+            const query = { contractAddress: targetAddress.toLowerCase() };
+            queryResult = await searchAbi(query);
+            
+            if (queryResult && !queryResult?.abi?.includes("Contract source code not verified")) {
+                contractTree = await getContractTree(
+                    null,
+                    targetAddress,
+                    networkData.endpoint,
+                    networkData.apiKey,
+                    queryResult
+                );
+            }
+        }
+
+        // 2. Decodifica statica dell'input (functionName e inputs)
+        decodeInput(txObject, contractTree);
+
+        // 3. Risoluzione rapida del numero di blocco
+        let resolvedBlockNumber = 0;
+        if (typeof blockRef === 'number') {
+            resolvedBlockNumber = blockRef;
+        } else if (typeof blockRef === 'string') {
+            resolvedBlockNumber = blockRef.startsWith("0x") ? web3.utils.hexToNumber(blockRef) : parseInt(blockRef) || 0;
+        }
+
+        // 4. Costruzione del log mockato
+        const transactionLog = {
+            functionName: txObject.inputDecoded ? txObject.inputDecoded.method : null,
+            transactionHash: hash || txObject.hash,
+            blockNumber: resolvedBlockNumber,
+            contractAddress: txObject.to ? txObject.to : "Contract Creation (Deployment)",
+            sender: txObject.from ? txObject.from : "0x0000000000000000000000000000000000000000",
+            gasUsed: 0, 
+            timestamp: new Date().toISOString(),
+            inputs: txObject.inputDecoded ? decodeInputs(txObject.inputDecoded, web3) : [],
+            value: txObject.value || "0x0",
+            
+            // Dati omessi per assenza di esecuzione EVM
+            storageState: [],
+            internalTxs: [],
+            events: [],
+            status: "Mock"
+        };
+
+        return {
+            data: transactionLog,
+            logs: sessionLogs
+        };
+        
+    } catch (err) {
+        // Fallback di sicurezza per non bloccare il worker
+        console.error(`[Mock Simulation] Errore durante il processo mock: ${err.message}`);
+        
+        return {
+            data: {
+                functionName: null,
+                transactionHash: hash,
+                blockNumber: 0,
+                contractAddress: targetAddress,
+                sender: params[0]?.from || "Unknown",
+                gasUsed: 0,
+                timestamp: new Date().toISOString(),
+                inputs: [],
+                value: params[0]?.value || "0x0",
+                storageState: [],
+                internalTxs: [],
+                events: [],
+                status: "System error"
+            },
+            logs: sessionLogs
+        };
+    }
+}
+
 // < -- FUNZIONI COPIATE DAL WORKER -- > 
 // function decodeInput(tx,contractTree) {
 //     if (tx.input == "0x") {
@@ -796,5 +884,6 @@ async function decodeInteralTxsStorage(internalTxs, web3, networkData){
 
 module.exports={
     processSimulation,
+    mockProcessSimulation,
     makeRpcCallStreaming
 }

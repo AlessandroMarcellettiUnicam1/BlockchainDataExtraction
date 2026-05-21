@@ -67,7 +67,7 @@ async function startMempoolListener(sessionId, url, validAddress, addressFilters
                         else if (addressFilters === "both" && (fromLower === filterAddress || toLower === filterAddress)) match = true;
 
                         if (match) {
-                            // console.log(`[Match] La transazione da ${tx.to} a ${tx.from} ha fatto match`);
+                            console.log(`[Match] La transazione da ${tx.to} a ${tx.from} ha fatto match`);
                             const adaptedPayload = adaptMempoolTx(tx);
 
                             // aggiungo la transazione in coda

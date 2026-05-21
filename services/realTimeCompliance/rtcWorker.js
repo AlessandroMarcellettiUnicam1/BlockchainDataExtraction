@@ -1,10 +1,12 @@
 const { Worker } = require('bullmq');
 const { connectionOptions, redisClient } = require('../../config/redisClient');
 const systemEvents = require('../../config/sse');
-const { processSimulation } = require('../ExtractionModule/simulationOrchestrator');
+const { processSimulation, mockProcessSimulation } = require('../ExtractionModule/simulationOrchestrator');
 const { connectDB } = require('../../config/db');
 const axios = require('axios');
 const { config } = require('dotenv');
+const { net } = require('web3');
+const { network } = require('hardhat');
 require('dotenv').config();
 
 console.log('[Worker] Worker inizializzato, in attesa di transazioni in coda...');
@@ -36,7 +38,8 @@ const rtcWorker = new Worker('mempool-queue', async (job) => {
         };
 
         console.log(`[Worker] Avvio simulazione per ${hash} verso il target ${targetAddress}...`);
-        const simulationResult = await processSimulation(params, targetAddress, networkData, hash);
+        // const simulationResult = await processSimulation(params, targetAddress, networkData, hash);
+        const simulationResult = await mockProcessSimulation(params, targetAddress, networkData, hash);
         console.log(`[Worker] Simulazione completata per ${hash}. Emetto i risultati al frontend...`);
 
         if (simulationResult.data.success === "System error") {
