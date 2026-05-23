@@ -1811,9 +1811,24 @@ app.get('/api/stream-mempool/:sessionId', (req, res) => {
     const eventName = `new-tx-${sessionId}`;
     systemEvents.on(eventName, sendTxToClient);
 
+	// funzione per contare ogni secondo il numero di transazioni in coda prese dal frontend
+	const statsInterval = setInterval(async () => {
+        try {
+            const counts = await txQueue.getJobCounts('waiting');
+            
+            res.write(`data: ${JSON.stringify({
+                type: 'QUEUE_STATS',
+                waiting: counts.waiting || 0
+            })}\n\n`);
+        } catch (err) {
+            console.error("[SSE] Errore lettura stato coda:", err.message);
+        }
+    }, 1000);
+
     // Pulizia: quando l'utente chiude la pagina o stoppa, rimuovi il listener
     req.on('close', () => {
         systemEvents.off(eventName, sendTxToClient);
+		clearInterval(statsInterval);
     });
 });
 

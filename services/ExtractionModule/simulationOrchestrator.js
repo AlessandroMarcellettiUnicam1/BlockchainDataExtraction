@@ -743,7 +743,6 @@ async function mockProcessSimulation(params, targetAddress, networkData, hash = 
         let queryResult;
         let contractTree = null;
 
-        // 1. Tentativo di recupero ABI per la decodifica base
         if (targetAddress && targetAddress !== "0x" && targetAddress !== "") {
             const query = { contractAddress: targetAddress.toLowerCase() };
             queryResult = await searchAbi(query);
@@ -759,10 +758,8 @@ async function mockProcessSimulation(params, targetAddress, networkData, hash = 
             }
         }
 
-        // 2. Decodifica statica dell'input (functionName e inputs)
         decodeInput(txObject, contractTree);
 
-        // 3. Risoluzione rapida del numero di blocco
         let resolvedBlockNumber = 0;
         if (typeof blockRef === 'number') {
             resolvedBlockNumber = blockRef;
@@ -770,7 +767,6 @@ async function mockProcessSimulation(params, targetAddress, networkData, hash = 
             resolvedBlockNumber = blockRef.startsWith("0x") ? web3.utils.hexToNumber(blockRef) : parseInt(blockRef) || 0;
         }
 
-        // 4. Costruzione del log mockato
         const transactionLog = {
             functionName: txObject.inputDecoded ? txObject.inputDecoded.method : null,
             transactionHash: hash || txObject.hash,
@@ -781,8 +777,6 @@ async function mockProcessSimulation(params, targetAddress, networkData, hash = 
             timestamp: new Date().toISOString(),
             inputs: txObject.inputDecoded ? decodeInputs(txObject.inputDecoded, web3) : [],
             value: txObject.value || "0x0",
-            
-            // Dati omessi per assenza di esecuzione EVM
             storageState: [],
             internalTxs: [],
             events: [],
@@ -795,7 +789,6 @@ async function mockProcessSimulation(params, targetAddress, networkData, hash = 
         };
         
     } catch (err) {
-        // Fallback di sicurezza per non bloccare il worker
         console.error(`[Mock Simulation] Errore durante il processo mock: ${err.message}`);
         
         return {
