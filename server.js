@@ -1129,15 +1129,20 @@ function extractKeysFromSample(obj, prefix = "", keys = new Set(), depth = 0) {
 	return keys;
 }
 
-const LIST_OBJECT_FIELDS = new Set(["events", "internalTxs", "inputs", "calls"]);
+const LIST_OBJECT_FIELDS = new Set(["events", "internalTxs", "inputs", "calls", "storageState"]);
 
-function escapeXml(value) {
+function escapeXmlText(value) {
 	return String(value)
 		.replace(/&/g, "&amp;")
 		.replace(/</g, "&lt;")
-		.replace(/>/g, "&gt;")
-		.replace(/"/g, "&quot;")
-		.replace(/'/g, "&apos;");
+		.replace(/>/g, "&gt;");
+}
+
+// Per attributi XML delimitati con apici singoli.
+// Le virgolette doppie restano leggibili dentro il JSON.
+// Escapiamo solo gli apostrofi.
+function escapeXmlAttrSingleQuoted(value) {
+	return escapeXmlText(value).replace(/'/g, "&apos;");
 }
 
 function isPlainObject(value) {
@@ -1197,45 +1202,47 @@ function normalizeTimestamp(value) {
 	return null;
 }
 
+function serializeCompact(value) {
+	if (value == null) return "";
+	if (typeof value === "string") return value;
+	if (value instanceof Date) return value.toISOString();
+	if (typeof value === "object") return JSON.stringify(value);
+	return String(value);
+}
+
 function xesAttribute(key, value) {
 	const normalized = normalizeMongoScalar(value);
 	if (normalized == null) return null;
 
 	if (normalized instanceof Date) {
-		return `\t\t\t<date key="${escapeXml(key)}" value="${escapeXml(normalized.toISOString())}"/>`;
+		return `\t\t\t<date key='${escapeXmlAttrSingleQuoted(key)}' value='${escapeXmlAttrSingleQuoted(normalized.toISOString())}'/>`;
 	}
 
 	if (typeof normalized === "boolean") {
-		return `\t\t\t<boolean key="${escapeXml(key)}" value="${String(normalized).toLowerCase()}"/>`;
+		return `\t\t\t<boolean key='${escapeXmlAttrSingleQuoted(key)}' value='${String(normalized).toLowerCase()}'/>`;
 	}
 
 	if (typeof normalized === "number" && Number.isInteger(normalized)) {
-		return `\t\t\t<int key="${escapeXml(key)}" value="${normalized}"/>`;
+		return `\t\t\t<int key='${escapeXmlAttrSingleQuoted(key)}' value='${normalized}'/>`;
 	}
 
 	if (typeof normalized === "number") {
-		return `\t\t\t<float key="${escapeXml(key)}" value="${normalized}"/>`;
+		return `\t\t\t<float key='${escapeXmlAttrSingleQuoted(key)}' value='${normalized}'/>`;
 	}
 
-	if (typeof normalized === "object") {
-		return `\t\t\t<string key="${escapeXml(key)}" value="${escapeXml(JSON.stringify(normalized))}"/>`;
-	}
-
-	return `\t\t\t<string key="${escapeXml(key)}" value="${escapeXml(normalized)}"/>`;
+	// Oggetti e array diventano una stringa JSON compatta.
+	const compact = serializeCompact(normalized);
+	return `\t\t\t<string key='${escapeXmlAttrSingleQuoted(key)}' value='${escapeXmlAttrSingleQuoted(compact)}'/>`;
 }
 
 function flattenRowForXes(input, prefix = "", out = {}) {
 	const value = normalizeMongoScalar(input);
 
-	if (value == null) {
-		return out;
-	}
+	if (value == null) return out;
 
-	// Arrays are kept as a single XES string, like the Python LIST_OBJECT_FIELDS behavior.
+	// Array sempre compattati
 	if (Array.isArray(value)) {
-		if (prefix) {
-			out[prefix] = JSON.stringify(value);
-		}
+		if (prefix) out[prefix] = JSON.stringify(value);
 		return out;
 	}
 
@@ -1249,7 +1256,7 @@ function flattenRowForXes(input, prefix = "", out = {}) {
 		return out;
 	}
 
-	// Special list/object fields are serialized as a single string, not expanded.
+	// Campi complessi tenuti compatti
 	if (prefix && LIST_OBJECT_FIELDS.has(prefix.toLowerCase())) {
 		out[prefix] = JSON.stringify(value);
 		return out;
@@ -1258,36 +1265,31 @@ function flattenRowForXes(input, prefix = "", out = {}) {
 	for (const [key, child] of Object.entries(value)) {
 		const nextPrefix = prefix ? `${prefix}.${key}` : key;
 
-		// If the child is an array, keep it compact.
 		if (Array.isArray(child)) {
 			out[nextPrefix] = JSON.stringify(child);
 			continue;
 		}
 
-		// Flatten plain objects.
 		if (isPlainObject(child) && !isMongoScalarObject(child)) {
 			flattenRowForXes(child, nextPrefix, out);
 			continue;
 		}
 
-		// Scalars / dates / mongo wrappers
-		const normalizedChild = normalizeMongoScalar(child);
-		out[nextPrefix] = normalizedChild;
+		out[nextPrefix] = normalizeMongoScalar(child);
 	}
 
 	return out;
 }
 
-function serializeRowIfNeeded(row) {
-	const flattened = flattenRowForXes(row);
-	return flattened;
+function buildRowList(jsonToTranslate) {
+	const inputArray = Array.isArray(jsonToTranslate) ? jsonToTranslate : [jsonToTranslate];
+	return inputArray.map((row) => flattenRowForXes(row));
 }
 
 function getValueByKey(row, key) {
 	if (!key) return undefined;
 	if (Object.prototype.hasOwnProperty.call(row, key)) return row[key];
 
-	// Fallback for dotted keys if needed
 	if (key.includes(".")) {
 		return key.split(".").reduce((acc, part) => {
 			if (acc == null) return undefined;
@@ -1298,18 +1300,16 @@ function getValueByKey(row, key) {
 	return undefined;
 }
 
-function buildRowList(jsonToTranslate) {
-	const inputArray = Array.isArray(jsonToTranslate) ? jsonToTranslate : [jsonToTranslate];
-	return inputArray.map((row) => serializeRowIfNeeded(row));
-}
-
 function jsonToXes(jsonToTranslate, caseIdKey, activityKey, timestampKey = "") {
-	
+	console.log("[XES] Conversion started");
+	console.log("[XES] caseIdKey:", caseIdKey);
+	console.log("[XES] activityKey:", activityKey);
+	console.log("[XES] timestampKey:", timestampKey);
 
 	const rows = buildRowList(jsonToTranslate);
-	
+	console.log("[XES] rows prepared:", rows.length);
 	if (rows.length > 0) {
-		
+		console.log("[XES] first row keys sample:", Object.keys(rows[0]).slice(0, 25));
 	}
 
 	const traces = new Map();
@@ -1320,12 +1320,15 @@ function jsonToXes(jsonToTranslate, caseIdKey, activityKey, timestampKey = "") {
 		const timestampValue = timestampKey ? getValueByKey(row, timestampKey) : null;
 
 		if (caseValue == null || activityValue == null) {
-			
+			console.log("[XES] skipped row", index, {
+				caseValue,
+				activityValue,
+				timestampValue,
+			});
 			return;
 		}
 
-		const traceKey =
-			typeof caseValue === "object" ? JSON.stringify(caseValue) : String(caseValue);
+		const traceKey = typeof caseValue === "object" ? JSON.stringify(caseValue) : String(caseValue);
 
 		if (!traces.has(traceKey)) {
 			traces.set(traceKey, []);
@@ -1338,9 +1341,8 @@ function jsonToXes(jsonToTranslate, caseIdKey, activityKey, timestampKey = "") {
 		});
 	});
 
-	
+	console.log("[XES] traces built:", traces.size);
 
-	// Sort events inside each trace by timestamp when possible
 	for (const [traceKey, events] of traces.entries()) {
 		events.sort((a, b) => {
 			const ta = normalizeTimestamp(a.timestampValue);
@@ -1351,12 +1353,14 @@ function jsonToXes(jsonToTranslate, caseIdKey, activityKey, timestampKey = "") {
 			if (!tb) return -1;
 			return new Date(ta).getTime() - new Date(tb).getTime();
 		});
+
+		console.log("[XES] trace:", traceKey, "events:", events.length);
 	}
 
 	const xmlParts = [];
 	for (const [traceKey, events] of traces.entries()) {
 		xmlParts.push(`\t<trace>`);
-		xmlParts.push(`\t\t<string key="concept:name" value="${escapeXml(traceKey)}"/>`);
+		xmlParts.push(`\t\t<string key='concept:name' value='${escapeXmlAttrSingleQuoted(traceKey)}'/>`);
 
 		events.forEach((event, eventIndex) => {
 			xmlParts.push(`\t\t<event>`);
@@ -1366,30 +1370,26 @@ function jsonToXes(jsonToTranslate, caseIdKey, activityKey, timestampKey = "") {
 					? JSON.stringify(event.activityValue)
 					: String(event.activityValue);
 
-			xmlParts.push(`\t\t\t<string key="concept:name" value="${escapeXml(conceptName)}"/>`);
+			xmlParts.push(`\t\t\t<string key='concept:name' value='${escapeXmlAttrSingleQuoted(conceptName)}'/>`);
 
 			const normalizedTimestamp = normalizeTimestamp(event.timestampValue);
 			if (normalizedTimestamp) {
 				xmlParts.push(
-					`\t\t\t<date key="time:timestamp" value="${escapeXml(normalizedTimestamp)}"/>`
+					`\t\t\t<date key='time:timestamp' value='${escapeXmlAttrSingleQuoted(normalizedTimestamp)}'/>`
 				);
 			}
 
 			for (const [key, value] of Object.entries(event.row)) {
 				if (key === caseIdKey || key === activityKey || key === timestampKey) continue;
 
-				// Keep the big list-like fields compact
-				if (LIST_OBJECT_FIELDS.has(key.toLowerCase())) {
-					xmlParts.push(xesAttribute(key, JSON.stringify(value)));
-					continue;
-				}
-
-				// Add every other column with the right type
 				const attr = xesAttribute(key, value);
 				if (attr) xmlParts.push(attr);
 			}
 
-			
+			console.log(
+				`[XES] trace ${traceKey} event ${eventIndex} attributes:`,
+				Object.keys(event.row).length
+			);
 
 			xmlParts.push(`\t\t</event>`);
 		});
@@ -1401,6 +1401,7 @@ function jsonToXes(jsonToTranslate, caseIdKey, activityKey, timestampKey = "") {
 	finalResult += xmlParts.join("\n");
 	finalResult += `\n</log>`;
 
+	console.log("[XES] Conversion finished. XML length:", finalResult.length);
 	return finalResult;
 }
 //OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOO
