@@ -43,17 +43,7 @@ const rtcWorker = new Worker('mempool-queue', async (job) => {
         console.log(`[Worker] Avvio simulazione per ${hash} verso il target ${targetAddress}...`);
         const simulationResult = await processSimulation(params, targetAddress, networkData, hash);
         // const simulationResult = await mockProcessSimulation(params, targetAddress, networkData, hash);
-        console.log(`[Worker] Simulazione completata per ${hash}. Emetto i risultati al frontend...`);
-
-        if (simulationResult.data.success === "System error") {
-             console.warn(`[Worker] Simulazione fallita (System error) per ${hash}. Invio come ignorato.`);
-             return { 
-                success: true, 
-                sessionId: sessionId, 
-                hash: hash,
-                complianceResult: { compliant: [], noncompliant: [], ignored: [simulationResult.data] }
-             };
-        }
+        console.log(`[Worker] Simulazione completata per ${hash}.`);
 
         if (simulationResult.data.status === "Success") {
             // recupero il mapping e lo xes base da Redis
@@ -106,8 +96,7 @@ const rtcWorker = new Worker('mempool-queue', async (job) => {
                 complianceResult: ruleResponse.data
             };
         } else {
-            // Caso 3: Transazione EVM fallita (Reverted, Out of Gas, ecc.) - Salta l'append XES e Python
-            console.log(`[Worker] Transazione ${hash} scartata (Status Blockchain: ${simulationResult.data.status}).`);
+            console.log(`[Worker] Transazione ${hash} ignorata (Status Blockchain: ${simulationResult.data.status}).`);
             return {
                 success: true,
                 sessionId: sessionId,
