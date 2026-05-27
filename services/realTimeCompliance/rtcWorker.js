@@ -45,7 +45,7 @@ const rtcWorker = new Worker('mempool-queue', async (job) => {
         // const simulationResult = await mockProcessSimulation(params, targetAddress, networkData, hash);
         console.log(`[Worker] Simulazione completata per ${hash}.`);
 
-        if (simulationResult.data.status === "Success") {
+        if (simulationResult.data.status !== "System error") {
             // recupero il mapping e lo xes base da Redis
             const configData = await redisClient.get(`session:${sessionId}:config`);
             const baseXes = await redisClient.get(`session:${sessionId}:xes`);
@@ -108,7 +108,6 @@ const rtcWorker = new Worker('mempool-queue', async (job) => {
                 }
             };
         }
-        
     } catch (err) {
         console.error(`[Worker] Errore durante la simulazione per ${hash}:`, err.message);
         throw err;
@@ -167,7 +166,7 @@ rtcWorker.on('ready', () => {
 });
 
 rtcWorker.on('completed', (job) => {
-    console.log(`[Worker] Job completato con successo: ${job.returnvalue.hash}`);
+    console.log(`[Worker] Job ${job.id} completato con successo: ${job.returnvalue.hash}`);
 });
 
 rtcWorker.on('failed', (job, err) => {
