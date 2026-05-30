@@ -31,14 +31,14 @@ const http = require('http');
  * @param {*} networkData 
  * @returns 
  */
-async function processTransaction(tx, mainContract, contractTree, contractAddress, smartContract,extractionType,option,networkData,addressRange) {
+async function processTransaction(tx, mainContract, contractTree, contractAddress, smartContract,extractionType,option,networkData,addressRange, returnInMemory=false) {
     decodeInput(tx, contractTree)
     
     try{
         console.log(`Processing transaction: ${tx.hash}`);
         let transactionLog=await createTransactionLog(tx, mainContract, contractTree, smartContract,extractionType,contractAddress,option,networkData,addressRange);
         
-        return [];
+        return returnInMemory ? transactionLog : [];
         
     }finally{
         if (global.gc) global.gc();
@@ -258,6 +258,7 @@ async function createTransactionLog(tx, mainContract, contractTree, smartContrac
             await saveTransaction(transactionLog, tx.to!=''?tx.to:tx.from);
         }
         
+        return transactionLog;
 
     }finally{
         if (debugResult) {
@@ -275,7 +276,6 @@ async function createTransactionLog(tx, mainContract, contractTree, smartContrac
         }
         transactionLog=null;
     }
-    return ;
 }
 /**
  * function to get the event emitted in t
@@ -971,7 +971,7 @@ function regroupShatrace(finalShaTraces){
 
 // Handle messages from main process
 process.on("message", async (data) => {
-    const { tx, mainContract, contractTree, contractAddress, smartContract,option, networkData,extractionType,addressRange } = data;
+    const { tx, mainContract, contractTree, contractAddress, smartContract,option, networkData,extractionType,addressRange, returnInMemory } = data;
     let transactionLog;
     try {
         
@@ -979,7 +979,7 @@ process.on("message", async (data) => {
         await connectDB(networkData.networkName);
         
         // Process the transaction
-        await processTransaction(tx, mainContract, contractTree, contractAddress, smartContract,extractionType,networkData,option,addressRange);
+        transactionLog = await processTransaction(tx, mainContract, contractTree, contractAddress, smartContract,extractionType,option,networkData,addressRange, returnInMemory);
 
         // Clean up
         // await mongoose.disconnect();
@@ -990,14 +990,17 @@ process.on("message", async (data) => {
         if (hre.network.provider.removeAllListeners) {
             hre.network.provider.removeAllListeners();
         }
-        
         // contractAbi = null;
         // contractCompiled = null;
-        
         // Force garbage collection
         if (global.gc) global.gc();
+
         // Send success message
-        process.send("done");
+        if (returnInMemory && transactionLog) {
+            process.send({ status: "done", data: transactionLog });
+        } else {
+            process.send("done");
+        }
         // Exit successfully
         process.exit(0);
     } catch (err) {

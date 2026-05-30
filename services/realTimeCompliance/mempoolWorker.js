@@ -8,6 +8,7 @@ const { config } = require('dotenv');
 const { net } = require('web3');
 const { network } = require('hardhat');
 require('dotenv').config();
+const { appendXes } = require('../simulationUtils/appendXes')
 
 console.log('[Worker] Worker inizializzato, in attesa di transazioni in coda...');
 
@@ -21,7 +22,7 @@ console.log('[Worker] Worker inizializzato, in attesa di transazioni in coda...'
     }
 })();
 
-const rtcWorker = new Worker('mempool-queue', async (job) => {
+const mempoolWorker = new Worker('mempool-queue', async (job) => {
     const { sessionId, hash, payload } = job.data;
 
     // simulazione di tre secondi di elaborazione per la simulazione mock
@@ -40,10 +41,10 @@ const rtcWorker = new Worker('mempool-queue', async (job) => {
             networkName: "Mainnet"
         };
 
-        console.log(`[Worker] Avvio simulazione per ${hash} verso il target ${targetAddress}...`);
+        console.log(`[Mempool Worker] Avvio simulazione per ${hash} verso il target ${targetAddress}...`);
         //const simulationResult = await processSimulation(params, targetAddress, networkData, hash);
         const simulationResult = await mockProcessSimulation(params, targetAddress, networkData, hash);
-        console.log(`[Worker] Simulazione completata per ${hash}.`);
+        console.log(`[Mempool Worker] Simulazione completata per ${hash}.`);
 
         if (simulationResult.data.status !== "System error") {
             // recupero il mapping e lo xes base da Redis
@@ -65,7 +66,7 @@ const rtcWorker = new Worker('mempool-queue', async (job) => {
                 extract_columns: false 
             };
 
-            console.log(`[Worker] Invio transazione ${hash} a Python per conversione XES...`);
+            console.log(`[Mempool Worker] Invio transazione ${hash} a Python per conversione XES...`);
             const pythonResponse = await axios.post('http://coblockly-backend:8000/api/convertToXes', pythonPayload);
 
             if (!pythonResponse.data.success) {
@@ -74,7 +75,7 @@ const rtcWorker = new Worker('mempool-queue', async (job) => {
 
             const singleTxXes = pythonResponse.data.xes_string;
 
-            console.log(`[Worker] Eseguo l'append della transazione al Log Base...`);
+            console.log(`[Mempool Worker] Eseguo l'append della transazione al Log Base...`);
             const tempXes = appendXes(baseXes, singleTxXes);
 
             //await redisClient.setex(`session:${sessionId}:xes`, 7200, tempXes);
@@ -87,7 +88,7 @@ const rtcWorker = new Worker('mempool-queue', async (job) => {
             }
 
             const ruleResponse = await axios.post('http://coblockly-backend:8000/api/verifyRuleLive', rulePayload);
-            console.log(`[Worker] Regola verificata per la transazione ${hash} nella sessione ${sessionId}.`);
+            console.log(`[Mempool Worker] Regola verificata per la transazione ${hash} nella sessione ${sessionId}.`);
 
             return { 
                 success: true, 
@@ -96,7 +97,7 @@ const rtcWorker = new Worker('mempool-queue', async (job) => {
                 complianceResult: ruleResponse.data
             };
         } else {
-            console.log(`[Worker] Transazione ${hash} ignorata (Status Blockchain: ${simulationResult.data.status}).`);
+            console.log(`[Mempool Worker] Transazione ${hash} ignorata (Status Blockchain: ${simulationResult.data.status}).`);
             return {
                 success: true,
                 sessionId: sessionId,
@@ -109,68 +110,22 @@ const rtcWorker = new Worker('mempool-queue', async (job) => {
             };
         }
     } catch (err) {
-        console.error(`[Worker] Errore durante la simulazione per ${hash}:`, err.message);
+        console.error(`[Mempool Worker] Errore durante la simulazione per ${hash}:`, err.message);
         throw err;
     }
 
 }, {connection: connectionOptions});
 
-function appendXes(baseXes, newXes) {
-    // estraggo il bloggo trace e event dallo xes appena convertito
-    const traceStart = newXes.indexOf('<trace>');
-    const traceEnd = newXes.indexOf('</trace>') + 8;
-    const newTraceBlock = newXes.substring(traceStart, traceEnd);
-
-    const eventStart = newXes.indexOf('<event>');
-    const eventEnd = newXes.indexOf('</event>') + 8;
-    const newEventBlock = newXes.substring(eventStart, eventEnd);
-
-    // estraggo 
-    const caseIdRegex = /<string key="concept:name" value="([^"]+)"\/>/;
-    const caseMatch = newTraceBlock.match(caseIdRegex);
-    const caseId = caseMatch ? caseMatch[1] : null;
-
-    if (caseId) {
-        const caseIdentifier = `<string key="concept:name" value="${caseId}"/>`;
-        const identifierIndex = baseXes.indexOf(caseIdentifier);
-
-        // se il caseId si trova già nel log base
-        if (identifierIndex !== -1) {
-            const nextTraceClose = baseXes.indexOf('</trace>', identifierIndex);
-
-            if (nextTraceClose !== -1) {
-                const before = baseXes.substring(0, nextTraceClose);
-                const after = baseXes.substring(nextTraceClose);
-                return before + newEventBlock + '\n' + after;
-            }
-        }
-        // non trovo il caseId, faccio l'append alla fine del log base
-        else {
-            const logCloseIndex = baseXes.lastIndexOf('</log>');
-            
-            if (logCloseIndex !== -1) {
-                const before = baseXes.substring(0, logCloseIndex);
-                const after = baseXes.substring(logCloseIndex);
-                return before + newTraceBlock + '\n' + after;
-            }
-        }
-    } else {
-        console.warn("[Worker] Anomalìa XES: Nessun Case ID trovato nel nuovo evento. Append ignorato.");
-    }
-
-    return baseXes;
-}
-
-rtcWorker.on('ready', () => {
-    console.log(`[Worker] Connesso a Redis con successo. Worker operativo.`);
+mempoolWorker.on('ready', () => {
+    console.log(`[Mempool Worker] Connesso a Redis con successo. Worker operativo.`);
 });
 
-rtcWorker.on('completed', (job) => {
-    console.log(`[Worker] Job ${job.id} completato con successo: ${job.returnvalue.hash}`);
+mempoolWorker.on('completed', (job) => {
+    console.log(`[Mempool Worker] Job ${job.id} completato con successo: ${job.returnvalue.hash}`);
 });
 
-rtcWorker.on('failed', (job, err) => {
-    console.error(`[Worker] Job ${job.id} fallito: ${err.message}`);
+mempoolWorker.on('failed', (job, err) => {
+    console.error(`[Mempool Worker] Job ${job.id} fallito: ${err.message}`);
 });
 
-module.exports = rtcWorker;
+module.exports = mempoolWorker;
