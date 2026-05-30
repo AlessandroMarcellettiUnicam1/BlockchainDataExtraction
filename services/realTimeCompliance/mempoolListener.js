@@ -132,8 +132,7 @@ async function startBaselineListener(sessionId, url, validAddress) {
                                 
                                 const slimPayload = {
                                     hash: tx.hash,
-                                    from: tx.from,
-                                    to: tx.to,
+                                    contract: validAddress,
                                     blockNumber: Number(block.number)
                                 };
 
@@ -143,7 +142,7 @@ async function startBaselineListener(sessionId, url, validAddress) {
                                     hash: tx.hash,
                                     payload: slimPayload
                                 }, { 
-                                    delay: 500, // TODO
+                                    delay: 6000, // cambiare in 60 secondi, mettere 5 secondi per fare test
                                     removeOnComplete: true,
                                     removeOnFail: false 
                                 });
