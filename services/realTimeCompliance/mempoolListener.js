@@ -1,5 +1,5 @@
 const { Web3 } = require('web3');
-const { txQueue } = require('../../config/redisClient'); 
+const { txQueue, baselineQueue } = require('../../config/redisClient'); 
 const { adaptMempoolTx } = require('../simulationUtils/txAdapter');
 const systemEvents = require('../../config/sse');
 
@@ -97,6 +97,74 @@ async function startMempoolListener(sessionId, url, validAddress, addressFilters
     }
 }
 
+// funzione che ascolta il contratto per controllare se vengono minate nuove transazioni
+async function startBaselineListener(sessionId, url, validAddress) {
+    const options = { reconnect: { auto: true, delay: 5000, maxAttempts: 10 } };
+    const provider = new Web3.providers.WebsocketProvider(url, options);
+    const web3 = new Web3(provider);
+
+    try {
+        const subscription = await web3.eth.subscribe('newBlockHeaders'); // sottoscrizione apposita
+        console.log(`[WebSocket Baseline] Sottoscrizione blocchi avviata per sessione ${sessionId}`);
+
+        // salvo l'iscrizione
+        activeSubscriptions.set(`${sessionId}_baseline`, { subscription, provider, isCapturing: true });
+
+        subscription.on("data", async (blockHeader) => {
+            const session = activeSubscriptions.get(`${sessionId}_baseline`);
+            if (!session || !session.isCapturing) return;
+
+            try {
+                // prendo il blocco intero e cerco per il contratto che sto monitorando
+                const block = await web3.eth.getBlock(blockHeader.number, true);
+                
+                if (block && block.transactions) {
+                    for (const tx of block.transactions) {
+                        if (tx && tx.to && tx.from) {
+                            const toLower = tx.to.toLowerCase();
+                            const fromLower = tx.from.toLowerCase();
+                            const filterAddress = validAddress.toLowerCase();
+
+                            const match = (toLower === filterAddress || fromLower === filterAddress);
+
+                            if (match) {
+                                console.log(`[Baseline] Tx ${tx.hash} minata nel blocco ${block.number}. In coda per storico.`);
+                                
+                                const slimPayload = {
+                                    hash: tx.hash,
+                                    from: tx.from,
+                                    to: tx.to,
+                                    blockNumber: Number(block.number)
+                                };
+
+                                // 60 secondi di delay per evitare danni di REORF
+                                await baselineQueue.add('update-baseline', {
+                                    sessionId: sessionId,
+                                    hash: tx.hash,
+                                    payload: slimPayload
+                                }, { 
+                                    delay: 500, // TODO
+                                    removeOnComplete: true,
+                                    removeOnFail: false 
+                                });
+                            }
+                        }
+                    }
+                }
+            } catch (err) {
+                console.error(`[Baseline Error] Errore parsing blocco ${blockHeader.number}:`, err.message);
+            }
+        });
+
+        subscription.on("error", (error) => {
+            console.error(`[Listener Baseline ${sessionId}] Errore:`, error);
+        });
+
+    } catch (err) {
+        throw new Error(`Inizializzazione baseline listener fallita: ${err.message}`);
+    }
+}
+
 async function stopMempoolListener(sessionId) {
     const session = activeSubscriptions.get(sessionId);
     if (session) {
@@ -104,11 +172,23 @@ async function stopMempoolListener(sessionId) {
         await session.subscription.unsubscribe();
         session.provider.disconnect();
         activeSubscriptions.delete(sessionId);
-        await txQueue.drain(true); // svuoto la coda
     }
+
+    const sessionBaseline = activeSubscriptions.get(`${sessionId}_baseline`);
+    if (sessionBaseline) {
+        sessionBaseline.isCapturing = false;
+        await sessionBaseline.subscription.unsubscribe();
+        sessionBaseline.provider.disconnect();
+        activeSubscriptions.delete(`${sessionId}_baseline`);
+    }
+
+    // svuoto tutto quando si ferma
+    await txQueue.drain(true);
+    await baselineQueue.drain(true);
 }
 
 module.exports = {
     startMempoolListener,
-    stopMempoolListener
+    stopMempoolListener,
+    startBaselineListener
 }

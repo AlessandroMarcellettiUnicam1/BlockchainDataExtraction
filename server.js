@@ -69,7 +69,7 @@ const { error } = require("console");
 const { processSimulation } = require("./services/ExtractionModule/simulationOrchestrator");
 const { getMempoolTxs, getSequentialMempoolTxs, simulateMempoolTxs } = require("./services/ExtractionModule/mempoolSimulator");
 const { net } = require("web3");
-const { startMempoolListener, stopMempoolListener } = require("./services/realTimeCompliance/mempoolListener");
+const { startMempoolListener, stopMempoolListener, startBaselineListener } = require("./services/realTimeCompliance/mempoolListener");
 
 function flattenTransaction(inputData) {
 	 const result = [];
@@ -1763,9 +1763,11 @@ app.post('/api/start-compliance-monitoring', async (req, res) => {
 		startMempoolListener(sessionId, url, validAddress, addressFilters)
 			.catch(err => console.error(`[Listener Error] ${err.message}`));
 
-		// TODO: avvio del worker
+		// avvio il listener del contratto
+		startBaselineListener(sessionId, url, validAddress)
+            .catch(err => console.error(`[Baseline Listener Error] ${err.message}`));
 
-		res.status(200).json({ success: true, message: "Monitoraggio avviato" });
+		res.status(200).json({ success: true, message: "Monitoraggi avviati" });
 	}
 	catch (err) {
 		console.error("Errore avvio monitoraggio:", err);

@@ -25,7 +25,7 @@ const rtcWorker = new Worker('mempool-queue', async (job) => {
     const { sessionId, hash, payload } = job.data;
 
     // simulazione di tre secondi di elaborazione per la simulazione mock
-    // await new Promise(resolve => setTimeout(resolve, 3000));
+    await new Promise(resolve => setTimeout(resolve, 3000));
 
     console.log(`[Worker] Job ${job.id} ricevuto: Transazione ${hash} (Sessione: ${sessionId})`)
 
@@ -41,8 +41,8 @@ const rtcWorker = new Worker('mempool-queue', async (job) => {
         };
 
         console.log(`[Worker] Avvio simulazione per ${hash} verso il target ${targetAddress}...`);
-        const simulationResult = await processSimulation(params, targetAddress, networkData, hash);
-        // const simulationResult = await mockProcessSimulation(params, targetAddress, networkData, hash);
+        //const simulationResult = await processSimulation(params, targetAddress, networkData, hash);
+        const simulationResult = await mockProcessSimulation(params, targetAddress, networkData, hash);
         console.log(`[Worker] Simulazione completata per ${hash}.`);
 
         if (simulationResult.data.status !== "System error") {
@@ -75,13 +75,13 @@ const rtcWorker = new Worker('mempool-queue', async (job) => {
             const singleTxXes = pythonResponse.data.xes_string;
 
             console.log(`[Worker] Eseguo l'append della transazione al Log Base...`);
-            const updatedBaseXes = appendXes(baseXes, singleTxXes);
+            const tempXes = appendXes(baseXes, singleTxXes);
 
-            await redisClient.setex(`session:${sessionId}:xes`, 7200, updatedBaseXes);
-            console.log(`[Worker] XES Base aggiornato su Redis per sessione ${sessionId}.`);
+            //await redisClient.setex(`session:${sessionId}:xes`, 7200, tempXes);
+            //console.log(`[Worker] XES Base aggiornato su Redis per sessione ${sessionId}.`);
 
             const rulePayload = {
-                xes_string: updatedBaseXes,
+                xes_string: tempXes,
                 rule: typeof parsedRule === 'string' ? parsedRule : JSON.stringify(parsedRule),
                 mapping: logMapping
             }
