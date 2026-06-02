@@ -50,7 +50,7 @@ async function processTransaction(tx, mainContract, contractTree, contractAddres
     decodeInput(tx, contractTree)
     try{
         console.log(`Processing transaction: ${tx.hash}`);
-        let transactionLog=await createTransactionLog(tx, mainContract, contractTree, smartContract,extractionType,contractAddress,option,networkData,addressRange);
+        let transactionLog=await createTransactionLog(tx, mainContract, contractTree, smartContract,extractionType,contractAddress,networkData,option,addressRange);
         
         return [];
         
@@ -223,12 +223,12 @@ async function createTransactionLog(tx, mainContract, contractTree, smartContrac
             transactionLog.storageState =storageVal ? storageVal.decodedValues:[];
             transactionLog.internalTxs =storageVal ? storageVal.internalTxs:[];
             let storeAbi = {
-                contractName: contractTree.contractName,
-                abi: contractTree.contractAbi,
-                proxy: contractTree.proxy,
+                contractName: contractTree?.contractName,
+                abi: contractTree?.contractAbi,
+                proxy: contractTree?.proxy,
                 proxyImplementation: '',
-                contractAddress: tx.to,
-                sourceCode: contractTree.sourceCode,
+                contractAddress: tx?.to,
+                sourceCode: contractTree?.sourceCode,
                 compilerVersion: contractTree.compilerVersion
             };
             delete transactionLog['finalShaTraces'];
@@ -656,7 +656,7 @@ async function getTraceStorage(traceDebugged, networkData, functionName, transac
         if(extractionOption.internalTransaction==0){
             internalTxs=await decodeInternalTransaction(internalCalls,smartContract,web3,networkData,transactionHash,blockNumber)
         }else if(extractionOption.internalTransaction==1){
-            internalTxs=await newDecodedInternalTransaction(transactionHash, smartContract, networkData, web3,blockNumber);
+            internalTxs=await newDecodedInternalTransaction(transactionHash, smartContract, networkData, web3,blockNumber,timePerformance);
         }
         let result={
             decodedValues:internalStorage,
@@ -714,7 +714,7 @@ async function getTraceStorageFromErigon(httpStream, networkData,functionName,tr
     let mapForStorage = {};
     let depthToIndexMap = new Map(); // Map depth -> current active index for that depth
     let nextIndex = 1; // Start from 1
-    let index = 0;
+    // index removed: KECCAK256 entries now pushed per-depth via mapForStorage
     let trackBuffer = [];
     let bufferPC = -10;
     let sstoreBuffer = [];
@@ -783,7 +783,7 @@ async function getTraceStorageFromErigon(httpStream, networkData,functionName,tr
             const hexKey = trace.memory[numberLocation];
             const hexStorageIndex = trace.memory[storageIndexLocation];
             
-            mapForStorage[currentIndex].trackBuffer[index] = { hexKey, hexStorageIndex };
+            mapForStorage[currentIndex].trackBuffer.push({ hexKey, hexStorageIndex });
             
         } else if (trace.op === "STOP" || trace.op === "RETURN") {
             for (const slot in trace.storage) {
@@ -793,24 +793,25 @@ async function getTraceStorageFromErigon(httpStream, networkData,functionName,tr
             
         } else if (trace.pc === (bufferPC + 1)) {
             bufferPC = -10;
-            mapForStorage[currentIndex].trackBuffer[index].finalKey = trace.stack[trace.stack.length - 1];
-            keccakBeforeAdd = mapForStorage[currentIndex].trackBuffer[index];
-            index++;
+            const lastIdx = mapForStorage[currentIndex].trackBuffer.length - 1;
+            if (lastIdx < 0) return; // no KECCAK256 entry to attach to
+            mapForStorage[currentIndex].trackBuffer[lastIdx].finalKey = trace.stack[trace.stack.length - 1];
+            keccakBeforeAdd = mapForStorage[currentIndex].trackBuffer[lastIdx];
             
             if (trace.op === "ADD" && 
                 (trace.stack[trace.stack.length - 1] === keccakBeforeAdd.finalKey ||
                  trace.stack[trace.stack.length - 2] === keccakBeforeAdd.finalKey) &&
                 keccakBeforeAdd.hexStorageIndex === "0000000000000000000000000000000000000000000000000000000000000000") {
                 
-                const keyBuff = mapForStorage[currentIndex].trackBuffer[index - 1].hexKey;
-                const slotBuff = mapForStorage[currentIndex].trackBuffer[index - 1].hexStorageIndex;
-                mapForStorage[currentIndex].trackBuffer[index - 1].hexKey = slotBuff;
-                mapForStorage[currentIndex].trackBuffer[index - 1].hexStorageIndex = keyBuff;
+                const keyBuff = mapForStorage[currentIndex].trackBuffer[lastIdx].hexKey;
+                const slotBuff = mapForStorage[currentIndex].trackBuffer[lastIdx].hexStorageIndex;
+                mapForStorage[currentIndex].trackBuffer[lastIdx].hexKey = slotBuff;
+                mapForStorage[currentIndex].trackBuffer[lastIdx].hexStorageIndex = keyBuff;
                 
                 if (nextTrace && nextTrace.stack && nextTrace.stack.length > 0) {
-                    mapForStorage[currentIndex].trackBuffer[index - 1].finalKey = nextTrace.stack[nextTrace.stack.length - 1];
+                    mapForStorage[currentIndex].trackBuffer[lastIdx].finalKey = nextTrace.stack[nextTrace.stack.length - 1];
                 }
-                mapForStorage[currentIndex].trackBuffer[index - 1].indexSum = trace.stack[trace.stack.length - 2];
+                mapForStorage[currentIndex].trackBuffer[lastIdx].indexSum = trace.stack[trace.stack.length - 2];
             }
             
         } else if (trace.op === "SSTORE") {
@@ -857,35 +858,36 @@ async function getTraceStorageFromErigon(httpStream, networkData,functionName,tr
    
     try {
 
-        finalShaTraces = trackBuffer;
+        const publicTrackBuffer = mapForStorage["1"]?.trackBuffer || [];
+        finalShaTraces = publicTrackBuffer;
         
-        for (let i = 0; i < trackBuffer.length; i++) {
-            if (sstoreBuffer.includes(trackBuffer[i].finalKey)) {
+        for (let i = 0; i < publicTrackBuffer.length; i++) {
+            if (sstoreBuffer.includes(publicTrackBuffer[i].finalKey)) {
                 const trace = {
-                    finalKey: trackBuffer[i].finalKey,
-                    hexKey: trackBuffer[i].hexKey,
-                    indexSum: trackBuffer[i].indexSum,
-                    hexStorageIndex: trackBuffer[i].hexStorageIndex
+                    finalKey: publicTrackBuffer[i].finalKey,
+                    hexKey: publicTrackBuffer[i].hexKey,
+                    indexSum: publicTrackBuffer[i].indexSum,
+                    hexStorageIndex: publicTrackBuffer[i].hexStorageIndex
                 };
                 
                 let flag = false;
                 let test = i;
                 
                 while (flag === false) {
-                    if (!(web3.utils.hexToNumber("0x" + trackBuffer[test].hexStorageIndex) < 300)) {
+                    if (!(web3.utils.hexToNumber("0x" + publicTrackBuffer[test].hexStorageIndex) < 300)) {
                         if (test > 0) {
                             test--;
                         } else {
                             flag = true;
                         }
                     } else {
-                        trace.hexStorageIndex = trackBuffer[test].hexStorageIndex;
+                        trace.hexStorageIndex = publicTrackBuffer[test].hexStorageIndex;
                         flag = true;
                         finalShaTraces.push(trace);
                     }
                 }
                 finalShaTraces.push(trace);
-                sstoreBuffer.splice(sstoreBuffer.indexOf(trackBuffer[i].finalKey), 1);
+                sstoreBuffer.splice(sstoreBuffer.indexOf(publicTrackBuffer[i].finalKey), 1);
             }
         }
         for(const singleObject in mapForStorage){
@@ -1042,7 +1044,7 @@ process.on("message", async (data) => {
         await connectDB(networkData.networkName);
         
         // Process the transaction
-        await processTransaction(tx, mainContract, contractTree, contractAddress, smartContract,extractionType,networkData,option,addressRange);
+        await processTransaction(tx, mainContract, contractTree, contractAddress, smartContract,extractionType,option,networkData,addressRange);
 
         // Clean up
         // await mongoose.disconnect();
@@ -1101,4 +1103,3 @@ module.exports = {
     assignStorageToTheInternal,
     decodeInteralTxsStorage
 }
-

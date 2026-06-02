@@ -188,7 +188,8 @@ async function handleAbiFetch(element, addressTo, apiKey, endpoint, web3) {
         element.inputsCall="0x"+element.inputsCall;
     }
     await new Promise((resolve) => setTimeout(resolve, 5000));
-        
+
+    try {
         const callForAbi = await axios.get(
             `${endpoint}&module=contract&action=getsourcecode&address=${addressTo}&apikey=${apiKey}`
         );
@@ -246,10 +247,8 @@ async function handleAbiFetch(element, addressTo, apiKey, endpoint, web3) {
                     
                     if (!element.activity && element.activity==null) {
                         await tryMethodSignature(element, web3);
-                    } else {
-                        storeAbi.proxyImplementation = nextElement.to;
-                        await saveAbi(implementationAbi);
                     }
+                    // Note: no implementationAbi available in this branch; storeAbi is saved below
                 } else {
                     await handleUnverifiedContract(element, web3);
                 }
@@ -273,6 +272,9 @@ async function handleAbiFetch(element, addressTo, apiKey, endpoint, web3) {
             
             success = true;
         }
+    } catch (err) {
+        console.log("handleAbiFetch error for address", addressTo, ":", err.message);
+    }
 }
 /**
  * 
@@ -331,7 +333,7 @@ async function handleAbiFromDbErigon(element, response, web3) {
 async function handleAbiFetchErigon(element, addressTo, apiKey, endpoint, web3) {
     let success = false;
     
-    while (!success) {
+    while (!success ) {
         await new Promise((resolve) => setTimeout(resolve, 5000));
         
         const callForAbi = await axios.get(
@@ -418,6 +420,9 @@ async function handleAbiFetchErigon(element, addressTo, apiKey, endpoint, web3) 
             
             success = true;
         }
+    }
+    if (!success) {
+        console.log(`handleAbiFetchErigon: reached for address ${addressTo}`);
     }
 }
 
