@@ -1,5 +1,11 @@
 const { connectionOptions } = require("../../config/redisClient");
-const { appendXes } = require('../simulationUtils/appendXes')
+const { appendXes } = require('../simulationUtils/appendXes');
+const { connectDB } = require('../../config/db');
+const { Worker } = require('bullmq');
+const { config } = require('dotenv');
+require('dotenv').config();
+
+console.log('[Baseline Worker] Worker inizializzato, in attesa di job in coda...');
 
 (async () => {
     try {
@@ -19,7 +25,6 @@ const baselineWorker = new Worker('baseline-queue', async (job) => {
     4. lo appendo tramite la funzione appendXes
     5. lo sovrascrivo in Redis
     */
-
 
 }, {
     connection: connectionOptions,

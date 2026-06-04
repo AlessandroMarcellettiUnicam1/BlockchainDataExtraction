@@ -1,6 +1,8 @@
 const mongoose = require("mongoose");
 const { connectDB } = require("../../config/db");
-require('dotenv').config();
+//require('dotenv').config();
+const path = require('path');
+require('dotenv').config({ path: path.resolve(__dirname, '../../.env') });
 const JSONStream = require("JSONStream");
 const {getContractTree}=require("../contractUtils/utils")
 // Import necessary modules that were missing
@@ -14,9 +16,7 @@ const { saveTransaction } = require("../../databaseStore");
 const {searchAbi} = require("../../query/query")
 const {saveAbi}=require("../../databaseStore")
 const {decodeTransactionInputs,getEvents,iterateInternalForEvent,decodeInputs,getEventFromErigon,getEventsFromInternal,getEventFromHardHat} = require('../decodingUtils/utils')
-
 const fs = require('fs');
-const path = require('path');
 const https = require('https');
 const http = require('http');
 /**

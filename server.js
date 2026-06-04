@@ -1834,6 +1834,51 @@ app.get('/api/stream-mempool/:sessionId', (req, res) => {
     });
 });
 
+app.post("/api/test-extraction", async (req, res) => {
+    try {
+        // Prendiamo l'intero body come parametri per la funzione
+        const newParams = req.body;
+
+        // Recuperiamo la rete dai parametri (default a Mainnet se non specificata)
+        const targetNetwork = newParams.network || "Mainnet";
+
+        // Connessione al database
+        await connectDB(targetNetwork);
+        console.log(`[Test API] Connessione al DB stabilita per rete: ${targetNetwork}`);
+
+        // Controllo di sicurezza minimo per assicurarci che ci siano indirizzi e blocchi
+        if (!newParams.fromBlock || !newParams.toBlock) {
+            return res.status(400).json({ error: "Specifica 'fromBlock' e 'toBlock' nei parametri." });
+        }
+
+        console.log(`[Test API] Avvio estrazione in memoria con i parametri personalizzati...`);
+
+        // Estrazione in RAM passando direttamente l'oggetto ricevuto da Postman
+        const extractedLogs = await getAllTransactions(null, newParams, true);
+
+        if (!Array.isArray(extractedLogs)) {
+             return res.status(500).json({
+                 success: false,
+                 error: "L'estrazione non ha restituito un array. Controlla i log del server.",
+                 rawResult: extractedLogs
+             });
+        }
+
+        return res.status(200).json({
+            success: true,
+            count: extractedLogs.length,
+            logs: extractedLogs
+        });
+
+    } catch (err) {
+        console.error("[Test API] Extraction error:", err);
+        return res.status(500).json({
+            success: false,
+            error: err.message
+        });
+    }
+});
+
 mempoolQueueEvents.on('completed', ({ jobId, returnvalue }) => {
     // Se il worker ha restituito i dati correttamente...
     if (returnvalue && returnvalue.success && returnvalue.sessionId) {

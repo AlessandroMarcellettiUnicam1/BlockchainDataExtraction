@@ -365,7 +365,7 @@ async function getStorageData(contractTransactions, mainContract, contractTree, 
     }
 }
 
-function runWorkerForTx(tx, mainContract, contractTree, contractAddress, smartContract, option, networkData,returnInMemory = false) {
+function runWorkerForTx(tx, mainContract, contractTree, contractAddress, smartContract, option, networkData,addressRange,returnInMemory = false) {
     const workerPath = path.join(__dirname, 'workerWithOption.js');
     
     return new Promise((resolve, reject) => {

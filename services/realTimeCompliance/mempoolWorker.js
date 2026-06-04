@@ -5,8 +5,6 @@ const { processSimulation, mockProcessSimulation } = require('../ExtractionModul
 const { connectDB } = require('../../config/db');
 const axios = require('axios');
 const { config } = require('dotenv');
-const { net } = require('web3');
-const { network } = require('hardhat');
 require('dotenv').config();
 const { appendXes } = require('../simulationUtils/appendXes')
 
@@ -15,9 +13,9 @@ console.log('[Worker] Worker inizializzato, in attesa di transazioni in coda...'
 (async () => {
     try {
         await connectDB(); 
-        console.log(`[Worker] Connesso a MongoDB con successo.`);
+        console.log(`[Mempool Worker] Connesso a MongoDB con successo.`);
     } catch (err) {
-        console.error(`[Worker] Errore critico di connessione a MongoDB:`, err.message);
+        console.error(`[Mempool Worker] Errore critico di connessione a MongoDB:`, err.message);
         process.exit(1);
     }
 })();
@@ -28,7 +26,7 @@ const mempoolWorker = new Worker('mempool-queue', async (job) => {
     // simulazione di tre secondi di elaborazione per la simulazione mock
     await new Promise(resolve => setTimeout(resolve, 3000));
 
-    console.log(`[Worker] Job ${job.id} ricevuto: Transazione ${hash} (Sessione: ${sessionId})`)
+    console.log(`[Mempool Worker] Job ${job.id} ricevuto: Transazione ${hash} (Sessione: ${sessionId})`)
 
     try {
         const params = payload;

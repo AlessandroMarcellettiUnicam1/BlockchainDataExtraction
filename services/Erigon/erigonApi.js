@@ -437,7 +437,7 @@ async function buildTransactionHierarchy(contractAddressesFrom, contractAddresse
             headers: { "Content-Type": "application/json" }
         });
         
-        traces = response.data.result;
+        traces = response.data.result || [];
     } catch(err){
         console.error("debugInteralTransaction error:", err.message);
         throw err;
