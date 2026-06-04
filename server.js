@@ -11,7 +11,7 @@ const {redisClient} = require("./config/redisClient");
 const axios = require('axios');
 const crypto = require('crypto');
 const systemEvents = require('./config/sse');
-const { connectionOptions, txQueue, mempoolQueueEvents } = require('./config/redisClient');
+const { connectionOptions, txQueue, mempoolQueueEvents, baselineQueueEvents } = require('./config/redisClient');
 
 
 // const { getAllTransactions } = require("./services/main");
@@ -1834,6 +1834,34 @@ app.get('/api/stream-mempool/:sessionId', (req, res) => {
     });
 });
 
+mempoolQueueEvents.on('completed', ({ jobId, returnvalue }) => {
+    // Se il worker ha restituito i dati correttamente...
+    if (returnvalue && returnvalue.success && returnvalue.sessionId) {
+        console.log(`[Server] Risultati per ${returnvalue.hash} ricevuti da Redis. Inoltro via SSE...`);
+        
+        systemEvents.emit(`new-tx-${returnvalue.sessionId}`, {
+            type: 'SIMULATION_RESULT',
+			sessionId: returnvalue.sessionId,
+            hash: returnvalue.hash,
+			complianceResult: returnvalue.complianceResult
+        });
+    }
+});
+
+baselineQueueEvents.on('completed', ({ jobId, returnvalue }) => {
+    if (returnvalue && returnvalue.sessionId) {
+        console.log(`[Server] Esito Baseline Worker per ${returnvalue.hash}. Inoltro via SSE...`);
+        
+        systemEvents.emit(`new-tx-${returnvalue.sessionId}`, {
+            type: 'BASELINE_UPDATE', 
+            sessionId: returnvalue.sessionId,
+            hash: returnvalue.hash,
+            success: returnvalue.success,
+            reason: returnvalue.reason || null
+        });
+    }
+});
+
 app.post("/api/test-extraction", async (req, res) => {
     try {
         // Prendiamo l'intero body come parametri per la funzione
@@ -1875,20 +1903,6 @@ app.post("/api/test-extraction", async (req, res) => {
         return res.status(500).json({
             success: false,
             error: err.message
-        });
-    }
-});
-
-mempoolQueueEvents.on('completed', ({ jobId, returnvalue }) => {
-    // Se il worker ha restituito i dati correttamente...
-    if (returnvalue && returnvalue.success && returnvalue.sessionId) {
-        console.log(`[Server] Risultati per ${returnvalue.hash} ricevuti da Redis. Inoltro via SSE...`);
-        
-        systemEvents.emit(`new-tx-${returnvalue.sessionId}`, {
-            type: 'SIMULATION_RESULT',
-			sessionId: returnvalue.sessionId,
-            hash: returnvalue.hash,
-			complianceResult: returnvalue.complianceResult
         });
     }
 });

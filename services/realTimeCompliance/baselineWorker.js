@@ -1,5 +1,6 @@
 const { connectionOptions } = require("../../config/redisClient");
 const { appendXes } = require('../simulationUtils/appendXes');
+const { getAllTransactions } = require('../ExtractionModule/mainWithOption')
 const { connectDB } = require('../../config/db');
 const { Worker } = require('bullmq');
 const { config } = require('dotenv');
@@ -26,6 +27,89 @@ const baselineWorker = new Worker('baseline-queue', async (job) => {
     5. lo sovrascrivo in Redis
     */
 
+    const { sessionId, hash, payload } = job.data;
+
+    console.log(`[Baseline Worker] Job ${job.id} ricevuto: Transazione minata ${hash} (Sessione: ${sessionId})`);
+
+    try {
+        const newParams = {
+            contractAddressesFrom: [payload.contract], 
+            contractAddressesTo: [payload.contract],
+            fromBlock: payload.blockNumber,
+            toBlock: payload.blockNumber,
+            network: payload.network || "Mainnet", // Supporto dinamico per reti
+            filters: {
+                gasUsed: null,
+                gasPrice: null,
+                timestamp: null,
+                senders: [],
+                functions: []
+            },
+            contractName: "",
+            implementationContractAddress: "",
+            smartContract: null,
+            option: { default: 1, internalStorage: 1, internalTransaction: 1 } 
+        };
+
+        const extractedLogs = await getAllTransactions(null, newParams, true);
+
+        if (!extractedLogs || extractedLogs.length === 0) {
+            console.warn(`[Baseline Worker] Nessun log estratto per il blocco ${payload.blockNumber}. Il blocco potrebbe essere vuoto o non indicizzato. Ignoro il job.`);
+            return { success: false, reason: "EMPTY_EXTRACTION", sessionId, hash };
+        }
+
+        const targetLog = extractedLogs.find(log => log.transactionHash.toLowerCase() === hash.toLowerCase());
+
+        if (!targetLog) {
+            console.warn(`[Baseline Worker] Transazione ${hash} non trovata nei log estratti per il blocco ${payload.blockNumber}. Ignoro il job.`);
+            return { success: false, reason: "TX_NOT_FOUND", sessionId, hash };
+        }
+
+        // recupero dati da redis
+        const configData = await redisClient.get(`session:${sessionId}:config`);
+        const baseXes = await redisClient.get(`session:${sessionId}:xes`);
+
+        if (!configData || !baseXes) {
+            throw new Error("Configurazione o Log Base mancanti in Redis. Impossibile aggiornare lo storico.");
+        }
+
+        const { mapping } = JSON.parse(configData);
+
+        const pythonPayload = {
+            data: [targetLog],
+            case_col: mapping.case_col,
+            activity_col: mapping.activity_col,
+            time_col: mapping.time_col,
+            xes_name: `baseline_tx_${hash}`,
+            extract_columns: false 
+        };
+
+        console.log(`[Baseline Worker] Invio transazione ${hash} a Python per conversione XES...`);
+        const pythonResponse = await axios.post('http://coblockly-backend:8000/api/convertToXes', pythonPayload);
+
+        if (!pythonResponse.data.success) {
+            throw new Error(pythonResponse.data.error || "Errore durante la conversione XES in Python");
+        }
+
+        const singleTxXes = pythonResponse.data.xes_string;
+
+        console.log(`[Baseline Worker] Eseguo l'append della transazione al Log Base storico...`);
+        const updatedXes = appendXes(baseXes, singleTxXes);
+
+        await redisClient.set(`session:${sessionId}:xes`, updatedXes);
+        
+        console.log(`[Baseline Worker] Log Base aggiornato e consolidato su Redis per sessione ${sessionId}.`);
+
+        return { 
+            success: true, 
+            sessionId: sessionId, 
+            hash: hash 
+        };
+    }
+    catch {
+        console.error(`[Baseline Worker] Errore durante l'elaborazione di ${hash}:`, err.message);
+        throw err;
+    }
 }, {
     connection: connectionOptions,
     concurrency: 1 // impostazione per impedire race conditions su letture e scritture di Redis
