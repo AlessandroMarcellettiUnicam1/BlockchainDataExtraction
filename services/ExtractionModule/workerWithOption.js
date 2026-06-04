@@ -1,8 +1,6 @@
 const mongoose = require("mongoose");
 const { connectDB } = require("../../config/db");
-//require('dotenv').config();
-const path = require('path');
-require('dotenv').config({ path: path.resolve(__dirname, '../../.env') });
+require('dotenv').config();
 const JSONStream = require("JSONStream");
 const {getContractTree}=require("../contractUtils/utils")
 // Import necessary modules that were missing
@@ -16,7 +14,9 @@ const { saveTransaction } = require("../../databaseStore");
 const {searchAbi} = require("../../query/query")
 const {saveAbi}=require("../../databaseStore")
 const {decodeTransactionInputs,getEvents,iterateInternalForEvent,decodeInputs,getEventFromErigon,getEventsFromInternal,getEventFromHardHat} = require('../decodingUtils/utils')
+
 const fs = require('fs');
+const path = require('path');
 const https = require('https');
 const http = require('http');
 /**
@@ -68,6 +68,10 @@ function decodeInput(tx,contractTree){
 async function debugTransaction(transactionHash, blockNumber,networkData) {
     let response = null;
     try {
+        if (hre.config.networks[networkData.networkName.toLowerCase()]) {
+             hre.config.networks[networkData.networkName.toLowerCase()].url = networkData.web3Endpoint;
+        }
+        hre.config.networks.hardhat.forking.url = networkData.web3Endpoint;
         await hre.changeNetwork(networkData.networkName, blockNumber)
         const start = new Date()
         response = await hre.network.provider.send("debug_traceTransaction", [
@@ -156,7 +160,7 @@ function makeRpcCallStreaming(url, method, params) {
  * @param {*} option 
  * @returns 
  */
-async function createTransactionLog(tx, mainContract, contractTree, smartContract,extractionType,contractAddress,networkData,option,addressRange) {
+async function createTransactionLog(tx, mainContract, contractTree, smartContract,extractionType,contractAddress,option,networkData,addressRange) {
     let web3=new Web3(networkData.web3Endpoint)
     if(tx.timestamp && tx.timestamp.includes("0x")){
         tx.timeStamp=web3.utils.hexToNumber(tx.timestamp);

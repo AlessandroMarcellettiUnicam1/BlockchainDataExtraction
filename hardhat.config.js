@@ -68,7 +68,15 @@ module.exports = {
   defaultNetwork: "hardhat",
   networks: {
     hardhat: {
+      // Imposta "cancun" per avere il supporto a TSTORE, MCOPY ecc.
+      hardfork: "cancun",
       chains: {
+        1: {
+          hardforkHistory: {
+            shanghai: 17034870,
+            cancun: 19426587
+          },
+        },
         137: {
           hardforkHistory: {
             berlin: 10000000,
@@ -84,20 +92,10 @@ module.exports = {
       },
       forking: {
         url: process.env.WEB3_ALCHEMY_MAINNET_URL,
-        blockNumber: 12427648,
         enabled: true
       },
       chainId: 1
-    },
-    // sepolia: {
-    //   url: "http://127.0.0.1:8545/",
-    //   forking: {
-    //     url: "process.env.WEB3_ALCHEMY_SEPOLIA_URL",
-    //     blockNumber: 5713214,
-    //     enabled: true
-    //   },
-    //   chainId: 11155111
-    // }
+    }
   },
   solidity: "0.8.26",
 };

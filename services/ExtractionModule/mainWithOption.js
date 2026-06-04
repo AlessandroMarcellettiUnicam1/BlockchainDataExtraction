@@ -65,6 +65,10 @@ async function getAllTransactions(oldParams, newParams, returnInMemory = false) 
         default:
 
         }
+
+        if (!networkData.web3Endpoint || !networkData.apiKey) {
+            throw new Error(`Variabili d'ambiente mancanti per il network ${network}. Controlla il file .env e i percorsi di dotenv.`);
+        }
         //contractAddress = proxy address in which storage and txs are made
         //mainContract = implementationContract name
        /* const userLog = {

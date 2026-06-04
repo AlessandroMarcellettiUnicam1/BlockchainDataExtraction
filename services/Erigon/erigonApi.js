@@ -416,7 +416,7 @@ function regroupShatrace(finalShaTraces){
  * transazione padre -> tutte le sue chiamate interne
  */
 async function buildTransactionHierarchy(contractAddressesFrom, contractAddressesTo, fromBlock, toBlock, networkData) {
-    let traces;
+    let traces = [];
     try{
         const rpcUrl = networkData.web3Endpoint;
         const payload = {
@@ -437,7 +437,16 @@ async function buildTransactionHierarchy(contractAddressesFrom, contractAddresse
             headers: { "Content-Type": "application/json" }
         });
         
+        if (response.data.error) {
+            console.warn(`[RPC Warning] Errore da Alchemy per il blocco ${fromBlock}:`, response.data.error.message);
+        }
+
         traces = response.data.result || [];
+
+        if (traces.length === 0) {
+            console.log(`[Erigon API] Nessuna traccia disponibile (o blocco in fase di indicizzazione) per i blocchi ${fromBlock}-${toBlock}`);
+            return []; 
+        }
     } catch(err){
         console.error("debugInteralTransaction error:", err.message);
         throw err;

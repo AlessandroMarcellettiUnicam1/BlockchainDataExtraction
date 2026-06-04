@@ -16,7 +16,7 @@
     "@ethereumjs/common": "^4.0.0",
     "@ethereumjs/vm": "^7.0.0",
     "@moralisweb3/common-evm-utils": "^2.23.1",
-    "@nomicfoundation/hardhat-ethers": "^3.0.6",
+    "@nomicfoundation/hardhat-ethers": "^3.0.5",
     "abi-decoder": "^2.4.0",
     "alchemy-sdk": "^3.4.1",
     "async_hooks": "^1.0.0",
@@ -29,7 +29,9 @@
     "dexie": "^4.4.2",
     "dotenv": "^16.4.5",
     "ethereum-input-data-decoder": "^0.4.2",
+    "ethers": "^6.11.1",
     "express": "^4.21.1",
+    "hardhat": "^2.22.17",
     "install": "^0.13.0",
     "ioredis": "^5.10.1",
     "json-2-csv": "^5.5.1",
@@ -44,7 +46,6 @@
     "web3": "^4.16.0"
   },
   "devDependencies": {
-    "hardhat": "^2.22.6",
     "nodemon": "^3.1.10"
   }
 }

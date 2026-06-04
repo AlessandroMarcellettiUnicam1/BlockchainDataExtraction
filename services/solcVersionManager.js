@@ -1,6 +1,7 @@
 // Convert solidity version from string to array of numbers
 const axios = require('axios')
 const solc = require('solc')
+const https = require('https') // Aggiunto per l'agent HTTPS
 
 const parseVersion = (versionString) => {
     return versionString
@@ -22,8 +23,36 @@ const compareVersions = (v1, v2) => {
 }
 
 async function getAllSolidityVersions() {
-    const response = await axios.get("https://binaries.soliditylang.org/bin/list.json")
-    return {stringVersion: response.data.releases, numberVersion: Object.keys(response.data.releases)}
+    const url = "https://binaries.soliditylang.org/bin/list.json";
+    let retries = 5;
+    let delayMs = 3000;
+
+    const httpsAgent = new https.Agent({ 
+        keepAlive: true,
+        rejectUnauthorized: false 
+    });
+
+    while (retries > 0) {
+        try {
+            const response = await axios.get(url, {
+                httpsAgent,
+                timeout: 15000,
+                headers: { 'Connection': 'keep-alive' }
+            });
+            // Ritorna lo stesso esatto formato del tuo codice originale
+            return {
+                stringVersion: response.data.releases, 
+                numberVersion: Object.keys(response.data.releases)
+            };
+        } catch (error) {
+            console.error(`[Rete] Connessione a SolidityLang fallita. Ritento in ${delayMs/1000}s... (Tentativi rimasti: ${retries - 1})`);
+            retries--;
+            if (retries === 0) {
+                throw new Error(`Impossibile contattare binaries.soliditylang.org: ${error.message}`);
+            }
+            await new Promise(r => setTimeout(r, delayMs)); 
+        }
+    }
 }
 
 function getRemoteVersion(version) {
