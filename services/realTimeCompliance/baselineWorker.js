@@ -1,10 +1,11 @@
-const { connectionOptions } = require("../../config/redisClient");
+const { connectionOptions, redisClient } = require("../../config/redisClient");
 const { appendXes } = require('../simulationUtils/appendXes');
 const { getAllTransactions } = require('../ExtractionModule/mainWithOption')
 const { connectDB } = require('../../config/db');
 const { Worker } = require('bullmq');
 const { config } = require('dotenv');
 require('dotenv').config();
+const axios = require('axios');
 
 console.log('[Baseline Worker] Worker inizializzato, in attesa di job in coda...');
 
@@ -32,12 +33,14 @@ const baselineWorker = new Worker('baseline-queue', async (job) => {
     console.log(`[Baseline Worker] Job ${job.id} ricevuto: Transazione minata ${hash} (Sessione: ${sessionId})`);
 
     try {
+        const testBlockNumber = payload.blockNumber - 2000000;
+
         const newParams = {
             contractAddressesFrom: [payload.contract], 
             contractAddressesTo: [payload.contract],
-            fromBlock: payload.blockNumber,
-            toBlock: payload.blockNumber,
-            network: payload.network || "Mainnet", // Supporto dinamico per reti
+            fromBlock: testBlockNumber,
+            toBlock: testBlockNumber, 
+            network: "Mainnet",
             filters: {
                 gasUsed: null,
                 gasPrice: null,
@@ -58,12 +61,18 @@ const baselineWorker = new Worker('baseline-queue', async (job) => {
             return { success: false, reason: "EMPTY_EXTRACTION", sessionId, hash };
         }
 
-        const targetLog = extractedLogs.find(log => log.transactionHash.toLowerCase() === hash.toLowerCase());
-
+        // REAL: const targetLog = extractedLogs.find(log => log.transactionHash.toLowerCase() === hash.toLowerCase());
+        
+        // MOCK:
+        const mockIndex = parseInt(hash.slice(-6), 16) % extractedLogs.length;
+        const targetLog = extractedLogs[mockIndex];
+        
         if (!targetLog) {
             console.warn(`[Baseline Worker] Transazione ${hash} non trovata nei log estratti per il blocco ${payload.blockNumber}. Ignoro il job.`);
             return { success: false, reason: "TX_NOT_FOUND", sessionId, hash };
         }
+        
+        const mockHash = targetLog.transactionHash;
 
         // recupero dati da redis
         const configData = await redisClient.get(`session:${sessionId}:config`);
@@ -80,11 +89,11 @@ const baselineWorker = new Worker('baseline-queue', async (job) => {
             case_col: mapping.case_col,
             activity_col: mapping.activity_col,
             time_col: mapping.time_col,
-            xes_name: `baseline_tx_${hash}`,
+            xes_name: `baseline_tx_${mockHash}`,
             extract_columns: false 
         };
 
-        console.log(`[Baseline Worker] Invio transazione ${hash} a Python per conversione XES...`);
+        console.log(`[Baseline Worker] Invio transazione ${mockHash} a Python per conversione XES...`);
         const pythonResponse = await axios.post('http://coblockly-backend:8000/api/convertToXes', pythonPayload);
 
         if (!pythonResponse.data.success) {
@@ -103,10 +112,11 @@ const baselineWorker = new Worker('baseline-queue', async (job) => {
         return { 
             success: true, 
             sessionId: sessionId, 
-            hash: hash 
+            //hash: hash 
+            hash: mockHash
         };
     }
-    catch {
+    catch (err) {
         console.error(`[Baseline Worker] Errore durante l'elaborazione di ${hash}:`, err.message);
         throw err;
     }
