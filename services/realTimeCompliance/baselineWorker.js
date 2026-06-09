@@ -91,10 +91,10 @@ const baselineWorker = new Worker('baseline-queue', async (job) => {
             throw new Error(pythonResponse.data.error || "Errore durante la conversione XES in Python");
         }
 
-        const singleTxXes = pythonResponse.data.xes_string;
+        const blockXes = pythonResponse.data.xes_string;
 
         console.log(`[Baseline Worker] Eseguo l'append della transazione al Log Base storico...`);
-        const updatedXes = appendXes(baseXes, singleTxXes);
+        const updatedXes = appendXes(baseXes, blockXes);
 
         await redisClient.set(`session:${sessionId}:xes`, updatedXes);
         

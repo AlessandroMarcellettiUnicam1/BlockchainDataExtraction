@@ -19,6 +19,12 @@ const fs = require('fs');
 const path = require('path');
 const https = require('https');
 const http = require('http');
+
+BigInt.prototype.toJSON = function() {
+    return this.toString();
+};
+
+
 /**
  * 
  * @param {*} tx 
@@ -1001,7 +1007,8 @@ process.on("message", async (data) => {
 
         // Send success message
         if (returnInMemory && transactionLog) {
-            process.send({ status: "done", data: transactionLog });
+            const safeData = JSON.parse(JSON.stringify(transactionLog));
+            process.send({ status: "done", data: safeData });
         } else {
             process.send("done");
         }
