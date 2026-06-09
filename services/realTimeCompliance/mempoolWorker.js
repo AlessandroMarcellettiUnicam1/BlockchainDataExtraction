@@ -24,7 +24,7 @@ const mempoolWorker = new Worker('mempool-queue', async (job) => {
     const { sessionId, hash, payload } = job.data;
 
     // simulazione di tre secondi di elaborazione per la simulazione mock
-    await new Promise(resolve => setTimeout(resolve, 3000));
+    // await new Promise(resolve => setTimeout(resolve, 3000));
 
     console.log(`[Mempool Worker] Job ${job.id} ricevuto: Transazione ${hash} (Sessione: ${sessionId})`)
 

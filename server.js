@@ -1850,14 +1850,13 @@ mempoolQueueEvents.on('completed', ({ jobId, returnvalue }) => {
 
 baselineQueueEvents.on('completed', ({ jobId, returnvalue }) => {
     if (returnvalue && returnvalue.sessionId) {
-        console.log(`[Server] Esito Baseline Worker per ${returnvalue.hash}. Inoltro via SSE...`);
+        console.log(`[Server] Esito Baseline Worker per il blocco ${returnvalue.blockNumber}. Inoltro via SSE...`);
         
         systemEvents.emit(`new-tx-${returnvalue.sessionId}`, {
             type: 'BASELINE_UPDATE', 
             sessionId: returnvalue.sessionId,
-            hash: returnvalue.hash,
+            blockNumber: returnvalue.blockNumber,
             success: returnvalue.success,
-            reason: returnvalue.reason || null
         });
     }
 });

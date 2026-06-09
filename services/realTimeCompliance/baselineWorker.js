@@ -28,18 +28,18 @@ const baselineWorker = new Worker('baseline-queue', async (job) => {
     5. lo sovrascrivo in Redis
     */
 
-    const { sessionId, hash, payload } = job.data;
+    const { sessionId, payload } = job.data;
 
-    console.log(`[Baseline Worker] Job ${job.id} ricevuto: Transazione minata ${hash} (Sessione: ${sessionId})`);
+    console.log(`[Baseline Worker] Job ${job.id} ricevuto: inizio l'estrazione per il blocco ${payload.blockNumber} (Sessione: ${sessionId})`);
 
     try {
-        const testBlockNumber = payload.blockNumber - 2000000;
+        const mockBlockNumber = payload.blockNumber - 2000000;
 
         const newParams = {
             contractAddressesFrom: [payload.contract], 
             contractAddressesTo: [payload.contract],
-            fromBlock: testBlockNumber,
-            toBlock: testBlockNumber, 
+            fromBlock: mockBlockNumber,
+            toBlock: mockBlockNumber, 
             network: "Mainnet",
             filters: {
                 gasUsed: null,
@@ -58,21 +58,12 @@ const baselineWorker = new Worker('baseline-queue', async (job) => {
 
         if (!extractedLogs || extractedLogs.length === 0) {
             console.warn(`[Baseline Worker] Nessun log estratto per il blocco ${payload.blockNumber}. Il blocco potrebbe essere vuoto o non indicizzato. Ignoro il job.`);
-            return { success: false, reason: "EMPTY_EXTRACTION", sessionId, hash };
+            return { 
+                success: false,
+                sessionId: sessionId , 
+                blockNumber: mockBlockNumber 
+            };
         }
-
-        // REAL: const targetLog = extractedLogs.find(log => log.transactionHash.toLowerCase() === hash.toLowerCase());
-        
-        // MOCK:
-        const mockIndex = parseInt(hash.slice(-6), 16) % extractedLogs.length;
-        const targetLog = extractedLogs[mockIndex];
-        
-        if (!targetLog) {
-            console.warn(`[Baseline Worker] Transazione ${hash} non trovata nei log estratti per il blocco ${payload.blockNumber}. Ignoro il job.`);
-            return { success: false, reason: "TX_NOT_FOUND", sessionId, hash };
-        }
-        
-        const mockHash = targetLog.transactionHash;
 
         // recupero dati da redis
         const configData = await redisClient.get(`session:${sessionId}:config`);
@@ -85,15 +76,15 @@ const baselineWorker = new Worker('baseline-queue', async (job) => {
         const { mapping } = JSON.parse(configData);
 
         const pythonPayload = {
-            data: [targetLog],
+            data: extractedLogs,
             case_col: mapping.case_col,
             activity_col: mapping.activity_col,
             time_col: mapping.time_col,
-            xes_name: `baseline_tx_${mockHash}`,
+            xes_name: `baseline_block_${mockBlockNumber}`,
             extract_columns: false 
         };
 
-        console.log(`[Baseline Worker] Invio transazione ${mockHash} a Python per conversione XES...`);
+        console.log(`[Baseline Worker] Invio dati del blocco ${mockBlockNumber} a Python per conversione XES...`);
         const pythonResponse = await axios.post('http://coblockly-backend:8000/api/convertToXes', pythonPayload);
 
         if (!pythonResponse.data.success) {
@@ -112,12 +103,11 @@ const baselineWorker = new Worker('baseline-queue', async (job) => {
         return { 
             success: true, 
             sessionId: sessionId, 
-            //hash: hash 
-            hash: mockHash
+            blockNumber: mockBlockNumber
         };
     }
     catch (err) {
-        console.error(`[Baseline Worker] Errore durante l'elaborazione di ${hash}:`, err.message);
+        console.error(`[Baseline Worker] Errore durante l'elaborazione di ${payload.blockNumber}:`, err.message);
         throw err;
     }
 }, {
@@ -130,7 +120,11 @@ baselineWorker.on('ready', () => {
 });
 
 baselineWorker.on('completed', (job) => {
-    console.log(`[Baseline Worker] Job ${job.id} completato con successo: ${job.returnvalue.hash}`);
+    if (job.returnvalue.success) {
+        console.log(`[Baseline Worker] Job ${job.id} completato con successo: blocco ${job.returnvalue.blockNumber}`);
+    } else {
+        console.log(`[Baseline Worker] Job ${job.id} scartato: Nessun log estratto per il blocco ${job.returnvalue.blockNumber}.`);
+    }
 });
 
 baselineWorker.on('failed', (job, err) => {

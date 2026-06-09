@@ -117,6 +117,8 @@ async function startBaselineListener(sessionId, url, validAddress) {
             try {
                 // prendo il blocco intero e cerco per il contratto che sto monitorando
                 const block = await web3.eth.getBlock(blockHeader.number, true);
+
+                let extraction = false;
                 
                 if (block && block.transactions) {
                     for (const tx of block.transactions) {
@@ -128,27 +130,23 @@ async function startBaselineListener(sessionId, url, validAddress) {
                             const match = (toLower === filterAddress || fromLower === filterAddress);
 
                             if (match) {
-                                console.log(`[Baseline] Tx ${tx.hash} minata nel blocco ${block.number}. In coda per storico.`);
-                                
-                                const slimPayload = {
-                                    hash: tx.hash,
-                                    contract: validAddress,
-                                    blockNumber: Number(block.number)
-                                };
-
-                                // 60 secondi di delay per evitare danni di REORF
-                                await baselineQueue.add('update-baseline', {
-                                    sessionId: sessionId,
-                                    hash: tx.hash,
-                                    payload: slimPayload
-                                }, { 
-                                    delay: 6000, // cambiare in 60 secondi, mettere 5 secondi per fare test
-                                    removeOnComplete: true,
-                                    removeOnFail: false 
-                                });
+                                extraction = true;
+                                break;
                             }
                         }
                     }
+                }
+
+                if (extraction) {
+                    console.log(`[Baseline] Trovate tx rilevanti nel blocco ${block.number}. In coda per estrazione.`);  
+                    
+                    await baselineQueue.add('update-baseline-block', {
+                        sessionId: sessionId,
+                        payload: {
+                            contract: validAddress,
+                            blockNumber: Number(block.number)
+                    }
+                    }, { delay: 6000, removeOnComplete: true });
                 }
             } catch (err) {
                 console.error(`[Baseline Error] Errore parsing blocco ${blockHeader.number}:`, err.message);
