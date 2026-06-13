@@ -1744,7 +1744,8 @@ app.post('/api/start-compliance-monitoring', async (req, res) => {
 			validAddress,
 			mapping,
 			parsedRule,
-			logMapping
+			logMapping,
+			enableMempool
 		} = req.body;
 
 		if (!sessionId || !validAddress) {
@@ -1754,14 +1755,16 @@ app.post('/api/start-compliance-monitoring', async (req, res) => {
 		// salvo mapping e regola che serviranno per il worker
 		await redisClient.set(
             `session:${sessionId}:config`, 
-            JSON.stringify({ mapping, parsedRule, logMapping })
+            JSON.stringify({ mapping, parsedRule, logMapping, enableMempool })
         );
 
 		const url = process.env.WS_ALCHEMY_MAINNET_URL;
 
 		//avvio il listener della mempool
-		startMempoolListener(sessionId, url, validAddress, addressFilters)
-			.catch(err => console.error(`[Listener Error] ${err.message}`));
+		if (enableMempool) {
+			startMempoolListener(sessionId, url, validAddress, addressFilters)
+				.catch(err => console.error(`[Listener Error] ${err.message}`));
+		}
 
 		// avvio il listener del contratto
 		startBaselineListener(sessionId, url, validAddress)
@@ -1857,6 +1860,7 @@ baselineQueueEvents.on('completed', ({ jobId, returnvalue }) => {
             sessionId: returnvalue.sessionId,
             blockNumber: returnvalue.blockNumber,
             success: returnvalue.success,
+			complianceResult: returnvalue.complianceResult
         });
     }
 });

@@ -97,13 +97,26 @@ const baselineWorker = new Worker('baseline-queue', async (job) => {
         const updatedXes = appendXes(baseXes, blockXes);
 
         await redisClient.set(`session:${sessionId}:xes`, updatedXes);
-        
         console.log(`[Baseline Worker] Log Base aggiornato e consolidato su Redis per sessione ${sessionId}.`);
+
+        let complianceResult = null;
+        if (!enableMempool) {
+            console.log(`[Baseline Worker] Mempool disabilitata. Controllo compliance per il blocco ${mockBlockNumber}...`);
+            const rulePayload = {
+                xes_string: updatedXes,
+                rule: typeof parsedRule === 'string' ? parsedRule : JSON.stringify(parsedRule),
+                mapping: logMapping
+            };
+            
+            const ruleResponse = await axios.post('http://coblockly-backend:8000/api/verifyRuleLive', rulePayload);
+            complianceResult = ruleResponse.data;
+        }
 
         return { 
             success: true, 
             sessionId: sessionId, 
-            blockNumber: mockBlockNumber
+            blockNumber: mockBlockNumber,
+            complianceResult: complianceResult
         };
     }
     catch (err) {
