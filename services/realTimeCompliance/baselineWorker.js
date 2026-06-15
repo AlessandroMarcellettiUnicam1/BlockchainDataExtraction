@@ -33,7 +33,7 @@ const baselineWorker = new Worker('baseline-queue', async (job) => {
     console.log(`[Baseline Worker] Job ${job.id} ricevuto: inizio l'estrazione per il blocco ${payload.blockNumber} (Sessione: ${sessionId})`);
 
     try {
-        const mockBlockNumber = payload.blockNumber - 2000000;
+        const mockBlockNumber = payload.blockNumber - 2500000;
 
         const newParams = {
             contractAddressesFrom: [payload.contract], 
@@ -73,7 +73,7 @@ const baselineWorker = new Worker('baseline-queue', async (job) => {
             throw new Error("Configurazione o Log Base mancanti in Redis. Impossibile aggiornare lo storico.");
         }
 
-        const { mapping } = JSON.parse(configData);
+        const { mapping, parsedRule, logMapping, enableMempool } = JSON.parse(configData);
 
         const pythonPayload = {
             data: extractedLogs,
