@@ -1715,7 +1715,7 @@ app.post('/api/generate-base-xes', async (req, res) => {
 		const columns = pythonResponse.data.columns;
 
 		// await redisClient.set(`session:${sessionId}:xes`, xesString);
-		await redisClient.setex(`session:${sessionId}:xes`, 7200, xesString); // creo nuova sessione che scade dopo 2 ore
+		await redisClient.setex(`session:${sessionId}:xes`, 43200, xesString); // creo nuova sessione che scade dopo 12 ore
 
 		res.status(200).json({ 
             success: true, 
