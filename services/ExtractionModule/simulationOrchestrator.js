@@ -783,6 +783,8 @@ async function mockProcessSimulation(params, targetAddress, networkData, hash = 
             status: "Mock"
         };
 
+        await new Promise(resolve => setTimeout(resolve, Math.floor(Math.random() * 9000) + 1000));
+
         return {
             data: transactionLog,
             logs: sessionLogs
@@ -811,6 +813,64 @@ async function mockProcessSimulation(params, targetAddress, networkData, hash = 
         };
     }
 }
+
+async function mockExtraction(blockNumber, contract) {
+    // Liste di dati fittizi per la randomizzazione
+    const functionNames = ["transfer", "approve", "swap", "deposit", "withdraw", "mint", "burn"];
+    const ethValues = ["0x0", "0x0", "0x0", "0x0", "0x38d7ea4c68000", "0xde0b6b3a7640000", "0x1bc16d674ec80000"]; // 0x0 prevalente
+    
+    // Helper per la randomizzazione
+    const getRandomItem = (arr) => arr[Math.floor(Math.random() * arr.length)];
+    const getRandomHex = (size) => [...Array(size)].map(() => Math.floor(Math.random() * 16).toString(16)).join('');
+    const generateRandomAddress = () => "0x" + getRandomHex(40);
+    const generateRandomHash = () => "0x" + getRandomHex(64);
+    const getRandomGas = () => Math.floor(Math.random() * (500000 - 21000 + 1)) + 21000;
+
+    // Genero un numero casuale di transazioni per questo blocco (da 1 a 5)
+    const txCount = Math.floor(Math.random() * 5) + 1;
+    const mockLogs = [];
+
+    for (let i = 0; i < txCount; i++) {
+        const funcName = getRandomItem(functionNames);
+        
+        // Generazione input dinamici base per rendere il log XES più realistico
+        let mockInputs = [];
+        if (funcName === "transfer" || funcName === "approve") {
+            mockInputs = [
+                { inputName: "_to", type: "address", inputValue: generateRandomAddress() },
+                { inputName: "_value", type: "uint256", inputValue: (Math.floor(Math.random() * 10000) * 1e18).toString() }
+            ];
+        }
+
+        const transactionLog = {
+            functionName: funcName,
+            transactionHash: generateRandomHash(),
+            blockNumber: parseInt(blockNumber),
+            contractAddress: contract.toLowerCase(), // Il contratto monitorato è sempre il target (To)
+            sender: generateRandomAddress(),         // Indirizzo generato casualmente (From)
+            gasUsed: getRandomGas(),
+            timestamp: new Date().toISOString(),
+            inputs: mockInputs,
+            value: getRandomItem(ethValues),
+            
+            // Campi pesanti lasciati vuoti per la simulazione rapida
+            storageState: [], 
+            internalTxs: [],  
+            events: [],
+            
+            status: "Success"
+        };
+
+        mockLogs.push(transactionLog);
+    }
+
+    // Ritardo artificiale casuale tra 5000ms (5s) e 15000ms (15s)
+    await new Promise(resolve => setTimeout(resolve, Math.floor(Math.random() * 10000) + 5000));
+
+    return mockLogs;
+}
+
+module.exports = { mockExtraction };
 
 // < -- FUNZIONI COPIATE DAL WORKER -- > 
 // function decodeInput(tx,contractTree) {
@@ -878,5 +938,6 @@ async function mockProcessSimulation(params, targetAddress, networkData, hash = 
 module.exports={
     processSimulation,
     mockProcessSimulation,
-    makeRpcCallStreaming
+    makeRpcCallStreaming,
+    mockExtraction
 }

@@ -1,6 +1,7 @@
 const { connectionOptions, redisClient } = require("../../config/redisClient");
 const { appendXes } = require('../simulationUtils/appendXes');
 const { getAllTransactions } = require('../ExtractionModule/mainWithOption')
+const { mockExtraction } = require('../ExtractionModule/simulationOrchestrator/mockExtraction')
 const { connectDB } = require('../../config/db');
 const { Worker } = require('bullmq');
 const { config } = require('dotenv');
@@ -55,6 +56,7 @@ const baselineWorker = new Worker('baseline-queue', async (job) => {
         };
 
         const extractedLogs = await getAllTransactions(null, newParams, true);
+        const extracedLogs = await mockExtraction(payload.contract, payload.blockNumber);
 
         if (!extractedLogs || extractedLogs.length === 0) {
             console.warn(`[Baseline Worker] Nessun log estratto per il blocco ${payload.blockNumber}. Il blocco potrebbe essere vuoto o non indicizzato. Ignoro il job.`);
@@ -100,7 +102,6 @@ const baselineWorker = new Worker('baseline-queue', async (job) => {
         console.log(`[Baseline Worker] Log Base aggiornato e consolidato su Redis per sessione ${sessionId}.`);
 
         let complianceResult = null;
-        if (!enableMempool) {
             console.log(`[Baseline Worker] Mempool disabilitata. Controllo compliance per il blocco ${mockBlockNumber}...`);
             const rulePayload = {
                 xes_string: updatedXes,
@@ -110,7 +111,6 @@ const baselineWorker = new Worker('baseline-queue', async (job) => {
             
             const ruleResponse = await axios.post('http://coblockly-backend:8000/api/verifyRuleLive', rulePayload);
             complianceResult = ruleResponse.data;
-        }
 
         return { 
             success: true, 

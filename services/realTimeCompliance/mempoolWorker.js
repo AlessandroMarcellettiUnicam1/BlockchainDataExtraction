@@ -23,9 +23,6 @@ console.log('[Worker] Worker inizializzato, in attesa di transazioni in coda...'
 const mempoolWorker = new Worker('mempool-queue', async (job) => {
     const { sessionId, hash, payload } = job.data;
 
-    // simulazione di tre secondi di elaborazione per la simulazione mock
-    // await new Promise(resolve => setTimeout(resolve, 3000));
-
     console.log(`[Mempool Worker] Job ${job.id} ricevuto: Transazione ${hash} (Sessione: ${sessionId})`)
 
     try {
@@ -40,8 +37,8 @@ const mempoolWorker = new Worker('mempool-queue', async (job) => {
         };
 
         console.log(`[Mempool Worker] Avvio simulazione per ${hash} verso il target ${targetAddress}...`);
-        const simulationResult = await processSimulation(params, targetAddress, networkData, hash);
-        //const simulationResult = await mockProcessSimulation(params, targetAddress, networkData, hash);
+        //const simulationResult = await processSimulation(params, targetAddress, networkData, hash);
+        const simulationResult = await mockProcessSimulation(params, targetAddress, networkData, hash);
         console.log(`[Mempool Worker] Simulazione completata per ${hash}.`);
 
         if (simulationResult.data.status !== "System error") {
