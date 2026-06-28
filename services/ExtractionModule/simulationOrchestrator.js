@@ -846,8 +846,8 @@ async function mockExtraction(blockNumber, contract) {
             functionName: funcName,
             transactionHash: generateRandomHash(),
             blockNumber: parseInt(blockNumber),
-            contractAddress: contract.toLowerCase(), // Il contratto monitorato è sempre il target (To)
-            sender: generateRandomAddress(),         // Indirizzo generato casualmente (From)
+            contractAddress: contract.toLowerCase(), 
+            sender: generateRandomAddress(),      
             gasUsed: getRandomGas(),
             timestamp: new Date().toISOString(),
             inputs: mockInputs,
@@ -869,8 +869,6 @@ async function mockExtraction(blockNumber, contract) {
 
     return mockLogs;
 }
-
-module.exports = { mockExtraction };
 
 // < -- FUNZIONI COPIATE DAL WORKER -- > 
 // function decodeInput(tx,contractTree) {

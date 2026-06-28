@@ -1,12 +1,14 @@
 const { connectionOptions, redisClient } = require("../../config/redisClient");
 const { appendXes } = require('../simulationUtils/appendXes');
 const { getAllTransactions } = require('../ExtractionModule/mainWithOption')
-const { mockExtraction } = require('../ExtractionModule/simulationOrchestrator/mockExtraction')
+const { mockExtraction } = require('../ExtractionModule/simulationOrchestrator')
 const { connectDB } = require('../../config/db');
 const { Worker } = require('bullmq');
 const { config } = require('dotenv');
 require('dotenv').config();
 const axios = require('axios');
+const { performance } = require('perf_hooks');
+const { logMetrics } = require('../simulationUtils/performanceMetrics')
 
 console.log('[Baseline Worker] Worker inizializzato, in attesa di job in coda...');
 
@@ -33,6 +35,8 @@ const baselineWorker = new Worker('baseline-queue', async (job) => {
 
     console.log(`[Baseline Worker] Job ${job.id} ricevuto: inizio l'estrazione per il blocco ${payload.blockNumber} (Sessione: ${sessionId})`);
 
+    const tStartGlobal = performance.now();
+
     try {
         const mockBlockNumber = payload.blockNumber - 2500000;
 
@@ -55,8 +59,10 @@ const baselineWorker = new Worker('baseline-queue', async (job) => {
             option: { default: 1, internalStorage: 1, internalTransaction: 1 } 
         };
 
-        const extractedLogs = await getAllTransactions(null, newParams, true);
-        const extracedLogs = await mockExtraction(payload.contract, payload.blockNumber);
+        const tStartExtraction = performance.now();
+        //const extractedLogs = await getAllTransactions(null, newParams, true);
+        const extractedLogs = await mockExtraction( payload.blockNumber, payload.contract);
+        const tEndExtraction = performance.now();
 
         if (!extractedLogs || extractedLogs.length === 0) {
             console.warn(`[Baseline Worker] Nessun log estratto per il blocco ${payload.blockNumber}. Il blocco potrebbe essere vuoto o non indicizzato. Ignoro il job.`);
@@ -87,7 +93,9 @@ const baselineWorker = new Worker('baseline-queue', async (job) => {
         };
 
         console.log(`[Baseline Worker] Invio dati del blocco ${mockBlockNumber} a Python per conversione XES...`);
+        const tStartConversion = performance.now();
         const pythonResponse = await axios.post('http://coblockly-backend:8000/api/convertToXes', pythonPayload);
+        const tEndConversion = performance.now();
 
         if (!pythonResponse.data.success) {
             throw new Error(pythonResponse.data.error || "Errore durante la conversione XES in Python");
@@ -96,21 +104,38 @@ const baselineWorker = new Worker('baseline-queue', async (job) => {
         const blockXes = pythonResponse.data.xes_string;
 
         console.log(`[Baseline Worker] Eseguo l'append della transazione al Log Base storico...`);
+        const tStartAppend = performance.now();
         const updatedXes = appendXes(baseXes, blockXes);
+        const tEndAppend = performance.now();
 
         await redisClient.set(`session:${sessionId}:xes`, updatedXes);
         console.log(`[Baseline Worker] Log Base aggiornato e consolidato su Redis per sessione ${sessionId}.`);
 
         let complianceResult = null;
-            console.log(`[Baseline Worker] Mempool disabilitata. Controllo compliance per il blocco ${mockBlockNumber}...`);
-            const rulePayload = {
-                xes_string: updatedXes,
-                rule: typeof parsedRule === 'string' ? parsedRule : JSON.stringify(parsedRule),
-                mapping: logMapping
-            };
+        console.log(`[Baseline Worker] Mempool disabilitata. Controllo compliance per il blocco ${mockBlockNumber}...`);
+        const rulePayload = {
+            xes_string: updatedXes,
+            rule: typeof parsedRule === 'string' ? parsedRule : JSON.stringify(parsedRule),
+            mapping: logMapping
+        };
             
-            const ruleResponse = await axios.post('http://coblockly-backend:8000/api/verifyRuleLive', rulePayload);
-            complianceResult = ruleResponse.data;
+        const tStartRuleCheck = performance.now();
+        const ruleResponse = await axios.post('http://coblockly-backend:8000/api/verifyRuleLive', rulePayload);
+        const tEndRuleCheck = performance.now();
+        complianceResult = ruleResponse.data;
+
+        const tEndGlobal = performance.now();
+
+        logMetrics('baseline_metrics.csv', {
+            timestamp: new Date().toISOString(),
+            block: payload.blockNumber,
+            extraction_time_ms: (tEndExtraction - tStartExtraction).toFixed(3),
+            conversion_time_ms: (tEndConversion - tStartConversion).toFixed(3),
+            append_time_ms: (tEndAppend - tStartAppend).toFixed(3),
+            rule_time_ms: (tEndRuleCheck - tStartRuleCheck).toFixed(3),
+            total_time_ms: (tEndGlobal - tStartGlobal).toFixed(3)
+        }).catch(err => console.error("Errore scrittura metriche:", err));
+
 
         return { 
             success: true, 
