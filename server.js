@@ -12,6 +12,7 @@ const axios = require('axios');
 const crypto = require('crypto');
 const systemEvents = require('./config/sse');
 const { connectionOptions, txQueue, mempoolQueueEvents, baselineQueueEvents } = require('./config/redisClient');
+const { appendXes } = require('./services/simulationUtils/appendXes')
 
 
 // const { getAllTransactions } = require("./services/main");
@@ -1903,6 +1904,46 @@ app.post("/api/test-extraction", async (req, res) => {
 
     } catch (err) {
         console.error("[Test API] Extraction error:", err);
+        return res.status(500).json({
+            success: false,
+            error: err.message
+        });
+    }
+});
+
+app.post("/api/test-append-xes", async (req, res) => {
+    try {
+        const { baseXes, newXes } = req.body;
+
+        // Controlli di base
+        if (!baseXes || !newXes) {
+            return res.status(400).json({ 
+                success: false, 
+                error: "Mancano i campi 'baseXes' o 'newXes' nel body della richiesta." 
+            });
+        }
+
+        console.log("[Test Endpoint] Avvio test appendXes...");
+
+        // Esecuzione della funzione
+        const result = appendXes(baseXes, newXes);
+
+        // Risposta al client
+        return res.status(200).json({
+            success: true,
+            message: "Append completato con successo",
+            data: {
+                // Restituiamo le lunghezze per comodità visiva
+                updatedXesLength: result.updatedXes.length,
+                miniXesLength: result.miniXesToVerify ? result.miniXesToVerify.length : 0,
+                // I veri e propri log generati
+                miniXesToVerify: result.miniXesToVerify,
+                updatedXes: result.updatedXes
+            }
+        });
+
+    } catch (err) {
+        console.error("[Test Endpoint] Errore in appendXes:", err);
         return res.status(500).json({
             success: false,
             error: err.message

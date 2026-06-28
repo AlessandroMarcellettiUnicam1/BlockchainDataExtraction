@@ -105,8 +105,12 @@ const baselineWorker = new Worker('baseline-queue', async (job) => {
 
         console.log(`[Baseline Worker] Eseguo l'append della transazione al Log Base storico...`);
         const tStartAppend = performance.now();
-        const updatedXes = appendXes(baseXes, blockXes);
+        const {updatedXes, miniXesToVerify} = appendXes(baseXes, blockXes);
         const tEndAppend = performance.now();
+
+        if (!miniXesToVerify) {
+             throw new Error("Errore durante l'isolamento della traccia XES modificata.");
+        }
 
         await redisClient.set(`session:${sessionId}:xes`, updatedXes);
         console.log(`[Baseline Worker] Log Base aggiornato e consolidato su Redis per sessione ${sessionId}.`);
@@ -114,7 +118,7 @@ const baselineWorker = new Worker('baseline-queue', async (job) => {
         let complianceResult = null;
         console.log(`[Baseline Worker] Mempool disabilitata. Controllo compliance per il blocco ${mockBlockNumber}...`);
         const rulePayload = {
-            xes_string: updatedXes,
+            xes_string: miniXesToVerify,
             rule: typeof parsedRule === 'string' ? parsedRule : JSON.stringify(parsedRule),
             mapping: logMapping
         };

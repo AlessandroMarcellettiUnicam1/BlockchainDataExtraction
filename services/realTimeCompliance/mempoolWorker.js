@@ -80,14 +80,14 @@ const mempoolWorker = new Worker('mempool-queue', async (job) => {
 
             console.log(`[Mempool Worker] Eseguo l'append della transazione al Log Base...`);
             const tStartAppend = performance.now();
-            const tempXes = appendXes(baseXes, singleTxXes);
+            const { updatedXes, miniXesToVerify } = appendXes(baseXes, singleTxXes);
             const tEndAppend = performance.now();
 
             //await redisClient.setex(`session:${sessionId}:xes`, 7200, tempXes);
             //console.log(`[Worker] XES Base aggiornato su Redis per sessione ${sessionId}.`);
 
             const rulePayload = {
-                xes_string: tempXes,
+                xes_string: miniXesToVerify,
                 rule: typeof parsedRule === 'string' ? parsedRule : JSON.stringify(parsedRule),
                 mapping: logMapping
             }
