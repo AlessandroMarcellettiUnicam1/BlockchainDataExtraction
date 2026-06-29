@@ -8,6 +8,15 @@ const multer = require("multer");
 const jsonToCsv = require("json-2-csv");
 const jp = require("jsonpath");
 
+//0000000000000000000000000000000000000000000000000000000000
+const readline = require('readline');
+const os = require('os');
+
+const { chain } = require("stream-chain");
+const { parser } = require("stream-json");
+const { streamArray } = require("stream-json/streamers/StreamArray");
+//0000000000000000000000000000000000000000000000000000000000
+
 // const { getAllTransactions } = require("./services/main");
 const { getOneTransaction } = require("./services/mainOnyTransaction")
 const { getAllTransactions }=require("./services/ExtractionModule/mainWithOption")
@@ -657,26 +666,24 @@ app.post("/api/ocelMap", (req, res) => {
 
 //OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOO
 
-  app.post("/api/xes/keys", upload.single("jsonFile"), async (req, res) => {
+app.post("/api/xes/keys", upload.single("jsonFile"), async (req, res) => {
 	console.log("HIT /api/xes/keys");
 	try {
 		if (!req.file) {
 			return res.status(400).json({ message: "Missing jsonFile" });
 		}
 
-		const raw = fs.readFileSync(req.file.path, "utf8");
-		const jsonToTranslate = JSON.parse(raw);
-
-		const firstItem = Array.isArray(jsonToTranslate)
-			? jsonToTranslate[0]
-			: jsonToTranslate;
+		// Legge a flusso solo il primo oggetto transazione del file JSON
+		const firstItem = await getFirstJsonObject(req.file.path);
 
 		if (!firstItem || typeof firstItem !== "object") {
 			return res.status(400).json({ message: "Invalid JSON structure" });
 		}
 
+		
 		const keys = Array.from(extractKeysFromSample(firstItem)).sort();
 		res.json({ keys });
+
 	} catch (error) {
 		console.error("Error extracting keys:", error);
 		res.status(500).json({
@@ -687,31 +694,108 @@ app.post("/api/ocelMap", (req, res) => {
 			fs.unlink(req.file.path, () => {});
 		}
 	}
-}); 
+});
+
+// Funzione helper per la chiamata
+function getFirstJsonObject(filePath) {
+	return new Promise((resolve, reject) => {
+		const rl = readline.createInterface({
+			input: fs.createReadStream(filePath),
+			crlfDelay: Infinity
+		});
+
+		let buffer = "";
+		let openBrackets = 0;
+		let foundObject = false;
+
+		rl.on('line', (line) => {
+			const trimmed = line.trim();
+			if (!trimmed) return;
+
+			// Rimuove la parentesi dell'array iniziale se presente sulla prima riga
+			if (!foundObject && trimmed.startsWith('[')) {
+				buffer += trimmed.substring(1);
+			} else {
+				buffer += line + "\n";
+			}
+
+			// Monitora l'apertura e chiusura delle parentesi graffe
+			for (let i = 0; i < line.length; i++) {
+				if (line[i] === '{') {
+					openBrackets++;
+					foundObject = true;
+				} else if (line[i] === '}') {
+					openBrackets--;
+				}
+			}
+
+			// Se l'oggetto principale è completo le graffe si azzerano
+			if (foundObject && openBrackets === 0) {
+				rl.close();
+			}
+		});
+
+		rl.on('close', () => {
+			try {
+				let jsonString = buffer.trim();
+				
+				// Rimuove la virgola finale se lo stream si è interrotto dopo la chiusura del primo oggetto
+				if (jsonString.endsWith(',')) {
+					jsonString = jsonString.slice(0, -1);
+				}
+
+				const parsed = JSON.parse(jsonString);
+				resolve(parsed);
+			} catch (err) {
+				reject(new Error("Impossibile fare il parsing del primo elemento JSON"));
+			}
+		});
+
+		rl.on('error', (err) => reject(err));
+	});
+}
 
  app.post("/api/xes", upload.single("jsonFile"), async (req, res) => {
   try {
+    console.log("========== START /api/xes ==========");
+
     if (!req.file) {
       return res.status(400).json({ message: "Missing jsonFile" });
     }
 
-    const jsonToTranslate = JSON.parse(fs.readFileSync(req.file.path, "utf8"));
+    console.log("Uploaded file:", req.file.originalname);
+    const stats = fs.statSync(req.file.path);
+    console.log("File size:", (stats.size / 1024 / 1024).toFixed(2), "MB");
+
     const objectsToXes = JSON.parse(req.body.objectsToXes || "{}");
     const { caseId, activityKey, timestamp } = objectsToXes;
 
-    const xes = {
-      xesString: jsonToXes(
-        jsonToTranslate,
-        caseId?.value,
-        activityKey?.value,
-        timestamp?.value
-      ),
-    };
+    console.log("Starting Streaming XES conversion...");
 
-    res.send(xes);
+    // Esegue la conversione leggendo direttamente il file in streaming
+    const outputPath = await jsonToXes(
+      req.file.path,
+      caseId?.value,
+      activityKey?.value,
+      timestamp?.value
+    );
+
+    console.log("XES successfully generated:", outputPath);
+    
+    // Invia il file convertito al client per il download
+    res.download(outputPath);
+
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: error.message || "Failed to create XES" });
+    console.error("Error in /api/xes:", error);
+    res.status(500).json({
+      message: error.message || "Failed to create XES"
+    });
+  } finally {
+    // Il file viene rimosso solo dopo che res.download ha finito (gestito internamente o nel callback)
+    // Per sicurezza con res.download è meglio pulire il file dopo l'invio:
+    if (req.file?.path) {
+      fs.unlink(req.file.path, () => {});
+    }
   }
 });
 //OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOO
@@ -1300,110 +1384,157 @@ function getValueByKey(row, key) {
 	return undefined;
 }
 
-function jsonToXes(jsonToTranslate, caseIdKey, activityKey, timestampKey = "") {
-	console.log("[XES] Conversion started");
-	console.log("[XES] caseIdKey:", caseIdKey);
-	console.log("[XES] activityKey:", activityKey);
-	console.log("[XES] timestampKey:", timestampKey);
+function jsonToXes(filePath, caseIdKey, activityKey, timestampKey = "") {
+    return new Promise((resolve, reject) => {
+        console.log("jsonToXes START. Memory:", process.memoryUsage().heapUsed / 1024 / 1024, "MB");
 
-	const rows = buildRowList(jsonToTranslate);
-	console.log("[XES] rows prepared:", rows.length);
-	if (rows.length > 0) {
-		console.log("[XES] first row keys sample:", Object.keys(rows[0]).slice(0, 25));
-	}
+        const traces = new Map();
+        
+        const rl = readline.createInterface({
+            input: fs.createReadStream(filePath),
+            crlfDelay: Infinity
+        });
 
-	const traces = new Map();
+        let currentObjectBuffer = "";
+        let openBrackets = 0;
+        let foundObject = false;
 
-	rows.forEach((row, index) => {
-		const caseValue = getValueByKey(row, caseIdKey);
-		const activityValue = getValueByKey(row, activityKey);
-		const timestampValue = timestampKey ? getValueByKey(row, timestampKey) : null;
+        rl.on('line', (line) => {
+            const trimmed = line.trim();
+            if (!trimmed) return;
 
-		if (caseValue == null || activityValue == null) {
-			console.log("[XES] skipped row", index, {
-				caseValue,
-				activityValue,
-				timestampValue,
-			});
-			return;
-		}
+            // Rimuove la parentesi quadra dell'array iniziale `[`
+            if (!foundObject && trimmed.startsWith('[')) {
+                currentObjectBuffer += trimmed.substring(1) + "\n";
+            } else {
+                currentObjectBuffer += line + "\n";
+            }
 
-		const traceKey = typeof caseValue === "object" ? JSON.stringify(caseValue) : String(caseValue);
+            // Conta l'apertura e chiusura delle parentesi per isolare il singolo blocco transazione
+            for (let i = 0; i < line.length; i++) {
+                if (line[i] === '{') {
+                    openBrackets++;
+                    foundObject = true;
+                } else if (line[i] === '}') {
+                    openBrackets--;
+                }
+            }
 
-		if (!traces.has(traceKey)) {
-			traces.set(traceKey, []);
-		}
+            // Abbiamo un singolo oggetto transazione completo e isolato
+            if (foundObject && openBrackets === 0) {
+                try {
+                    let jsonString = currentObjectBuffer.trim();
+                    if (jsonString.endsWith(',')) {
+                        jsonString = jsonString.slice(0, -1); // Rimuove la virgola di separazione dell'array
+                    }
 
-		traces.get(traceKey).push({
-			row,
-			activityValue,
-			timestampValue,
-		});
-	});
+                    const rawRow = JSON.parse(jsonString);
+                    
+                    // IMPORTANTE: Applichiamo la tua funzione di flattening originale su una singola riga
+                    const flattenedRow = flattenRowForXes(rawRow);
 
-	console.log("[XES] traces built:", traces.size);
+                    const caseValue = getValueByKey(flattenedRow, caseIdKey);
+                    const activityValue = getValueByKey(flattenedRow, activityKey);
+                    const timestampValue = timestampKey ? getValueByKey(flattenedRow, timestampKey) : null;
 
-	for (const [traceKey, events] of traces.entries()) {
-		events.sort((a, b) => {
-			const ta = normalizeTimestamp(a.timestampValue);
-			const tb = normalizeTimestamp(b.timestampValue);
+                    if (caseValue != null && activityValue != null) {
+                        const traceKey = typeof caseValue === "object" ? JSON.stringify(caseValue) : String(caseValue);
 
-			if (!ta && !tb) return 0;
-			if (!ta) return 1;
-			if (!tb) return -1;
-			return new Date(ta).getTime() - new Date(tb).getTime();
-		});
+                        if (!traces.has(traceKey)) {
+                            traces.set(traceKey, []);
+                        }
 
-		console.log("[XES] trace:", traceKey, "events:", events.length);
-	}
+                        traces.get(traceKey).push({
+                            row: flattenedRow,
+                            activityValue,
+                            timestampValue,
+                        });
+                    }
+                } catch (e) {
+                    // Salta record corrotti o righe di formattazione senza interrompere il flusso di 1GB
+                }
 
-	const xmlParts = [];
-	for (const [traceKey, events] of traces.entries()) {
-		xmlParts.push(`\t<trace>`);
-		xmlParts.push(`\t\t<string key='concept:name' value='${escapeXmlAttrSingleQuoted(traceKey)}'/>`);
+                // Reset per la transazione successiva
+                currentObjectBuffer = "";
+                foundObject = false;
+            }
+        });
 
-		events.forEach((event, eventIndex) => {
-			xmlParts.push(`\t\t<event>`);
+        rl.on('close', () => {
+            console.log("File parsed. Sorting traces... Total unique traces:", traces.size);
 
-			const conceptName =
-				typeof event.activityValue === "object"
-					? JSON.stringify(event.activityValue)
-					: String(event.activityValue);
+            // Ordinamento temporale delle tracce
+            for (const [traceKey, events] of traces.entries()) {
+                events.sort((a, b) => {
+                    const ta = normalizeTimestamp(a.timestampValue);
+                    const tb = normalizeTimestamp(b.timestampValue);
+                    if (!ta && !tb) return 0;
+                    if (!ta) return 1;
+                    if (!tb) return -1;
+                    return new Date(ta).getTime() - new Date(tb).getTime();
+                });
+            }
 
-			xmlParts.push(`\t\t\t<string key='concept:name' value='${escapeXmlAttrSingleQuoted(conceptName)}'/>`);
+            console.log("Writing XES File to disk...");
+            const outputPath = path.join(os.tmpdir(), `xes-${Date.now()}.xes`);
+            const stream = fs.createWriteStream(outputPath);
 
-			const normalizedTimestamp = normalizeTimestamp(event.timestampValue);
-			if (normalizedTimestamp) {
-				xmlParts.push(
-					`\t\t\t<date key='time:timestamp' value='${escapeXmlAttrSingleQuoted(normalizedTimestamp)}'/>`
-				);
-			}
+            stream.write(`<?xml version="1.0" encoding="UTF-8"?>\n`);
+            stream.write(`<log xmlns="http://xes-standard.org" xes.version="1.0" xes.features="nested-attributes">\n`);
 
-			for (const [key, value] of Object.entries(event.row)) {
-				if (key === caseIdKey || key === activityKey || key === timestampKey) continue;
+            let traceCounter = 0;
 
-				const attr = xesAttribute(key, value);
-				if (attr) xmlParts.push(attr);
-			}
+            for (const [traceKey, events] of traces.entries()) {
+                traceCounter++;
+                
+                stream.write(`\t<trace>\n`);
+                stream.write(`\t\t<string key='concept:name' value='${escapeXmlAttrSingleQuoted(traceKey)}'/>\n`);
 
-			console.log(
-				`[XES] trace ${traceKey} event ${eventIndex} attributes:`,
-				Object.keys(event.row).length
-			);
+                events.forEach((event) => {
+                    stream.write(`\t\t<event>\n`);
 
-			xmlParts.push(`\t\t</event>`);
-		});
+                    const conceptName = typeof event.activityValue === "object"
+                        ? JSON.stringify(event.activityValue)
+                        : String(event.activityValue);
 
-		xmlParts.push(`\t</trace>`);
-	}
+                    stream.write(`\t\t\t<string key='concept:name' value='${escapeXmlAttrSingleQuoted(conceptName)}'/>\n`);
 
-	let finalResult = `<?xml version="1.0" encoding="UTF-8"?>\n<log xmlns="http://www.xes-standard.org/" xes.version="1.0" xes.features="nested-attributes">\n`;
-	finalResult += xmlParts.join("\n");
-	finalResult += `\n</log>`;
+                    const normalizedTimestamp = normalizeTimestamp(event.timestampValue);
+                    if (normalizedTimestamp) {
+                        stream.write(`\t\t\t<date key='time:timestamp' value='${escapeXmlAttrSingleQuoted(normalizedTimestamp)}'/>\n`);
+                    }
 
-	console.log("[XES] Conversion finished. XML length:", finalResult.length);
-	return finalResult;
+                    // Esporta tutti gli attributi appiattiti
+                    for (const [key, value] of Object.entries(event.row)) {
+                        if (key === caseIdKey || key === activityKey || key === timestampKey) continue;
+
+                        const attr = xesAttribute(key, value);
+                        if (attr) {
+                            stream.write(`${attr}\n`);
+                        }
+                    }
+
+                    stream.write(`\t\t</event>\n`);
+                });
+
+                stream.write(`\t</trace>\n`);
+            }
+
+            stream.write(`</log>\n`);
+            stream.end();
+
+            stream.on('finish', () => {
+                console.log("XES Stream process completed.");
+                resolve(outputPath);
+            });
+
+            stream.on('error', (err) => reject(err));
+        });
+
+        rl.on('error', (err) => reject(err));
+    });
 }
+
 //OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOO
 
 app.post("/jsonocel-download", (req, res) => {
