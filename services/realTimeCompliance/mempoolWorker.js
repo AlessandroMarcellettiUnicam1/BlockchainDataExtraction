@@ -42,8 +42,8 @@ const mempoolWorker = new Worker('mempool-queue', async (job) => {
 
         console.log(`[Mempool Worker] Avvio simulazione per ${hash} verso il target ${targetAddress}...`);
         const tStartSim = performance.now();
-        //const simulationResult = await processSimulation(params, targetAddress, networkData, hash);
-        const simulationResult = await mockProcessSimulation(params, targetAddress, networkData, hash);
+        const simulationResult = await processSimulation(params, targetAddress, networkData, hash);
+        //const simulationResult = await mockProcessSimulation(params, targetAddress, networkData, hash);
         const tEndSim = performance.now();
         console.log(`[Mempool Worker] Simulazione completata per ${hash}.`);
 

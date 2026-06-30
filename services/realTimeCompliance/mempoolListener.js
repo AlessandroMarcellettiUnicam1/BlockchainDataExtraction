@@ -23,7 +23,7 @@ async function startMempoolListener(sessionId, url, validAddress, addressFilters
 
     try {
         const subscription = await web3.eth.subscribe('newPendingTransactions');
-        console.log(`[WebSocket] Sottoscrizione avviata con successo per sessione ${sessionId}`); // LOG 1
+        console.log(`[WebSocket Memoool] Sottoscrizione avviata con successo per sessione ${sessionId}`); // LOG 1
 
         activeSubscriptions.set(sessionId, { subscription, provider, isCapturing: true});
 
@@ -48,7 +48,8 @@ async function startMempoolListener(sessionId, url, validAddress, addressFilters
 
                 try {
                     const tx = await web3.eth.getTransaction(currentHash);
-
+                    //console.log(tx);
+                    
                     if (tx && tx.to && tx.from) {
                         // check dei filtri
 
@@ -69,6 +70,7 @@ async function startMempoolListener(sessionId, url, validAddress, addressFilters
                         if (match) {
                             console.log(`[Match] La transazione da ${tx.to} a ${tx.from} ha fatto match`);
                             const adaptedPayload = adaptMempoolTx(tx);
+                            //console.log(adaptedPayload);
 
                             // aggiungo la transazione in coda
                             await txQueue.add('simulate-tx', {
@@ -79,9 +81,6 @@ async function startMempoolListener(sessionId, url, validAddress, addressFilters
                                     removeOnComplete: true,
                                     removeOnFail: false 
                                 });
-
-                            // invio la transazione al canale per trasmetterla dinamicamente al frontend
-                            systemEvents.emit(`new-tx-${sessionId}`, tx);
                         }
                     }
                 }

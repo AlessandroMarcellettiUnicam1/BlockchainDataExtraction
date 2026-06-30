@@ -1771,7 +1771,10 @@ app.post('/api/start-compliance-monitoring', async (req, res) => {
 		startBaselineListener(sessionId, url, validAddress)
             .catch(err => console.error(`[Baseline Listener Error] ${err.message}`));
 
-		res.status(200).json({ success: true, message: "Monitoraggi avviati" });
+		res.status(200).json({ 
+			success: true, 
+			message: "Monitoraggi avviati"
+		});
 	}
 	catch (err) {
 		console.error("Errore avvio monitoraggio:", err);

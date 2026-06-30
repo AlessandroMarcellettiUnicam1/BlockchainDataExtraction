@@ -56,12 +56,12 @@ const baselineWorker = new Worker('baseline-queue', async (job) => {
             contractName: "",
             implementationContractAddress: "",
             smartContract: null,
-            option: { default: 1, internalStorage: 1, internalTransaction: 1 } 
+            option: { default: 1, internalStorage: 1, internalTransaction: 0 } 
         };
 
         const tStartExtraction = performance.now();
-        //const extractedLogs = await getAllTransactions(null, newParams, true);
-        const extractedLogs = await mockExtraction( payload.blockNumber, payload.contract);
+        const extractedLogs = await getAllTransactions(null, newParams, true);
+        //const extractedLogs = await mockExtraction( payload.blockNumber, payload.contract);
         const tEndExtraction = performance.now();
 
         if (!extractedLogs || extractedLogs.length === 0) {
