@@ -12,30 +12,38 @@ const { fork } = require("child_process");
  * @param {*} compilerVersion 
  * @returns 
  */
-function compileInChildProcess(input, compilerVersion) {
+function compileInChildProcess(input, compxsilerVersion) {
     const workerPath = path.join(__dirname, "solcWorker.js");
     return new Promise((resolve, reject) => {
         const worker = fork(workerPath, [], {
             execArgv: ["--max-old-space-size=4096", "--expose-gc"],
         });
 
+        let settled = false;
+
         worker.send({ input, compilerVersion });
 
         worker.on("message", (msg) => {
+            if (settled) return;
+            settled = true;
             if (msg.output) {
-                resolve(msg.output);  
+                resolve(msg.output);
             } else if (msg.error) {
                 reject(new Error(msg.error));
             }
         });
 
         worker.on("exit", (code, signal) => {
+            if (settled) return;
+            settled = true;
             if (code !== 0) {
                 reject(new Error(`Worker exited with code ${code} and signal ${signal}`));
             }
         });
 
         worker.on("error", (err) => {
+            if (settled) return;
+            settled = true;
             reject(err);
         });
     });
@@ -179,7 +187,7 @@ async function getCompiledData(contracts, contractName,compilerVerion) {
         return {};
     }
     const output = solcSnapshot;
-    contractCompiled = output
+    let contractCompiled = output
     const source = JSON.parse(output).sources;
 
     //get all storage variable for contract, including inherited ones

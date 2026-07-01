@@ -4,7 +4,7 @@ const { saveAbi } = require("../databaseStore");
 const { connectDB } = require("../config/db");
 const { getEventsFromInternal }= require("./decodingUtils/utils")
 const InputDataDecoder = require("ethereum-input-data-decoder");
-
+let timePerformance={};
 /**
  * 
  * @param {*} element 
@@ -188,7 +188,8 @@ async function handleAbiFetch(element, addressTo, apiKey, endpoint, web3) {
         element.inputsCall="0x"+element.inputsCall;
     }
     await new Promise((resolve) => setTimeout(resolve, 5000));
-        
+
+    try {
         const callForAbi = await axios.get(
             `${endpoint}&module=contract&action=getsourcecode&address=${addressTo}&apikey=${apiKey}`
         );
@@ -246,10 +247,8 @@ async function handleAbiFetch(element, addressTo, apiKey, endpoint, web3) {
                     
                     if (!element.activity && element.activity==null) {
                         await tryMethodSignature(element, web3);
-                    } else {
-                        storeAbi.proxyImplementation = nextElement.to;
-                        await saveAbi(implementationAbi);
                     }
+                    // Note: no implementationAbi available in this branch; storeAbi is saved below
                 } else {
                     await handleUnverifiedContract(element, web3);
                 }
@@ -273,6 +272,9 @@ async function handleAbiFetch(element, addressTo, apiKey, endpoint, web3) {
             
             success = true;
         }
+    } catch (err) {
+        console.log("handleAbiFetch error for address", addressTo, ":", err.message);
+    }
 }
 /**
  * 
@@ -287,6 +289,7 @@ async function handleAbiFromDbErigon(element, response, web3) {
         return;
     }
     if (response.proxy === '1' && response.proxyImplementation!='') {
+        const timeBeforeDecodingInput=Date.now();
         let query = { contractAddress: response.proxyImplementation.toLowerCase() };
         let responseImplementation = await searchAbi(query);
 
@@ -299,7 +302,9 @@ async function handleAbiFromDbErigon(element, response, web3) {
         } else {
             await tryMethodSignature(element, web3);
         }
+       
     }else{
+        const timeBeforeDecodingInput=Date.now();
         const abiFromDb = JSON.parse(response.abi);
         if(response.abi!='[]'){
             decodeInputs(element, abiFromDb, web3, response.contractName);  
@@ -328,7 +333,7 @@ async function handleAbiFromDbErigon(element, response, web3) {
 async function handleAbiFetchErigon(element, addressTo, apiKey, endpoint, web3) {
     let success = false;
     
-    while (!success) {
+    while (!success ) {
         await new Promise((resolve) => setTimeout(resolve, 5000));
         
         const callForAbi = await axios.get(
@@ -415,6 +420,9 @@ async function handleAbiFetchErigon(element, addressTo, apiKey, endpoint, web3) 
             
             success = true;
         }
+    }
+    if (!success) {
+        console.log(`handleAbiFetchErigon: reached for address ${addressTo}`);
     }
 }
 
@@ -554,17 +562,28 @@ async function debugInternalTransaction(transactionHash, web3Endpoint) {
  * @param {*} web3 
  * @returns 
  */
-async function newDecodedInternalTransaction(transactionHash, smartContract, networkData, web3,blockNumber) {
+async function newDecodedInternalTransaction(transactionHash, smartContract, networkData, web3,blockNumber,parTimePerformance) {
+    timePerformance=parTimePerformance;
+    //TODO: prendo tempo da qui 
+    const timeGetDebugInternal=Date.now();
     const internalCalls = await debugInternalTransaction(transactionHash, networkData.web3Endpoint);
-    
+    const timeEndGetDebugInternal=Date.now();
+    timePerformance.time_debug_trace_internal=timeEndGetDebugInternal-timeGetDebugInternal;
+    //fino a qui e questo è la debug 
+    //Tempo intenral da qui 
+
+    //per la decode degli input stampare il tempo della decode degli input per capire se è possibile omettere il valore
     if (!smartContract && internalCalls) {
         let seenEvent = new Set();
+        const timeStartGetCodeInternal=Date.now();
         await connectDB(networkData.networkName);
         await decodeInternalRecursive(internalCalls, smartContract, networkData, web3, 0, "0",transactionHash,blockNumber,seenEvent);
+        const timeEndCodeInternal=Date.now()
+        timePerformance.time_getCode_allInternalContracts_decode=timeEndCodeInternal-timeStartGetCodeInternal;
     } else {
         console.log("smart contract uploaded manually");
     }
-    
+    //a qui e sono le internal
     return internalCalls;
 }
 
