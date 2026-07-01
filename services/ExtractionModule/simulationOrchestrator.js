@@ -96,28 +96,11 @@ async function processSimulation(params, targetAddress, networkData, hash = null
 async function createSimulatedTransactionLog(rpcParams, mainContract, contractTree, networkData, hash = null)  {
     let web3 = new Web3(networkData.web3Endpoint);
     const txObject = rpcParams[0];
-    const blockRef = rpcParams[1];
-    let resolvedBlockNumber = blockRef;
-
-    try {
-        const blockInfo = await web3.eth.getBlock(blockRef);
-
-        if (blockInfo && blockInfo.number !== undefined && blockInfo.number !== null) {
-            resolvedBlockNumber = Number(blockInfo.number);
-        } else if (typeof blockRef === 'string' && blockRef.startsWith("0x")) {
-            resolvedBlockNumber = web3.utils.hexToNumber(blockRef);
-        }
-    }
-    catch (err) {
-        if (typeof blockRef === 'string' && blockRef.startsWith("0x")) {
-            resolvedBlockNumber = web3.utils.hexToNumber(blockRef);
-        }
-    }
 
     let transactionLog = {
         functionName: txObject.inputDecoded ? txObject.inputDecoded.method : null,
         transactionHash: hash,
-        blockNumber: resolvedBlockNumber,
+        blockNumber: "latest",
         contractAddress: txObject.to ? txObject.to : "Contract Creation (Deployment)",
         sender: txObject.from ? txObject.from : "0x0000000000000000000000000000000000000000",
         gasUsed: 0,
