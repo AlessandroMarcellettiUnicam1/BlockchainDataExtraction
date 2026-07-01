@@ -106,7 +106,8 @@ const mempoolWorker = new Worker('mempool-queue', async (job) => {
                 conversion_time_ms: (tEndConversion - tStartConversion).toFixed(3),
                 append_time_ms: (tEndAppend - tStartAppend).toFixed(3),
                 rule_time_ms: (tEndRuleCheck - tStartRuleCheck).toFixed(3),
-                total_time_ms: (tEndGlobal - tStartGlobal).toFixed(3)
+                total_time_ms: (tEndGlobal - tStartGlobal).toFixed(3),
+                status: simulationResult.data.status
             }).catch(err => console.error("Errore scrittura metriche:", err));
 
             return { 

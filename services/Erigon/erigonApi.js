@@ -417,7 +417,7 @@ function regroupShatrace(finalShaTraces){
  */
 async function buildTransactionHierarchy(contractAddressesFrom, contractAddressesTo, fromBlock, toBlock, networkData) {
     let traces = [];
-    try{
+    try{2
         const rpcUrl = networkData.web3Endpoint;
         const payload = {
             jsonrpc: "2.0",

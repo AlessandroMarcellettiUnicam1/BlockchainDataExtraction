@@ -73,6 +73,8 @@ const baselineWorker = new Worker('baseline-queue', async (job) => {
             };
         }
 
+        console.log(`[Baseline Worker] Estratte ${extractedLogs.length} transazioni dal blocco ${payload.blockNumber}.`);
+
         // recupero dati da redis
         const configData = await redisClient.get(`session:${sessionId}:config`);
         const baseXes = await redisClient.get(`session:${sessionId}:xes`);
@@ -137,7 +139,8 @@ const baselineWorker = new Worker('baseline-queue', async (job) => {
             conversion_time_ms: (tEndConversion - tStartConversion).toFixed(3),
             append_time_ms: (tEndAppend - tStartAppend).toFixed(3),
             rule_time_ms: (tEndRuleCheck - tStartRuleCheck).toFixed(3),
-            total_time_ms: (tEndGlobal - tStartGlobal).toFixed(3)
+            total_time_ms: (tEndGlobal - tStartGlobal).toFixed(3),
+            extracted_tx: extractedLogs.length
         }).catch(err => console.error("Errore scrittura metriche:", err));
 
 
