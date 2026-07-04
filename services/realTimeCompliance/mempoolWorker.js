@@ -27,7 +27,7 @@ const mempoolWorker = new Worker('mempool-queue', async (job) => {
 
     console.log(`[Mempool Worker] Job ${job.id} ricevuto: Transazione ${hash} (Sessione: ${sessionId})`)
 
-    const tStartGlobal = performance.now();
+    //const tStartGlobal = performance.now();
 
     try {
         const params = payload;
@@ -41,10 +41,10 @@ const mempoolWorker = new Worker('mempool-queue', async (job) => {
         };
 
         console.log(`[Mempool Worker] Avvio simulazione per ${hash} verso il target ${targetAddress}...`);
-        const tStartSim = performance.now();
+        //const tStartSim = performance.now();
         const simulationResult = await processSimulation(params, targetAddress, networkData, hash);
         //const simulationResult = await mockProcessSimulation(params, targetAddress, networkData, hash);
-        const tEndSim = performance.now();
+        //tEndSim = performance.now();
         console.log(`[Mempool Worker] Simulazione completata per ${hash}.`);
 
         if (simulationResult.data.status !== "System error") {
@@ -68,9 +68,9 @@ const mempoolWorker = new Worker('mempool-queue', async (job) => {
             };
 
             console.log(`[Mempool Worker] Invio transazione ${hash} a Python per conversione XES...`);
-            const tStartConversion = performance.now();
+            //const tStartConversion = performance.now();
             const pythonResponse = await axios.post('http://coblockly-backend:8000/api/convertToXes', pythonPayload);
-            const tEndConversion = performance.now();
+            //const tEndConversion = performance.now();
 
             if (!pythonResponse.data.success) {
                 throw new Error(pythonResponse.data.error || "Errore sconosciuto in Python");
@@ -79,9 +79,9 @@ const mempoolWorker = new Worker('mempool-queue', async (job) => {
             const singleTxXes = pythonResponse.data.xes_string;
 
             console.log(`[Mempool Worker] Eseguo l'append della transazione al Log Base...`);
-            const tStartAppend = performance.now();
+            //const tStartAppend = performance.now();
             const { updatedXes, miniXesToVerify } = appendXes(baseXes, singleTxXes);
-            const tEndAppend = performance.now();
+            //const tEndAppend = performance.now();
 
             //await redisClient.setex(`session:${sessionId}:xes`, 7200, tempXes);
             //console.log(`[Worker] XES Base aggiornato su Redis per sessione ${sessionId}.`);
@@ -92,23 +92,23 @@ const mempoolWorker = new Worker('mempool-queue', async (job) => {
                 mapping: logMapping
             }
 
-            const tStartRuleCheck = performance.now();
+            //const tStartRuleCheck = performance.now();
             const ruleResponse = await axios.post('http://coblockly-backend:8000/api/verifyRuleLive', rulePayload);
-            const tEndRuleCheck = performance.now();
+            //const tEndRuleCheck = performance.now();
             console.log(`[Mempool Worker] Regola verificata per la transazione ${hash} nella sessione ${sessionId}.`);
 
-            const tEndGlobal = performance.now();
+            //const tEndGlobal = performance.now();
 
-            logMetrics('mempool_metrics.csv', {
-                timestamp: new Date().toISOString(),
-                hash: hash,
-                sim_time_ms: (tEndSim - tStartSim).toFixed(3),
-                conversion_time_ms: (tEndConversion - tStartConversion).toFixed(3),
-                append_time_ms: (tEndAppend - tStartAppend).toFixed(3),
-                rule_time_ms: (tEndRuleCheck - tStartRuleCheck).toFixed(3),
-                total_time_ms: (tEndGlobal - tStartGlobal).toFixed(3),
-                status: simulationResult.data.status
-            }).catch(err => console.error("Errore scrittura metriche:", err));
+            // logMetrics('mempool_metrics.csv', {
+            //     timestamp: new Date().toISOString(),
+            //     hash: hash,
+            //     sim_time_ms: (tEndSim - tStartSim).toFixed(3),
+            //     conversion_time_ms: (tEndConversion - tStartConversion).toFixed(3),
+            //     append_time_ms: (tEndAppend - tStartAppend).toFixed(3),
+            //     rule_time_ms: (tEndRuleCheck - tStartRuleCheck).toFixed(3),
+            //     total_time_ms: (tEndGlobal - tStartGlobal).toFixed(3),
+            //     status: simulationResult.data.status
+            // }).catch(err => console.error("Errore scrittura metriche:", err));
 
             return { 
                 success: true, 
