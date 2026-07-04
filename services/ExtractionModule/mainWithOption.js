@@ -18,24 +18,6 @@ const { fork } = require("child_process");
 const {ethers} = require("hardhat");
 const {buildTransactionHierarchy} = require("../Erigon/erigonApi");
 
-
-
-const FILE_PATH=path.join(__dirname, 'timePerformance.csv');
-
-const timePerformance={
-    hash:"",
-    time_traceFilter:0,
-    time_processTraceBatch:0,
-    time_getCode_onlypubliccontract:0,
-    time_compile:0,
-    time_debug_trace_trace:0,
-    time_decodeStorage_public:0,
-    time_debug_trace_internal:0,
-    time_getCode_allInternalContracts_decode:0,
-    time_decodeStorage_internalTx:0,
-    getEvents:0,
-    number_internalTxs:0
-}
 /**
  * Method called by the server to extract the transactions
  *
@@ -50,7 +32,7 @@ const timePerformance={
  * @returns {Promise<*|*[]>} - the blockchain log with the extracted data
  */
 
-async function getAllTransactions(oldParams, newParams, returnInMemory = false) {
+async function getAllTransactions(oldParams, newParams, returnInMemory = false, timePerformance = {}) {
     const network = (oldParams ? oldParams.network : null) || (newParams ? newParams.network : null);
     let networkData={
         web3Endpoint:"",
@@ -136,10 +118,6 @@ async function getAllTransactions(oldParams, newParams, returnInMemory = false) 
                     console.log("contract found in the db");
                 }
 
-                
-                const timeEndGetPublicContractInformation=Date.now();
-                timePerformance.time_getCode_onlypubliccontract=timeEndGetPublicContractInformation-timeStartGetPublicContractInformation;
-                const timeBeforeCompileContract=Date.now();
                 contractTree = await getContractTree(null, tx.to, networkData.endpoint, networkData.apiKey, queryResult);
                 let temp = [tx];
                 let storageData = await getStorageData(temp, queryResult.contractName, contractTree, tx.to, newParams.filters, newParams.smartContract, newParams.option, networkData, newParams.contractAddressesTo, returnInMemory);

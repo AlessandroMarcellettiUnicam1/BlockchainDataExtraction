@@ -4,7 +4,6 @@ const { saveAbi } = require("../databaseStore");
 const { connectDB } = require("../config/db");
 const { getEventsFromInternal }= require("./decodingUtils/utils")
 const InputDataDecoder = require("ethereum-input-data-decoder");
-let timePerformance={};
 /**
  * 
  * @param {*} element 
@@ -562,24 +561,17 @@ async function debugInternalTransaction(transactionHash, web3Endpoint) {
  * @param {*} web3 
  * @returns 
  */
-async function newDecodedInternalTransaction(transactionHash, smartContract, networkData, web3,blockNumber,parTimePerformance) {
-    timePerformance=parTimePerformance;
+async function newDecodedInternalTransaction(transactionHash, smartContract, networkData, web3,blockNumber) {
     //TODO: prendo tempo da qui 
-    const timeGetDebugInternal=Date.now();
     const internalCalls = await debugInternalTransaction(transactionHash, networkData.web3Endpoint);
-    const timeEndGetDebugInternal=Date.now();
-    timePerformance.time_debug_trace_internal=timeEndGetDebugInternal-timeGetDebugInternal;
     //fino a qui e questo è la debug 
     //Tempo intenral da qui 
 
     //per la decode degli input stampare il tempo della decode degli input per capire se è possibile omettere il valore
     if (!smartContract && internalCalls) {
         let seenEvent = new Set();
-        const timeStartGetCodeInternal=Date.now();
         await connectDB(networkData.networkName);
         await decodeInternalRecursive(internalCalls, smartContract, networkData, web3, 0, "0",transactionHash,blockNumber,seenEvent);
-        const timeEndCodeInternal=Date.now()
-        timePerformance.time_getCode_allInternalContracts_decode=timeEndCodeInternal-timeStartGetCodeInternal;
     } else {
         console.log("smart contract uploaded manually");
     }

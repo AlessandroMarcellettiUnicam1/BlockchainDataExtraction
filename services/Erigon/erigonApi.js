@@ -200,7 +200,6 @@ function makeRpcCallStreaming(url, method, params) {
 async function buildTransactionHierarchy(contractAddressesFrom, contractAddressesTo, fromBlock, toBlock, networkData) {
     let traces = [];
     let currentFromBlock = fromBlock;
-    const timeStartTraceFilter=Date.now();
     while(currentFromBlock <= toBlock){
         try{
             const rpcUrl = networkData.web3Endpoint;
@@ -246,7 +245,6 @@ async function buildTransactionHierarchy(contractAddressesFrom, contractAddresse
         }
     }
     const txMap = new Map();
-    const timeStarteProcessBatch=Date.now();
     for (const trace of traces) {
         const txHash = trace.transactionHash;
         const publicTransaction = await getEventFromErigon(txHash, networkData);
@@ -271,7 +269,6 @@ async function buildTransactionHierarchy(contractAddressesFrom, contractAddresse
 
         // const txData = txMap.get(txHash);
         // const isMainCall = !trace.traceAddress || trace.traceAddress.length === 0;
-
        /* if (isMainCall) {
             txData.parentCall = {
                 from: trace.action?.from,
@@ -299,8 +296,6 @@ async function buildTransactionHierarchy(contractAddressesFrom, contractAddresse
             });
         }*/
     }
-    const timeEndProcessbatch=Date.now();
-    timePerformance.time_processTraceBatch=timeEndProcessbatch-timeStarteProcessBatch;
     let txMapArr = Array.from(txMap.values());
     return txMapArr;
     
