@@ -73,8 +73,6 @@ const baselineWorker = new Worker('baseline-queue', async (job) => {
 
             time_processTraceStandard: [],
             time_optimizedDecodeValuesStandard: [],
-            time_decodeInternalTransactionStandard: [],
-            time_newDecodedInternalTransactionStandard: []
         };
 
         const tStartExtraction = performance.now();

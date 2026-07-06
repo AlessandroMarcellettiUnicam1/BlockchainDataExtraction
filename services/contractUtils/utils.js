@@ -12,7 +12,7 @@ const { fork } = require("child_process");
  * @param {*} compilerVersion 
  * @returns 
  */
-function compileInChildProcess(input, compxsilerVersion) {
+function compileInChildProcess(input, compilerVersion) {
     const workerPath = path.join(__dirname, "solcWorker.js");
     return new Promise((resolve, reject) => {
         const worker = fork(workerPath, [], {
@@ -149,7 +149,7 @@ async function getContractCodeEtherscan(contractAddress,endpoint,apiKey,queryRes
  * @param contractName - the name of the contract to compile
  * @returns {Promise<*>} - the AST of the smart contract, allowing the reading of the variables and the functions of the contract.
  */
-async function getCompiledData(contracts, contractName,compilerVerion) {
+async function getCompiledData(contracts, contractName,compilerVersion) {
     let storageLayoutFlag = true;
     let input = {
         language: 'Solidity',
@@ -181,7 +181,7 @@ async function getCompiledData(contracts, contractName,compilerVerion) {
     }
     let solcSnapshot;
     try {
-        solcSnapshot = await compileInChildProcess(input,compilerVerion);
+        solcSnapshot = await compileInChildProcess(input,compilerVersion);
     } catch (err) {
         console.error( err.message);
         return {};

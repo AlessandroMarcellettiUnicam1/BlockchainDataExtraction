@@ -17,6 +17,7 @@ const { fork } = require("child_process");
 
 const {ethers} = require("hardhat");
 const {buildTransactionHierarchy} = require("../Erigon/erigonApi");
+const { convertProcessSignalToExitCode } = require('util');
 
 /**
  * Method called by the server to extract the transactions
@@ -176,9 +177,13 @@ async function getContractTree(smartContract,impl_contract,endpoint,apiKey,query
         contractsResult = smartContract
     } else {
         //implementation contract address
-        try {
+        try {   
+                console.log(`[${new Date().toISOString()}, DEBUG-CONTRACT TREE] Inizio recupero ContractCode`);
                 contractsResult = await getContractCodeEtherscan(impl_contract, endpoint, apiKey,queryResult);
+                console.log(`[${new Date().toISOString()}, DEBUG-CONTRACT TREE] ContractCode recuperato`);
+                console.log(`compilerVersion: ${contractsResult.compilerVersion}`);
             if (contractsResult) {
+                console.log(`[${new Date().toISOString()}, DEBUG-CONTRACT TREE] Inizio recupero CompiledData`);
                 contractTree = await getCompiledData(contractsResult.contracts, contractsResult.contractName, contractsResult.compilerVersion);
                 //If contractTree is null is because It can't compile the code but the rest of the data are valid
                 contractTree.contractAbi=contractsResult.contractAbi;
@@ -187,6 +192,7 @@ async function getContractTree(smartContract,impl_contract,endpoint,apiKey,query
                 contractTree.contractName=contractsResult.contractName;
                 contractTree.proxyImplementation='';
                 contractTree.compilerVersion=contractsResult.compilerVersion;
+                console.log(`[${new Date().toISOString()}, DEBUG-CONTRACT TREE] Fine recupero CompiledData e ContractTree completato`);
             }
         } catch (err) {
             console.error('getContractCodeEtherscan error: ', err);

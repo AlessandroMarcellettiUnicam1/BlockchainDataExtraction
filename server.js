@@ -12,7 +12,9 @@ const axios = require('axios');
 const crypto = require('crypto');
 const systemEvents = require('./config/sse');
 const { connectionOptions, txQueue, mempoolQueueEvents, baselineQueueEvents } = require('./config/redisClient');
-const { appendXes } = require('./services/simulationUtils/appendXes')
+const { appendXes } = require('./services/simulationUtils/appendXes');
+const { logMetrics } = require('./services/simulationUtils/performanceMetrics');
+const { performance } = require('perf_hooks');
 
 
 // const { getAllTransactions } = require("./services/main");
@@ -528,7 +530,29 @@ app.post("/submitInternal", upload.single("file"), async (req, res) => {
 });*/
 
 app.post("/submit", upload.single("file"), async (req, res) => {
+
     try {
+
+		const timePerformance = {
+            time_debugErigon: [],
+            time_traceStorageErigon: [],
+            time_debugStandard: [],
+            time_traceStorageStandard: [],
+            time_getEvents: [],
+
+            time_processTraceErigon: [],
+            time_optimizedDecodeValuesErigon: [],
+            time_decodeInternalTransactionErigon: [],
+            time_newDecodedInternalTransactioneErigon: [],
+            time_assignStorageToTheInternalErigon: [],
+            time_decodeInternalTxsStorageErigon: [],
+
+            time_processTraceStandard: [],
+            time_optimizedDecodeValuesStandard: [],
+        };
+		let logs = [];
+		const tStartExtraction = performance.now();
+
         if (req.body.contractAddress) {
             const params = {
                 contractName: req.body.contractName,
@@ -566,8 +590,8 @@ app.post("/submit", upload.single("file"), async (req, res) => {
                 await fs.promises.unlink(req.file.path);
             }
 
-            const logs = await getAllTransactions(params, null);
-            return res.send(logs);
+            logs = await getAllTransactions(params, null, false, timePerformance);
+            //return res.send(logs);
 
         } else if (req.body.contractAddressesFrom) {
             const params = {
@@ -605,12 +629,34 @@ app.post("/submit", upload.single("file"), async (req, res) => {
                 await fs.promises.unlink(req.file.path);
             }
 
-            const logs = await getAllTransactions(null, params);
-            return res.send(logs);
+            logs = await getAllTransactions(null, params, false, timePerformance);
+            //return res.send(logs);
 
         } else {
             return res.status(400).send("Parameters are not given correctly");
         }
+
+		const tEndExtraction = performance.now();
+        const formattedPerformance = {};
+        
+        for (const [key, value] of Object.entries(timePerformance)) {
+            if (Array.isArray(value)) {
+                formattedPerformance[key] = value.join('|'); 
+            } else {
+                formattedPerformance[key] = value;
+            }
+        }
+
+		logMetrics('endpoint_metrics.csv', {
+            timestamp: new Date().toISOString(),
+            block: req.body.fromBlock + "-" + req.body.toBlock, // Identificatore per capire quale range è stato estratto
+            extraction_time_ms: (tEndExtraction - tStartExtraction).toFixed(3),
+            extracted_tx: logs ? logs.length : 0,
+            ...formattedPerformance
+        }).catch(err => console.error("Errore scrittura metriche endpoint:", err));
+
+		return res.send(logs);
+
     } catch (e) {
         console.error(e);
         res.status(500).send(e.message || "Internal Error");
@@ -1433,8 +1479,7 @@ app.post('/api/start-compliance-monitoring', async (req, res) => {
 			validAddress,
 			mapping,
 			parsedRule,
-			logMapping,
-			enableMempool
+			logMapping
 		} = req.body;
 
 		if (!sessionId || !validAddress) {
@@ -1444,16 +1489,16 @@ app.post('/api/start-compliance-monitoring', async (req, res) => {
 		// salvo mapping e regola che serviranno per il worker
 		await redisClient.set(
             `session:${sessionId}:config`, 
-            JSON.stringify({ mapping, parsedRule, logMapping, enableMempool })
+            JSON.stringify({ mapping, parsedRule, logMapping })
         );
 
 		const url = process.env.WS_ALCHEMY_MAINNET_URL;
 
 		//avvio il listener della mempool
-		if (enableMempool) {
-			startMempoolListener(sessionId, url, validAddress, addressFilters)
-				.catch(err => console.error(`[Listener Error] ${err.message}`));
-		}
+		// if (enableMempool) {
+		// 	startMempoolListener(sessionId, url, validAddress, addressFilters)
+		// 		.catch(err => console.error(`[Listener Error] ${err.message}`));
+		// }
 
 		// avvio il listener del contratto
 		startBaselineListener(sessionId, url, validAddress)
