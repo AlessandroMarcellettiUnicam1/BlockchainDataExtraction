@@ -145,7 +145,7 @@ async function startBaselineListener(sessionId, url, validAddress) {
                             contract: validAddress,
                             blockNumber: Number(block.number)
                     }
-                    }, { delay: 6000, removeOnComplete: true });
+                    }, {removeOnComplete: true });
                 }
             } catch (err) {
                 console.error(`[Baseline Error] Errore parsing blocco ${blockHeader.number}:`, err.message);
