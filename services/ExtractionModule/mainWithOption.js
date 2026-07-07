@@ -17,25 +17,8 @@ const { fork } = require("child_process");
 
 const {ethers} = require("hardhat");
 const {buildTransactionHierarchy} = require("../Erigon/erigonApi");
+const { convertProcessSignalToExitCode } = require('util');
 
-
-
-const FILE_PATH=path.join(__dirname, 'timePerformance.csv');
-
-const timePerformance={
-    hash:"",
-    time_traceFilter:0,
-    time_processTraceBatch:0,
-    time_getCode_onlypubliccontract:0,
-    time_compile:0,
-    time_debug_trace_trace:0,
-    time_decodeStorage_public:0,
-    time_debug_trace_internal:0,
-    time_getCode_allInternalContracts_decode:0,
-    time_decodeStorage_internalTx:0,
-    getEvents:0,
-    number_internalTxs:0
-}
 /**
  * Method called by the server to extract the transactions
  *
@@ -50,7 +33,7 @@ const timePerformance={
  * @returns {Promise<*|*[]>} - the blockchain log with the extracted data
  */
 
-async function getAllTransactions(oldParams, newParams, returnInMemory = false) {
+async function getAllTransactions(oldParams, newParams, returnInMemory = false, timePerformance = {}) {
     const network = (oldParams ? oldParams.network : null) || (newParams ? newParams.network : null);
     let networkData={
         web3Endpoint:"",
@@ -107,14 +90,14 @@ async function getAllTransactions(oldParams, newParams, returnInMemory = false) 
         
         
         await saveExtractionLog(userLog,networkData.networkName)*/
-        let transactionList;
         let contractTree;
-        let result = []; 
         let memoryLogs = [];
 
         await connectDB(networkData.networkName);
         if(!oldParams && newParams){
-            txHierarchy = await buildTransactionHierarchy(newParams.contractAddressesFrom, newParams.contractAddressesTo, newParams.fromBlock, newParams.toBlock, networkData);
+            console.log(`[${new Date().toISOString()}] Costruisco TransactionHierarchy`);
+            const txHierarchy = await buildTransactionHierarchy(newParams.contractAddressesFrom, newParams.contractAddressesTo, newParams.fromBlock, newParams.toBlock, networkData);
+            console.log(`[${new Date().toISOString()}] TransactionHierarchy Costruita`);
             for(let tx of txHierarchy){
                 const query = { contractAddress: tx.to.toLowerCase() };
                 let queryResult = await searchAbi(query);
@@ -136,28 +119,28 @@ async function getAllTransactions(oldParams, newParams, returnInMemory = false) 
                     console.log("contract found in the db");
                 }
 
-                
-                const timeEndGetPublicContractInformation=Date.now();
-                timePerformance.time_getCode_onlypubliccontract=timeEndGetPublicContractInformation-timeStartGetPublicContractInformation;
-                const timeBeforeCompileContract=Date.now();
-                contractTree = await getContractTree(null, tx.to, networkData.endpoint, networkData.apiKey, queryResult);
+                contractTree = await getContractTree(null, tx.to, networkData.endpoint, networkData.apiKey, queryResult, timePerformance);
                 let temp = [tx];
-                let storageData = await getStorageData(temp, queryResult.contractName, contractTree, tx.to, newParams.filters, newParams.smartContract, newParams.option, networkData, newParams.contractAddressesTo, returnInMemory);
+                let storageData = await getStorageData(temp, queryResult.contractName, contractTree, tx.to, newParams.filters, newParams.smartContract, newParams.option, networkData, newParams.contractAddressesTo, returnInMemory, timePerformance);
 
                 if (returnInMemory && storageData) memoryLogs = memoryLogs.concat(storageData);
             }
         } else {
             const query = { contractAddress: oldParams.implementationContractAddress.toLowerCase() };
             let queryResult = await searchAbi(query);
-            contractTree = await getContractTree(oldParams.smartContract, oldParams.implementationContractAddress, networkData.endpoint, networkData.apiKey, queryResult);
-            transactionList = await getTransactionFromContract(networkData, oldParams.contractAddress, oldParams.fromBlock, oldParams.toBlock);
+            contractTree = await getContractTree(oldParams.smartContract, oldParams.implementationContractAddress, networkData.endpoint, networkData.apiKey, queryResult, timePerformance);
+            const transactionList = await getTransactionFromContract(networkData, oldParams.contractAddress, oldParams.fromBlock, oldParams.toBlock);
             
-            let storageData = await getStorageData(transactionList, oldParams.contractName, contractTree, oldParams.contractAddress, oldParams.filters, oldParams.smartContract, oldParams.option, networkData,null, returnInMemory);
+            let storageData = await getStorageData(transactionList, oldParams.contractName, contractTree, oldParams.contractAddress, oldParams.filters, oldParams.smartContract, oldParams.option, networkData,null, returnInMemory,timePerformance);
+            
+            if (storageData && storageData.length > 0) {
+                memoryLogs = storageData;
+            }
         }
                 
         console.log("Extraction finished");
         await mongoose.disconnect();
-        return returnInMemory ? memoryLogs : result;
+        return returnInMemory ? memoryLogs : [];
        
         // await removeCollectionFromDB(networkName).then(removeAddressCollection(contractAddress,process.env.LOG_DB_NAME));
         // return result;
@@ -175,7 +158,7 @@ async function getAllTransactions(oldParams, newParams, returnInMemory = false) 
         // })
     } catch (err) {
         console.error(err)
-        return err;
+        throw err;
     }finally{
         await cleanupResources();
     }
@@ -190,7 +173,9 @@ async function getAllTransactions(oldParams, newParams, returnInMemory = false) 
  * @param {*} mainContract 
  * @returns 
  */
-async function getContractTree(smartContract,impl_contract,endpoint,apiKey,queryResult){
+async function getContractTree(smartContract,impl_contract,endpoint,apiKey,queryResult, timePerformance = {}){
+
+    const tStartTotal = performance.now();
     let contractsResult = null
     // if the contract is uploaded by the user then the contract is compiled
     let contractTree = null;
@@ -198,10 +183,24 @@ async function getContractTree(smartContract,impl_contract,endpoint,apiKey,query
         contractsResult = smartContract
     } else {
         //implementation contract address
-        try {
+        try {   
+                console.log(`[${new Date().toISOString()}, DEBUG-CONTRACT TREE] Inizio recupero ContractCode`);
+
+                const tStartEtherscan = performance.now();
                 contractsResult = await getContractCodeEtherscan(impl_contract, endpoint, apiKey,queryResult);
+                const tEndEtherscan = performance.now() - tStartEtherscan;
+                timePerformance.time_getContractCodeEtherscan.push(parseFloat(tEndEtherscan.toFixed(3)));
+
+                console.log(`[${new Date().toISOString()}, DEBUG-CONTRACT TREE] ContractCode recuperato`);
+                console.log(`compilerVersion: ${contractsResult.compilerVersion}`);
             if (contractsResult) {
+                console.log(`[${new Date().toISOString()}, DEBUG-CONTRACT TREE] Inizio recupero CompiledData`);
+
+                const tStartCompile = performance.now();
                 contractTree = await getCompiledData(contractsResult.contracts, contractsResult.contractName, contractsResult.compilerVersion);
+                const tEndCompile = performance.now() - tStartCompile;
+                timePerformance.time_getCompiledData.push(parseFloat(tEndCompile.toFixed(3)));
+
                 //If contractTree is null is because It can't compile the code but the rest of the data are valid
                 contractTree.contractAbi=contractsResult.contractAbi;
                 contractTree.sourceCode=contractsResult.sourceCode;
@@ -209,6 +208,7 @@ async function getContractTree(smartContract,impl_contract,endpoint,apiKey,query
                 contractTree.contractName=contractsResult.contractName;
                 contractTree.proxyImplementation='';
                 contractTree.compilerVersion=contractsResult.compilerVersion;
+                console.log(`[${new Date().toISOString()}, DEBUG-CONTRACT TREE] Fine recupero CompiledData e ContractTree completato`);
             }
         } catch (err) {
             console.error('getContractCodeEtherscan error: ', err);
@@ -216,6 +216,8 @@ async function getContractTree(smartContract,impl_contract,endpoint,apiKey,query
             throw new Error(err.message)
         }
     }
+    const tEndTotal = performance.now() - tStartTotal;
+    timePerformance.time_getContractTreeTotal.push(parseFloat(tEndTotal.toFixed(3)));
     //console.log("CONTRACT-Tree: \n\n full contract tree" + contractTree + "\n\n contract compiled:" + contractCompiled);
     contractsResult = null
     //console.log("\n\n\n\n contract tree (inner): " + contractTree.contractCompiled + "abcdefg\n\n\n\n");
@@ -336,7 +338,7 @@ function applyFilters(contractTransactions, filters) {
  * @param {*} networkData 
  * @returns 
  */
-async function getStorageData(contractTransactions, mainContract, contractTree, contractAddress, filters, smartContract,option,networkData,addressRange,returnInMemory = false) {
+async function getStorageData(contractTransactions, mainContract, contractTree, contractAddress, filters, smartContract,option,networkData,addressRange,returnInMemory = false, timePerformance = {}) {
     let transactionsFiltered=null;
     let extractedResults = [];
     try{
@@ -362,8 +364,16 @@ async function getStorageData(contractTransactions, mainContract, contractTree, 
                 } else {
                     const workerData = await runWorkerForTx(tx, mainContract, contractTree, contractAddress, smartContract, option, networkData, addressRange, returnInMemory);
                     
-                    if (returnInMemory && workerData) {
-                        extractedResults.push(workerData);
+                    // estraggo metriche dal figlio
+                    if (workerData && workerData.metrics) {
+                        for (const [key, value] of Object.entries(workerData.metrics)) {
+                            timePerformance[key] = timePerformance[key] || [];
+                            timePerformance[key].push(value);
+                        }
+                    }
+
+                    if (returnInMemory && workerData && workerData.data) {
+                        extractedResults.push(workerData.data);
                     }
                 }
 
@@ -416,7 +426,7 @@ function runWorkerForTx(tx, mainContract, contractTree, contractAddress, smartCo
             if (msg === "done") {
                 resolve(); 
             } else if (msg && msg.status === "done") {
-                resolve(msg.data);
+                resolve({ data: msg.data, metrics: msg.metrics });
             } else if (msg.error) {
                 reject(new Error(msg.error));
             }

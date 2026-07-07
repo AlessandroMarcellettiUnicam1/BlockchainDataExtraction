@@ -4,7 +4,6 @@ const { saveAbi } = require("../databaseStore");
 const { connectDB } = require("../config/db");
 const { getEventsFromInternal }= require("./decodingUtils/utils")
 const InputDataDecoder = require("ethereum-input-data-decoder");
-let timePerformance={};
 /**
  * 
  * @param {*} element 
@@ -39,63 +38,80 @@ async function handleUnverifiedContract(element, web3) {
  * @returns 
  */
 async function tryMethodSignature(element, web3) {
-    const methodSignature = element.input?.slice(0, 10) || element.inputsCall?.slice(0, 10);
+    // 1. Unify the input source to prevent TypeErrors later
+    const rawInput = element.input || element.inputsCall;
+    
+    // Ignore empty inputs or standard ETH transfers
+    if (!rawInput || rawInput === "0x") {
+        return false; 
+    }
+
+    const methodSignature = rawInput.slice(0, 10);
     
     if (methodSignature === "0x00000000") {
         element.activity = "Transfer*";
-        element.value = element.value;
-        element.inputs = element.input;
+        element.inputs = rawInput;
         return false;
     }
 
     try {
-        const callForSignature = await axios.get(
+        const response = await axios.get(
             `https://www.4byte.directory/api/v1/signatures/?hex_signature=${methodSignature}`
         );
-        if (callForSignature.data.results && callForSignature.data.results[0]) {
-            if (callForSignature.data.results.length < 2) {
-                for (let result of callForSignature.data.results) {
-                    const textSignature = result.text_signature;
-                    const activityAndValue = textSignature.slice(0, -1).split('(');
-                    const activity = activityAndValue[0];
-                    const valueTypes = activityAndValue[1].split(',');
-                    element.activity = activity;
+        
+        const results = response.data.results;
+
+        if (results && results.length > 0) {
+            // 2. Loop through ALL results. If there's a collision, try decoding 
+            // them one by one until one succeeds without throwing an error.
+            for (let result of results) {
+                const textSignature = result.text_signature;
+                
+                // Split safely: "transfer(address,uint256)" -> ["transfer", "address,uint256)"]
+                const [activity, paramsString] = textSignature.split('(');
+                element.activity = activity;
+                
+                // 3. Handle zero-parameter functions safely
+                const rawParams = paramsString.slice(0, -1);
+                const valueTypes = rawParams ? rawParams.split(',') : [];
+                
+                try {
+                    let tempResult = [];
                     
-                    try {
+                    if (valueTypes.length > 0) {
                         const valueDecoded = web3.eth.abi.decodeParameters(
                             valueTypes,
-                            element.input.slice(10)
+                            rawInput.slice(10) // Use unified rawInput safely
                         );
                         
-                        const tempResult = [];
-                        for (const key in valueDecoded) {
-                            if (!key.includes("length")) {
-                                tempResult.push({
-                                    value: valueDecoded[key],
-                                    name: valueTypes[Number(key)],
-                                    type: valueTypes[Number(key)]
-                                });
-                            }
+                        // Iterate safely using the length of expected types
+                        for (let i = 0; i < valueTypes.length; i++) {
+                            tempResult.push({
+                                value: valueDecoded[i],
+                                name: valueTypes[i],
+                                type: valueTypes[i]
+                            });
                         }
-                        
-                        if (tempResult.length > 0) {
-                            element.inputs = tempResult;
-                            return true;
-                        }
-                    } catch (err) {
-                        console.log("Error decoding method:", element.callId,element.from,element.to);
-                        continue;
                     }
+                    
+                    element.inputs = tempResult;
+                    return true; // Decoding successful, exit function
+                    
+                } catch (err) {
+                    // Decoding failed (likely a signature collision mismatch).
+                    // Continue to the next result in the loop.
+                    continue; 
                 }
             }
             
-            if (!element.inputs) {
-                element.inputs = element.input;
+            // Fallback if ALL decoding attempts failed but signatures were found
+            if (!element.inputs || element.inputs.length === 0) {
+                element.inputs = rawInput;
                 return true;
             }
         }
     } catch (err) {
-        console.log("Error fetching method signature:", err.message);
+        console.error(`Error fetching method signature for ${methodSignature}:`, err.message);
     }
     
     return false;
@@ -562,24 +578,17 @@ async function debugInternalTransaction(transactionHash, web3Endpoint) {
  * @param {*} web3 
  * @returns 
  */
-async function newDecodedInternalTransaction(transactionHash, smartContract, networkData, web3,blockNumber,parTimePerformance) {
-    timePerformance=parTimePerformance;
+async function newDecodedInternalTransaction(transactionHash, smartContract, networkData, web3,blockNumber) {
     //TODO: prendo tempo da qui 
-    const timeGetDebugInternal=Date.now();
     const internalCalls = await debugInternalTransaction(transactionHash, networkData.web3Endpoint);
-    const timeEndGetDebugInternal=Date.now();
-    timePerformance.time_debug_trace_internal=timeEndGetDebugInternal-timeGetDebugInternal;
     //fino a qui e questo è la debug 
     //Tempo intenral da qui 
 
     //per la decode degli input stampare il tempo della decode degli input per capire se è possibile omettere il valore
     if (!smartContract && internalCalls) {
         let seenEvent = new Set();
-        const timeStartGetCodeInternal=Date.now();
         await connectDB(networkData.networkName);
         await decodeInternalRecursive(internalCalls, smartContract, networkData, web3, 0, "0",transactionHash,blockNumber,seenEvent);
-        const timeEndCodeInternal=Date.now()
-        timePerformance.time_getCode_allInternalContracts_decode=timeEndCodeInternal-timeStartGetCodeInternal;
     } else {
         console.log("smart contract uploaded manually");
     }

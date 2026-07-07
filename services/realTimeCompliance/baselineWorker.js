@@ -35,10 +35,8 @@ const baselineWorker = new Worker('baseline-queue', async (job) => {
 
     console.log(`[Baseline Worker] Job ${job.id} ricevuto: inizio l'estrazione per il blocco ${payload.blockNumber} (Sessione: ${sessionId})`);
 
-    const tStartGlobal = performance.now();
-
     try {
-        const mockBlockNumber = payload.blockNumber - 2500000;
+        const mockBlockNumber = payload.blockNumber - 1000000;
 
         const newParams = {
             contractAddressesFrom: [payload.contract], 
@@ -59,13 +57,35 @@ const baselineWorker = new Worker('baseline-queue', async (job) => {
             option: { default: 1, internalStorage: 1, internalTransaction: 0 } 
         };
 
+        const timePerformance = {
+            time_getContractCodeEtherscan: [],
+			time_getCompiledData: [],
+			time_getContractTreeTotal: [],
+
+            time_debugErigon: [],
+            time_traceStorageErigon: [],
+            time_debugStandard: [],
+            time_traceStorageStandard: [],
+            time_getEvents: [],
+
+            time_processTraceErigon: [],
+            time_optimizedDecodeValuesErigon: [],
+            time_decodeInternalTransactionErigon: [],
+            time_newDecodedInternalTransactioneErigon: [],
+            time_assignStorageToTheInternalErigon: [],
+            time_decodeInternalTxsStorageErigon: [],
+
+            time_processTraceStandard: [],
+            time_optimizedDecodeValuesStandard: [],
+        };
+
         const tStartExtraction = performance.now();
-        const extractedLogs = await getAllTransactions(null, newParams, true);
+        const extractedLogs = await getAllTransactions(null, newParams, true, timePerformance);
         //const extractedLogs = await mockExtraction( payload.blockNumber, payload.contract);
         const tEndExtraction = performance.now();
 
         if (!extractedLogs || extractedLogs.length === 0) {
-            console.warn(`[Baseline Worker] Nessun log estratto per il blocco ${payload.blockNumber}. Il blocco potrebbe essere vuoto o non indicizzato. Ignoro il job.`);
+            console.warn(`[Baseline Worker] Nessun log estratto per il blocco ${mockBlockNumber}. Il blocco potrebbe essere vuoto o non indicizzato. Ignoro il job.`);
             return { 
                 success: false,
                 sessionId: sessionId , 
@@ -73,7 +93,7 @@ const baselineWorker = new Worker('baseline-queue', async (job) => {
             };
         }
 
-        console.log(`[Baseline Worker] Estratte ${extractedLogs.length} transazioni dal blocco ${payload.blockNumber}.`);
+        console.log(`[Baseline Worker] Estratte ${extractedLogs.length} transazioni dal blocco ${mockBlockNumber}.`);
 
         // recupero dati da redis
         const configData = await redisClient.get(`session:${sessionId}:config`);
@@ -95,9 +115,7 @@ const baselineWorker = new Worker('baseline-queue', async (job) => {
         };
 
         console.log(`[Baseline Worker] Invio dati del blocco ${mockBlockNumber} a Python per conversione XES...`);
-        const tStartConversion = performance.now();
         const pythonResponse = await axios.post('http://coblockly-backend:8000/api/convertToXes', pythonPayload);
-        const tEndConversion = performance.now();
 
         if (!pythonResponse.data.success) {
             throw new Error(pythonResponse.data.error || "Errore durante la conversione XES in Python");
@@ -106,9 +124,7 @@ const baselineWorker = new Worker('baseline-queue', async (job) => {
         const blockXes = pythonResponse.data.xes_string;
 
         console.log(`[Baseline Worker] Eseguo l'append della transazione al Log Base storico...`);
-        const tStartAppend = performance.now();
         const {updatedXes, miniXesToVerify} = appendXes(baseXes, blockXes);
-        const tEndAppend = performance.now();
 
         if (!miniXesToVerify) {
              throw new Error("Errore durante l'isolamento della traccia XES modificata.");
@@ -125,24 +141,25 @@ const baselineWorker = new Worker('baseline-queue', async (job) => {
             mapping: logMapping
         };
             
-        const tStartRuleCheck = performance.now();
         const ruleResponse = await axios.post('http://coblockly-backend:8000/api/verifyRuleLive', rulePayload);
-        const tEndRuleCheck = performance.now();
         complianceResult = ruleResponse.data;
 
-        const tEndGlobal = performance.now();
+        const formattedPerformance = {};
+        for (const [key, value] of Object.entries(timePerformance)) {
+            if (Array.isArray(value)) {
+                formattedPerformance[key] = value.join('|'); 
+            } else {
+                formattedPerformance[key] = value;
+            }
+        }
 
         logMetrics('baseline_metrics.csv', {
             timestamp: new Date().toISOString(),
-            block: payload.blockNumber,
+            block: mockBlockNumber,
             extraction_time_ms: (tEndExtraction - tStartExtraction).toFixed(3),
-            conversion_time_ms: (tEndConversion - tStartConversion).toFixed(3),
-            append_time_ms: (tEndAppend - tStartAppend).toFixed(3),
-            rule_time_ms: (tEndRuleCheck - tStartRuleCheck).toFixed(3),
-            total_time_ms: (tEndGlobal - tStartGlobal).toFixed(3),
-            extracted_tx: extractedLogs.length
+            extracted_tx: extractedLogs.length,
+            ...formattedPerformance // espansione delle metriceh csv
         }).catch(err => console.error("Errore scrittura metriche:", err));
-
 
         return { 
             success: true, 
@@ -152,7 +169,7 @@ const baselineWorker = new Worker('baseline-queue', async (job) => {
         };
     }
     catch (err) {
-        console.error(`[Baseline Worker] Errore durante l'elaborazione di ${payload.blockNumber}:`, err.message);
+        console.error(`[Baseline Worker] Errore durante l'elaborazione di ${mockBlockNumber}:`, err.message);
         throw err;
     }
 }, {

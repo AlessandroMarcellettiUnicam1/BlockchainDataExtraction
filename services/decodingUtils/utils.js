@@ -283,9 +283,24 @@ function decodeInputs(inputDecoded,web3) {
         }
     });
 }
-function decodeInput(type, value,web3) {
+function decodeInput(type, value, web3) {
+    if (value == null) return value;
+
     if (type === 'uint256') {
-        return Number(web3.utils.hexToNumber(value._hex));
+        try {
+            if (value._hex) {
+                return Number(web3.utils.hexToNumber(value._hex));
+            } 
+            else if (typeof value === 'string' && value.startsWith('0x')) {
+                return Number(web3.utils.hexToNumber(value));
+            } 
+            else {
+                return Number(value);
+            }
+        } catch (e) {
+            console.warn(`[decodeInput] Fallita decodifica uint256 per il valore:`, value);
+            return 0; // Fallback per non far crashare l'estrattore
+        }
     } else if (type === 'string') {
         return value;
     } else if (type && type.includes("byte")) {
