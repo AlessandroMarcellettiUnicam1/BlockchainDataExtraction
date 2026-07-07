@@ -36,7 +36,7 @@ const baselineWorker = new Worker('baseline-queue', async (job) => {
     console.log(`[Baseline Worker] Job ${job.id} ricevuto: inizio l'estrazione per il blocco ${payload.blockNumber} (Sessione: ${sessionId})`);
 
     try {
-        const mockBlockNumber = payload.blockNumber - 2500000;
+        const mockBlockNumber = payload.blockNumber - 1000000;
 
         const newParams = {
             contractAddressesFrom: [payload.contract], 
@@ -58,6 +58,10 @@ const baselineWorker = new Worker('baseline-queue', async (job) => {
         };
 
         const timePerformance = {
+            time_getContractCodeEtherscan: [],
+			time_getCompiledData: [],
+			time_getContractTreeTotal: [],
+
             time_debugErigon: [],
             time_traceStorageErigon: [],
             time_debugStandard: [],
@@ -81,7 +85,7 @@ const baselineWorker = new Worker('baseline-queue', async (job) => {
         const tEndExtraction = performance.now();
 
         if (!extractedLogs || extractedLogs.length === 0) {
-            console.warn(`[Baseline Worker] Nessun log estratto per il blocco ${payload.blockNumber}. Il blocco potrebbe essere vuoto o non indicizzato. Ignoro il job.`);
+            console.warn(`[Baseline Worker] Nessun log estratto per il blocco ${mockBlockNumber}. Il blocco potrebbe essere vuoto o non indicizzato. Ignoro il job.`);
             return { 
                 success: false,
                 sessionId: sessionId , 
@@ -89,7 +93,7 @@ const baselineWorker = new Worker('baseline-queue', async (job) => {
             };
         }
 
-        console.log(`[Baseline Worker] Estratte ${extractedLogs.length} transazioni dal blocco ${payload.blockNumber}.`);
+        console.log(`[Baseline Worker] Estratte ${extractedLogs.length} transazioni dal blocco ${mockBlockNumber}.`);
 
         // recupero dati da redis
         const configData = await redisClient.get(`session:${sessionId}:config`);
@@ -151,7 +155,7 @@ const baselineWorker = new Worker('baseline-queue', async (job) => {
 
         logMetrics('baseline_metrics.csv', {
             timestamp: new Date().toISOString(),
-            block: payload.blockNumber,
+            block: mockBlockNumber,
             extraction_time_ms: (tEndExtraction - tStartExtraction).toFixed(3),
             extracted_tx: extractedLogs.length,
             ...formattedPerformance // espansione delle metriceh csv
@@ -165,7 +169,7 @@ const baselineWorker = new Worker('baseline-queue', async (job) => {
         };
     }
     catch (err) {
-        console.error(`[Baseline Worker] Errore durante l'elaborazione di ${payload.blockNumber}:`, err.message);
+        console.error(`[Baseline Worker] Errore durante l'elaborazione di ${mockBlockNumber}:`, err.message);
         throw err;
     }
 }, {

@@ -534,6 +534,10 @@ app.post("/submit", upload.single("file"), async (req, res) => {
     try {
 
 		const timePerformance = {
+			time_getContractCodeEtherscan: [],
+			time_getCompiledData: [],
+			time_getContractTreeTotal: [],
+
             time_debugErigon: [],
             time_traceStorageErigon: [],
             time_debugStandard: [],
@@ -590,7 +594,7 @@ app.post("/submit", upload.single("file"), async (req, res) => {
                 await fs.promises.unlink(req.file.path);
             }
 
-            logs = await getAllTransactions(params, null, false, timePerformance);
+            logs = await getAllTransactions(params, null, true, timePerformance);
             //return res.send(logs);
 
         } else if (req.body.contractAddressesFrom) {

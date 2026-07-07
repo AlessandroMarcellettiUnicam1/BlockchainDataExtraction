@@ -43,7 +43,7 @@ async function processTransaction(tx, mainContract, contractTree, contractAddres
         const result = await createTransactionLog(tx, mainContract, contractTree, smartContract,extractionType,contractAddress,networkData,option,addressRange);
         
         return {
-            log: returnInMemory ? result.log : [],
+            log: returnInMemory ? result.log : null,
             metrics: result.metrics
         };
         
@@ -191,8 +191,10 @@ async function createTransactionLog(tx, mainContract, contractTree, smartContrac
     };
     
     let web3=new Web3(networkData.web3Endpoint);
-    if(tx.timestamp && tx.timestamp.includes("0x")){
-        tx.timeStamp=web3.utils.hexToNumber(tx.timestamp);
+    if (tx.timestamp && tx.timestamp.includes("0x")) {
+        tx.timeStamp = web3.utils.hexToNumber(tx.timestamp);
+    } else if (tx.timestamp) {
+        tx.timeStamp = Number(tx.timestamp);
     }
     let transactionLog = {
         functionName:tx.inputDecoded?tx.inputDecoded.method:tx.methodId,
@@ -201,7 +203,7 @@ async function createTransactionLog(tx, mainContract, contractTree, smartContrac
         contractAddress: tx.to,
         sender: tx.from,
         gasUsed: parseInt(tx.gasUsed),
-        timestamp: new Date(tx.timeStamp * 1000).toISOString(),
+        timestamp: tx.timeStamp ? new Date(tx.timeStamp * 1000).toISOString() : new Date().toISOString(),
         inputs: tx.inputDecoded?decodeInputs(tx.inputDecoded,web3):[],
         value:tx.value,
         storageState: [],
@@ -224,9 +226,9 @@ async function createTransactionLog(tx, mainContract, contractTree, smartContrac
                 // Log the timing data to CSV
                 try{
                     const t2 = performance.now();
-                    console.log(`[${new Date().toISOString()}, DEBUG-3] Inizio parsing dello stream (getTraceStorage...) per TX: ${tx.hash}`);
+                    console.log(`[${new Date().toISOString()}, DEBUG-INTERNAL-3] Inizio parsing dello stream (getTraceStorage...) per TX: ${tx.hash}`);
                     storageVal = await getTraceStorageFromErigon(stream, networkData,tx.inputDecoded?tx.inputDecoded.method:null,tx.hash,mainContract,contractTree,smartContract,option,web3,transactionLog.blockNumber, localMetrics);
-                    console.log(`[${new Date().toISOString()}, DEBUG-4] Parsing stream completato con successo per TX: ${tx.hash}`);
+                    console.log(`[${new Date().toISOString()}, DEBUG-INTERNAL-4] Parsing stream completato con successo per TX: ${tx.hash}`);
                     localMetrics.time_traceStorageErigon = (performance.now() - t2);
                     //storageVal.internalTxs=await newDecodedInternalTransaction(transactionLog.transactionHash, smartContract, networkData, web3);
                 }catch (err){
@@ -240,9 +242,9 @@ async function createTransactionLog(tx, mainContract, contractTree, smartContrac
                 localMetrics.time_debugStandard = (performance.now() - t3);
                 try{
                     const t4 = performance.now();
-                    console.log(`[${new Date().toISOString()}, DEBUG-3] Inizio parsing dello stream (getTraceStorage...) per TX: ${tx.hash}`);
+                    console.log(`[${new Date().toISOString()}, DEBUG-PARTIAL-3] Inizio parsing dello stream (getTraceStorage...) per TX: ${tx.hash}`);
                     storageVal = await getTraceStoragePartial(stream, networkData, tx.inputDecoded?tx.inputDecoded.method:null, tx.hash, mainContract, contractTree, smartContract,option,web3,transactionLog.blockNumber, localMetrics);
-                    console.log(`[${new Date().toISOString()} DEBUG-4] Parsing stream completato con successo per TX: ${tx.hash}`);
+                    console.log(`[${new Date().toISOString()} DEBUG-PARTIAL-4] Parsing stream completato con successo per TX: ${tx.hash}`);
                     localMetrics.time_traceStorageStandard = (performance.now() - t4);
                 }catch(err){
                     console.log(err)
@@ -259,8 +261,8 @@ async function createTransactionLog(tx, mainContract, contractTree, smartContrac
                 sourceCode: contractTree?.sourceCode,
                 compilerVersion: contractTree.compilerVersion || 'unknown'
             };
-            delete transactionLog['finalShaTraces'];
-            delete transactionLog['functionStorage'];
+            transactionLog.finalShaTraces = undefined;
+            transactionLog.functionStorage = undefined;
             //forse a questo punto basta controllare solo se il contratto è un proxy o no
             if(transactionLog.functionName==null && transactionLog.internalTxs && transactionLog.internalTxs.length>0){
                 if(transactionLog.internalTxs[0].type=="DELEGATECALL"){
@@ -324,7 +326,7 @@ async function createTransactionLog(tx, mainContract, contractTree, smartContrac
         } 
         
         console.log(`[DEBUG-7] Ritorno del transaction log`);
-        return transactionLog;
+        return { log: transactionLog, metrics: localMetrics };
 
     }finally{
         if (debugResult) {
@@ -1119,7 +1121,7 @@ async function getTraceStoragePartial(httpStream, networkData, functionName, tra
     }
 
     try {
-        console.log(`[${new Date().toISOString()}, DEBUG-PARSER-1] Avvio lettura stream di dati...`);
+        console.log(`[${new Date().toISOString()}, DEBUG-PARSER-PARTIAL-1] Avvio lettura stream di dati...`);
         await new Promise((resolve, reject) => {
             parser.on("data", (trace) => {
                 if (trace.stack && trace.stack.length > 0) {
@@ -1136,7 +1138,7 @@ async function getTraceStoragePartial(httpStream, networkData, functionName, tra
 
             parser.on("end", () => {
                 if (previousTrace) processTrace(previousTrace, null);
-                console.log(`[${new Date().toISOString()}, DEBUG-PARSER-2] Fine lettura stream raggiunta.`);
+                console.log(`[${new Date().toISOString()}, DEBUG-PARSER-PARTIAL-2] Fine lettura stream raggiunta.`);
                 resolve();
             });
 
@@ -1148,7 +1150,7 @@ async function getTraceStoragePartial(httpStream, networkData, functionName, tra
         const publicTrackBuffer = mapForStorage["1"]?.trackBuffer || [];
         finalShaTraces = publicTrackBuffer;
         
-        console.log(`[${new Date().toISOString()}, DEBUG-PARSER-3] Inizio calcolo SHA3 Traces (cicli while)...`);
+        console.log(`[${new Date().toISOString()}, DEBUG-PARSER-PARTIAL-3] Inizio calcolo SHA3 Traces (cicli while)...`);
         for (let i = 0; i < publicTrackBuffer.length; i++) {
             if (sstoreBuffer.includes(publicTrackBuffer[i].finalKey)) {
                 const trace = {
@@ -1203,7 +1205,7 @@ async function getTraceStoragePartial(httpStream, networkData, functionName, tra
         let internalStorage = [];
         
         // --- DECODIFICA STORAGE ---
-        console.log(`[${new Date().toISOString()}, DEBUG-PARSER-4] Inizio decodifica ottimizzata (optimizedDecodeValues) e chiamate interne...`);
+        console.log(`[${new Date().toISOString()}, DEBUG-PARSER-PARTIAL4] Inizio decodifica ottimizzata (optimizedDecodeValues) e chiamate interne...`);
         if (extractionOption.internalStorage != 0 && mapForStorage["1"]) {
             const tODV = performance.now();
             internalStorage = contractTree && contractTree.storageLayoutFlag 
@@ -1212,7 +1214,7 @@ async function getTraceStoragePartial(httpStream, networkData, functionName, tra
             localMetrics.time_optimizedDecodeValuesStandard = (performance.now() - tODV);
         }
 
-        console.log(`[${new Date().toISOString()}, DEBUG-PARSER-5] Tutte le elaborazioni sincrone terminate, ritorno i dati.`);
+        console.log(`[${new Date().toISOString()}, DEBUG-PARSER-PARTIAL-5] Tutte le elaborazioni sincrone terminate, ritorno i dati.`);
         return {
             decodedValues: internalStorage,
             internalTxs: internalCalls
