@@ -18,7 +18,6 @@ const { performance } = require('perf_hooks');
 
 
 // const { getAllTransactions } = require("./services/main");
-const { getOneTransaction } = require("./services/mainOnyTransaction")
 const { getAllTransactions }=require("./services/ExtractionModule/mainWithOption")
 const app = express();
 const upload = multer({ dest: "uploads/" });
