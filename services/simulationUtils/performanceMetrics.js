@@ -1,14 +1,11 @@
 const fs = require('fs');
 const path = require('path');
 
-const METRICS_DIR = path.join(__dirname, '../../metrics'); 
-
-if (!fs.existsSync(METRICS_DIR)) {
-    fs.mkdirSync(METRICS_DIR, { recursive: true });
-}
+const BACKEND_DIR = path.resolve(__dirname, '../..');
 
 async function logMetrics(fileName, dataRow) {
-    const filePath = path.join(METRICS_DIR, fileName);
+    const safeFileName = path.basename(fileName);
+    const filePath = path.join(BACKEND_DIR, safeFileName);
     const fileExists = fs.existsSync(filePath);
     
     if (!fileExists) {
