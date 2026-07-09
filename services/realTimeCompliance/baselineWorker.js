@@ -8,7 +8,8 @@ const { config } = require('dotenv');
 require('dotenv').config();
 const axios = require('axios');
 const { performance } = require('perf_hooks');
-const { logMetrics } = require('../simulationUtils/performanceMetrics')
+const { logMetrics } = require('../simulationUtils/performanceMetrics');
+const {saveBaselineWorkerMetrics} = require('../../databaseStore');
 
 console.log('[Baseline Worker] Worker inizializzato, in attesa di job in coda...');
 
@@ -34,6 +35,7 @@ const baselineWorker = new Worker('baseline-queue', async (job) => {
     const { sessionId, payload } = job.data;
 
     console.log(`[Baseline Worker] Job ${job.id} ricevuto: inizio l'estrazione per il blocco ${payload.blockNumber} (Sessione: ${sessionId})`);
+    const tJobStart = performance.now();
 
     try {
         const mockBlockNumber = payload.blockNumber - 1000000;
@@ -57,35 +59,22 @@ const baselineWorker = new Worker('baseline-queue', async (job) => {
             option: { default: 1, internalStorage: 1, internalTransaction: 0 } 
         };
 
-        const timePerformance = {
-            time_getContractCodeEtherscan: [],
-			time_getCompiledData: [],
-			time_getContractTreeTotal: [],
-
-            time_debugErigon: [],
-            time_traceStorageErigon: [],
-            time_debugStandard: [],
-            time_traceStorageStandard: [],
-            time_getEvents: [],
-
-            time_processTraceErigon: [],
-            time_optimizedDecodeValuesErigon: [],
-            time_decodeInternalTransactionErigon: [],
-            time_newDecodedInternalTransactioneErigon: [],
-            time_assignStorageToTheInternalErigon: [],
-            time_decodeInternalTxsStorageErigon: [],
-
-            time_processTraceStandard: [],
-            time_optimizedDecodeValuesStandard: [],
-        };
-
         const tStartExtraction = performance.now();
-        const extractedLogs = await getAllTransactions(null, newParams, true, timePerformance);
+        const extractedLogs = await getAllTransactions(null, newParams, true);
         //const extractedLogs = await mockExtraction( payload.blockNumber, payload.contract);
-        const tEndExtraction = performance.now();
+        const extractionTime = parseFloat((performance.now() - tStartExtraction).toFixed(3));
 
         if (!extractedLogs || extractedLogs.length === 0) {
             console.warn(`[Baseline Worker] Nessun log estratto per il blocco ${mockBlockNumber}. Il blocco potrebbe essere vuoto o non indicizzato. Ignoro il job.`);
+            
+            await saveBaselineWorkerMetrics({
+                jobId: job.id, 
+                blockNumber: mockBlockNumber,
+                time_totalExtractionPhase: extractionTime,
+                time_totalJob: parseFloat((performance.now() - tJobStart).toFixed(3)),
+                status: 'No_Logs_Extracted'
+            });
+            
             return { 
                 success: false,
                 sessionId: sessionId , 
@@ -115,7 +104,9 @@ const baselineWorker = new Worker('baseline-queue', async (job) => {
         };
 
         console.log(`[Baseline Worker] Invio dati del blocco ${mockBlockNumber} a Python per conversione XES...`);
+        const tStartConversion = performance.now();
         const pythonResponse = await axios.post('http://coblockly-backend:8000/api/convertToXes', pythonPayload);
+        const conversionTime = parseFloat((performance.now() - tStartConversion).toFixed(3));
 
         if (!pythonResponse.data.success) {
             throw new Error(pythonResponse.data.error || "Errore durante la conversione XES in Python");
@@ -124,7 +115,9 @@ const baselineWorker = new Worker('baseline-queue', async (job) => {
         const blockXes = pythonResponse.data.xes_string;
 
         console.log(`[Baseline Worker] Eseguo l'append della transazione al Log Base storico...`);
+        const tStartAppend = performance.now();
         const {updatedXes, miniXesToVerify} = appendXes(baseXes, blockXes);
+        const appendTime = parseFloat((performance.now() - tStartAppend).toFixed(3));
 
         if (!miniXesToVerify) {
              throw new Error("Errore durante l'isolamento della traccia XES modificata.");
@@ -141,25 +134,21 @@ const baselineWorker = new Worker('baseline-queue', async (job) => {
             mapping: logMapping
         };
             
+        const tRuleCheckTime = performance.now();
         const ruleResponse = await axios.post('http://coblockly-backend:8000/api/verifyRuleLive', rulePayload);
+        const ruleCheckTime = parseFloat((performance.now() - tRuleCheckTime).toFixed(3));
         complianceResult = ruleResponse.data;
 
-        const formattedPerformance = {};
-        for (const [key, value] of Object.entries(timePerformance)) {
-            if (Array.isArray(value)) {
-                formattedPerformance[key] = value.join('|'); 
-            } else {
-                formattedPerformance[key] = value;
-            }
-        }
-
-        logMetrics('baseline_metrics.csv', {
-            timestamp: new Date().toISOString(),
-            block: mockBlockNumber,
-            extraction_time_ms: (tEndExtraction - tStartExtraction).toFixed(3),
-            extracted_tx: extractedLogs.length,
-            ...formattedPerformance // espansione delle metriceh csv
-        }).catch(err => console.error("Errore scrittura metriche:", err));
+        await saveBaselineWorkerMetrics({
+            jobId: job.id, 
+            blockNumber: mockBlockNumber,
+            time_totalExtractionPhase: extractionTime,
+            time_pythonConversion: conversionTime,
+            time_xesAppend: appendTime,
+            time_ruleVerification: ruleCheckTime,
+            time_totalJob: parseFloat((performance.now() - tJobStart).toFixed(3)),
+            status: 'Success'
+        });
 
         return { 
             success: true, 
@@ -170,6 +159,12 @@ const baselineWorker = new Worker('baseline-queue', async (job) => {
     }
     catch (err) {
         console.error(`[Baseline Worker] Errore durante l'elaborazione di ${mockBlockNumber}:`, err.message);
+        await saveBaselineWorkerMetrics({
+            jobId: job.id, 
+            blockNumber: mockBlockNumber,
+            time_totalJob: parseFloat((performance.now() - tJobStart).toFixed(3)),
+            status: 'Failed'
+        });
         throw err;
     }
 }, {
