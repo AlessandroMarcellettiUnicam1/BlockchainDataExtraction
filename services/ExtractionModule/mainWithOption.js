@@ -18,6 +18,7 @@ const { fork } = require("child_process");
 const {ethers} = require("hardhat");
 const {buildTransactionHierarchy} = require("../Erigon/erigonApi");
 const { convertProcessSignalToExitCode } = require('util');
+const { saveExtractionMetrics } = require('../../databaseStore');
 
 /**
  * Method called by the server to extract the transactions
@@ -33,7 +34,7 @@ const { convertProcessSignalToExitCode } = require('util');
  * @returns {Promise<*|*[]>} - the blockchain log with the extracted data
  */
 
-async function getAllTransactions(oldParams, newParams, returnInMemory = false, timePerformance = {}) {
+async function getAllTransactions(oldParams, newParams, returnInMemory = false) {
     const network = (oldParams ? oldParams.network : null) || (newParams ? newParams.network : null);
     let networkData={
         web3Endpoint:"",
@@ -118,10 +119,10 @@ async function getAllTransactions(oldParams, newParams, returnInMemory = false, 
                 } else {
                     console.log("contract found in the db");
                 }
-
-                contractTree = await getContractTree(null, tx.to, networkData.endpoint, networkData.apiKey, queryResult, timePerformance);
+                const singleTxPerformance = {};
+                contractTree = await getContractTree(null, tx.to, networkData.endpoint, networkData.apiKey, queryResult, singleTxPerformance);
                 let temp = [tx];
-                let storageData = await getStorageData(temp, queryResult.contractName, contractTree, tx.to, newParams.filters, newParams.smartContract, newParams.option, networkData, newParams.contractAddressesTo, returnInMemory, timePerformance);
+                let storageData = await getStorageData(temp, queryResult.contractName, contractTree, tx.to, newParams.filters, newParams.smartContract, newParams.option, networkData, newParams.contractAddressesTo, returnInMemory, singleTxPerformance);
 
                 if (returnInMemory && storageData) memoryLogs = memoryLogs.concat(storageData);
             }
@@ -173,7 +174,7 @@ async function getAllTransactions(oldParams, newParams, returnInMemory = false, 
  * @param {*} mainContract 
  * @returns 
  */
-async function getContractTree(smartContract,impl_contract,endpoint,apiKey,queryResult, timePerformance = {}){
+async function getContractTree(smartContract,impl_contract,endpoint,apiKey,queryResult, singleTxPerformance = {}){
 
     const tStartTotal = performance.now();
     let contractsResult = null
@@ -189,7 +190,7 @@ async function getContractTree(smartContract,impl_contract,endpoint,apiKey,query
                 const tStartEtherscan = performance.now();
                 contractsResult = await getContractCodeEtherscan(impl_contract, endpoint, apiKey,queryResult);
                 const tEndEtherscan = performance.now() - tStartEtherscan;
-                timePerformance.time_getContractCodeEtherscan.push(parseFloat(tEndEtherscan.toFixed(3)));
+                singleTxPerformance.time_getContractCodeEtherscan = parseFloat(tEndEtherscan.toFixed(3));
 
                 console.log(`[${new Date().toISOString()}, DEBUG-CONTRACT TREE] ContractCode recuperato`);
                 console.log(`compilerVersion: ${contractsResult.compilerVersion}`);
@@ -199,7 +200,7 @@ async function getContractTree(smartContract,impl_contract,endpoint,apiKey,query
                 const tStartCompile = performance.now();
                 contractTree = await getCompiledData(contractsResult.contracts, contractsResult.contractName, contractsResult.compilerVersion);
                 const tEndCompile = performance.now() - tStartCompile;
-                timePerformance.time_getCompiledData.push(parseFloat(tEndCompile.toFixed(3)));
+                singleTxPerformance.time_getCompiledData = parseFloat(tEndCompile.toFixed(3));
 
                 //If contractTree is null is because It can't compile the code but the rest of the data are valid
                 contractTree.contractAbi=contractsResult.contractAbi;
@@ -217,7 +218,7 @@ async function getContractTree(smartContract,impl_contract,endpoint,apiKey,query
         }
     }
     const tEndTotal = performance.now() - tStartTotal;
-    timePerformance.time_getContractTreeTotal.push(parseFloat(tEndTotal.toFixed(3)));
+    singleTxPerformance.time_getContractTreeTotal = parseFloat(tEndTotal.toFixed(3));
     //console.log("CONTRACT-Tree: \n\n full contract tree" + contractTree + "\n\n contract compiled:" + contractCompiled);
     contractsResult = null
     //console.log("\n\n\n\n contract tree (inner): " + contractTree.contractCompiled + "abcdefg\n\n\n\n");
@@ -338,7 +339,7 @@ function applyFilters(contractTransactions, filters) {
  * @param {*} networkData 
  * @returns 
  */
-async function getStorageData(contractTransactions, mainContract, contractTree, contractAddress, filters, smartContract,option,networkData,addressRange,returnInMemory = false, timePerformance = {}) {
+async function getStorageData(contractTransactions, mainContract, contractTree, contractAddress, filters, smartContract,option,networkData,addressRange,returnInMemory = false, singleTxPerformance = {}) {
     let transactionsFiltered=null;
     let extractedResults = [];
     try{
@@ -364,13 +365,17 @@ async function getStorageData(contractTransactions, mainContract, contractTree, 
                 } else {
                     const workerData = await runWorkerForTx(tx, mainContract, contractTree, contractAddress, smartContract, option, networkData, addressRange, returnInMemory);
                     
-                    // estraggo metriche dal figlio
+                    // salvo metriche 
                     if (workerData && workerData.metrics) {
-                        for (const [key, value] of Object.entries(workerData.metrics)) {
-                            timePerformance[key] = timePerformance[key] || [];
-                            timePerformance[key].push(value);
-                        }
-                    }
+                    const combinedMetrics = {
+                        transactionHash: tx.hash,
+                        blockNumber: parseInt(tx.blockNumber),
+                        ...singleTxPerformance, 
+                        ...workerData.metrics   
+                    };
+
+                    await saveExtractionMetrics(combinedMetrics);
+                }
 
                     if (returnInMemory && workerData && workerData.data) {
                         extractedResults.push(workerData.data);

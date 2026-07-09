@@ -8,7 +8,6 @@ const { config } = require('dotenv');
 require('dotenv').config();
 const axios = require('axios');
 const { performance } = require('perf_hooks');
-const { logMetrics } = require('../simulationUtils/performanceMetrics');
 const {saveBaselineWorkerMetrics} = require('../../databaseStore');
 
 console.log('[Baseline Worker] Worker inizializzato, in attesa di job in coda...');

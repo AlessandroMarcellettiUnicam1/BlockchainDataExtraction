@@ -532,29 +532,7 @@ app.post("/submit", upload.single("file"), async (req, res) => {
 
     try {
 
-		const timePerformance = {
-			time_getContractCodeEtherscan: [],
-			time_getCompiledData: [],
-			time_getContractTreeTotal: [],
-
-            time_debugErigon: [],
-            time_traceStorageErigon: [],
-            time_debugStandard: [],
-            time_traceStorageStandard: [],
-            time_getEvents: [],
-
-            time_processTraceErigon: [],
-            time_optimizedDecodeValuesErigon: [],
-            time_decodeInternalTransactionErigon: [],
-            time_newDecodedInternalTransactioneErigon: [],
-            time_assignStorageToTheInternalErigon: [],
-            time_decodeInternalTxsStorageErigon: [],
-
-            time_processTraceStandard: [],
-            time_optimizedDecodeValuesStandard: [],
-        };
 		let logs = [];
-		const tStartExtraction = performance.now();
 
         if (req.body.contractAddress) {
             const params = {
@@ -593,7 +571,7 @@ app.post("/submit", upload.single("file"), async (req, res) => {
                 await fs.promises.unlink(req.file.path);
             }
 
-            logs = await getAllTransactions(params, null, true, timePerformance);
+            logs = await getAllTransactions(params, null, true);
             //return res.send(logs);
 
         } else if (req.body.contractAddressesFrom) {
@@ -632,31 +610,12 @@ app.post("/submit", upload.single("file"), async (req, res) => {
                 await fs.promises.unlink(req.file.path);
             }
 
-            logs = await getAllTransactions(null, params, false, timePerformance);
+            logs = await getAllTransactions(null, params, false);
             //return res.send(logs);
 
         } else {
             return res.status(400).send("Parameters are not given correctly");
         }
-
-		const tEndExtraction = performance.now();
-        const formattedPerformance = {};
-        
-        for (const [key, value] of Object.entries(timePerformance)) {
-            if (Array.isArray(value)) {
-                formattedPerformance[key] = value.join('|'); 
-            } else {
-                formattedPerformance[key] = value;
-            }
-        }
-
-		logMetrics('endpoint_metrics.csv', {
-            timestamp: new Date().toISOString(),
-            block: req.body.fromBlock + "-" + req.body.toBlock, // Identificatore per capire quale range è stato estratto
-            extraction_time_ms: (tEndExtraction - tStartExtraction).toFixed(3),
-            extracted_tx: logs ? logs.length : 0,
-            ...formattedPerformance
-        }).catch(err => console.error("Errore scrittura metriche endpoint:", err));
 
 		return res.send(logs);
 

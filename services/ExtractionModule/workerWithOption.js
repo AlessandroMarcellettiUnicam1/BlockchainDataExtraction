@@ -221,7 +221,7 @@ async function createTransactionLog(tx, mainContract, contractTree, smartContrac
                 console.log(`[${new Date().toISOString()}, DEBUG-1] Inizio richiesta streaming al nodo per TX: ${tx.hash}`);
                 const { stream, requiredTime } = await debugTransactionErigonStreaming(tx.hash, networkData.web3Endpoint);
                 console.log(`[${new Date().toISOString()}, DEBUG-2] Stream ricevuto dal nodo per TX: ${tx.hash}`);
-                localMetrics.time_debugErigon = (performance.now() - t1).toFixed(3);
+                localMetrics.time_debugErigon = parseFloat((performance.now() - t1).toFixed(3));
                 // Capture time after launching the worker
                 // Log the timing data to CSV
                 try{
@@ -229,7 +229,7 @@ async function createTransactionLog(tx, mainContract, contractTree, smartContrac
                     console.log(`[${new Date().toISOString()}, DEBUG-INTERNAL-3] Inizio parsing dello stream (getTraceStorage...) per TX: ${tx.hash}`);
                     storageVal = await getTraceStorageFromErigon(stream, networkData,tx.inputDecoded?tx.inputDecoded.method:null,tx.hash,mainContract,contractTree,smartContract,option,web3,transactionLog.blockNumber, localMetrics);
                     console.log(`[${new Date().toISOString()}, DEBUG-INTERNAL-4] Parsing stream completato con successo per TX: ${tx.hash}`);
-                    localMetrics.time_traceStorageErigon = (performance.now() - t2);
+                    localMetrics.time_traceStorageErigon = parseFloat((performance.now() - t2).toFixed(3));
                     //storageVal.internalTxs=await newDecodedInternalTransaction(transactionLog.transactionHash, smartContract, networkData, web3);
                 }catch (err){
                     console.log(err);
@@ -239,13 +239,13 @@ async function createTransactionLog(tx, mainContract, contractTree, smartContrac
                 console.log(`[${new Date().toISOString()}, DEBUG-1] Inizio richiesta streaming al nodo per TX: ${tx.hash}`);
                 const {stream, requiredTime} =await debugTransactionErigonStreaming(tx.hash, networkData.web3Endpoint);
                 console.log(`[${new Date().toISOString()}, DEBUG-2] Stream ricevuto dal nodo per TX: ${tx.hash}`);
-                localMetrics.time_debugStandard = (performance.now() - t3);
+                localMetrics.time_debugStandard = parseFloat((performance.now() - t3).toFixed(3));
                 try{
                     const t4 = performance.now();
                     console.log(`[${new Date().toISOString()}, DEBUG-PARTIAL-3] Inizio parsing dello stream (getTraceStorage...) per TX: ${tx.hash}`);
                     storageVal = await getTraceStoragePartial(stream, networkData, tx.inputDecoded?tx.inputDecoded.method:null, tx.hash, mainContract, contractTree, smartContract,option,web3,transactionLog.blockNumber, localMetrics);
                     console.log(`[${new Date().toISOString()} DEBUG-PARTIAL-4] Parsing stream completato con successo per TX: ${tx.hash}`);
-                    localMetrics.time_traceStorageStandard = (performance.now() - t4);
+                    localMetrics.time_traceStorageStandard = parseFloat((performance.now() - t4).toFixed(3));
                 }catch(err){
                     console.log(err)
                 }
@@ -312,7 +312,7 @@ async function createTransactionLog(tx, mainContract, contractTree, smartContrac
         console.log(`[${new Date().toISOString()}, DEBUG-5] Inizio recupero eventi (getEventForTransaction)...`);
         await getEventForTransaction(transactionLog,tx.hash,Number(tx.blockNumber),contractAddress,web3,contractTree,option,networkData);
         console.log(`[${new Date().toISOString()}, DEBUG-6] Eventi recuperati (getEventForTransaction)...`);
-        localMetrics.time_getEvents = (performance.now() - t5);
+        localMetrics.time_getEvents = parseFloat((performance.now() - t5).toFixed(3));
         if(addressRange && addressRange.length>1){
             let collectionName="";
             for(let i=0; i<addressRange.length;i++){
@@ -538,7 +538,7 @@ function searchEventInInternal(internals,seenEvent){
  * @param contractTree - the contract tree used to identify the contract variables with the 'mainContract'
  * @returns {Promise<{decodedValues: (*&{variableValue: string|string|*})[], internalCalls: *[]}>} - the decoded values of the storage state and the internal calls
  */
-async function getTraceStorage(traceDebugged, networkData, functionName, transactionHash, mainContract, contractTree,smartContract,extractionOption,web3,blockNumber,localMetrics={}) {
+async function getTraceStorage(traceDebugged, networkData, functionName, transactionHash, mainContract, contractTree,smartContract,extractionOption,web3,blockNumber) {
     //used to store the storage changed by the function. Used to compare the generated keys
     let functionStorage = {};
     //used to store all the keys potentially related to a dynamic structure
@@ -552,7 +552,6 @@ async function getTraceStorage(traceDebugged, networkData, functionName, transac
     let finalShaTraces = [];
     let tempInternalCallArray=[];
     try{
-        const tStartProcessStd = performance.now();
         if (traceDebugged.structLogs) {
 
             const CALL_OPCODES = ["CALL", "DELEGATECALL", "STATICCALL", "CALLCODE"];
@@ -676,25 +675,18 @@ async function getTraceStorage(traceDebugged, networkData, functionName, transac
     
         }
         traceDebugged.structLogs.length=0;
-        localMetrics.time_processTraceStandard = performance.now() - tStartProcessStd;
 
         let sstoreObject = {sstoreOptimization, sstoreBuffer}
         finalShaTraces=regroupShatrace(finalShaTraces);
         let internalStorage=[];
         if(extractionOption.internalStorage!=0){
-            const tODVS = performance.now();
             internalStorage=contractTree && contractTree.storageLayoutFlag?await optimizedDecodeValues(sstoreObject, contractTree.fullContractTree, finalShaTraces, functionStorage, functionName, mainContract,web3,contractTree.contractCompiled):[];
-            localMetrics.time_optimizedDecodeValuesStandard = performance.now() - tODVS;
         }
         let internalTxs=[]
         if(extractionOption.internalTransaction==0){
-            const tDITS = performance.now();
             internalTxs=await decodeInternalTransaction(internalCalls,smartContract,web3,networkData,transactionHash,blockNumber)
-            localMetrics.time_decodeInternalTransactionStandard = performance.now()-tDITS;
         }else if(extractionOption.internalTransaction==1){
-            const tNDITS = performance.now();
             internalTxs=await newDecodedInternalTransaction(transactionHash, smartContract, networkData, web3,blockNumber);
-            localMetrics.time_newDecodedInternalTransactionStandard = performance.now()-tNDITS;
         }
         let result={
             decodedValues:internalStorage,
@@ -812,7 +804,7 @@ async function getTraceStorageFromErigon(httpStream, networkData,functionName,tr
             reject(error);
         });
     });
-    localMetrics.time_processTraceErigon = (performance.now() - tStarStream);
+    localMetrics.time_processTraceErigon = parseFloat((performance.now() - tStarStream).toFixed(3));
 
     function processTrace(trace, nextTrace) {
         const currentIndex = getOrCreateIndexForDepth(trace.depth);
@@ -948,28 +940,28 @@ async function getTraceStorageFromErigon(httpStream, networkData,functionName,tr
             internalStorage = contractTree && contractTree.storageLayoutFlag 
                 ? await optimizedDecodeValues(sstoreObject, contractTree.fullContractTree, mapForStorage["1"].finalShaTraces, mapForStorage["1"].functionStorage, functionName, mainContract, web3, contractTree.contractCompiled)
                 : [];
-            localMetrics.time_optimizedDecodeValuesErigon = (performance.now() - tODV);
+            localMetrics.time_optimizedDecodeValuesErigon = parseFloat((performance.now() - tODV).toFixed(3));
         }
         let internalTxs = [];
         if (extractionOption.internalTransaction == 0) {
             const tDIT = performance.now();
             internalTxs = await decodeInternalTransaction(internalCalls, smartContract, web3, networkData,transactionHash,blockNumber);
-            localMetrics.time_decodeInternalTransactionErigon = (performance.now() - tDIT);
+            localMetrics.time_decodeInternalTransactionErigon = parseFloat((performance.now() - tDIT).toFixed(3));
         } else if (extractionOption.internalTransaction == 1) {
             const tNDIT = performance.now();
             internalTxs = await newDecodedInternalTransaction(transactionHash, smartContract, networkData, web3,blockNumber);
-            localMetrics.time_newDecodedInternalTransactioneErigon = (performance.now() - tNDIT);
+            localMetrics.time_newDecodedInternalTransactioneErigon = parseFloat((performance.now() - tNDIT).toFixed(3));
         }
         if(extractionOption.storageInternalTransactio==1){
             try{
                 const tASTTI = performance.now();
                 assignStorageToTheInternal(internalTxs,mapForStorage);    
-                localMetrics.time_assignStorageToTheInternalErigon = (performance.now() - tASTTI);
+                localMetrics.time_assignStorageToTheInternalErigon = parseFloat((performance.now() - tASTTI).toFixed(3));
             }catch(err){console.log("error in assignStorageToTheInternal")}
            
             const tDITS = performance.now();
             await decodeInteralTxsStorage(internalTxs,web3);
-            localMetrics.time_decodeInternalTxsStorageErigon = (performance.now() - tDITS);
+            localMetrics.time_decodeInternalTxsStorageErigon = parseFloat((performance.now() - tDITS).toFixed(3));
         }
 
         let result = {
@@ -1145,7 +1137,7 @@ async function getTraceStoragePartial(httpStream, networkData, functionName, tra
             parser.on("error", (error) => reject(error));
         });
         
-        localMetrics.time_processTraceStandard = (performance.now() - tStartStream);
+        localMetrics.time_processTraceStandard = parseFloat((performance.now() - tStartStream).toFixed(3));
 
         const publicTrackBuffer = mapForStorage["1"]?.trackBuffer || [];
         finalShaTraces = publicTrackBuffer;
@@ -1211,7 +1203,7 @@ async function getTraceStoragePartial(httpStream, networkData, functionName, tra
             internalStorage = contractTree && contractTree.storageLayoutFlag 
                 ? await optimizedDecodeValues(sstoreObject, contractTree.fullContractTree, mapForStorage["1"].finalShaTraces || finalShaTraces, mapForStorage["1"].functionStorage, functionName, mainContract, web3, contractTree.contractCompiled)
                 : [];
-            localMetrics.time_optimizedDecodeValuesStandard = (performance.now() - tODV);
+            localMetrics.time_optimizedDecodeValuesStandard = parseFloat((performance.now() - tODV).toFixed(3));
         }
 
         console.log(`[${new Date().toISOString()}, DEBUG-PARSER-PARTIAL-5] Tutte le elaborazioni sincrone terminate, ritorno i dati.`);
