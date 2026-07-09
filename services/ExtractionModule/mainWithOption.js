@@ -96,43 +96,52 @@ async function getAllTransactions(oldParams, newParams, returnInMemory = false) 
 
         await connectDB(networkData.networkName);
         if(!oldParams && newParams){
-            console.log(`[${new Date().toISOString()}] Costruisco TransactionHierarchy`);
-            const txHierarchy = await buildTransactionHierarchy(newParams.contractAddressesFrom, newParams.contractAddressesTo, newParams.fromBlock, newParams.toBlock, networkData);
-            console.log(`[${new Date().toISOString()}] TransactionHierarchy Costruita`);
-            for(let tx of txHierarchy){
-                const query = { contractAddress: tx.to.toLowerCase() };
-                let queryResult = await searchAbi(query);
-                if (!queryResult || queryResult?.abi?.includes("Contract source code not verified")) {
-                    const anotherCallForAbi = await axios.get(
-                        `${networkData.endpoint}&module=contract&action=getsourcecode&address=${tx.to}&apikey=${networkData.apiKey}`
-                    );
-                    queryResult = {
-                        contractName: anotherCallForAbi.data.result[0].ContractName,
-                        abi: anotherCallForAbi.data.result[0].ABI,
-                        proxy: anotherCallForAbi.data.result[0].Proxy,
-                        proxyImplementation: '',
-                        sourceCode: anotherCallForAbi.data.result[0].SourceCode,
-                        contractAddress: tx.to,
-                        compilerVersion: anotherCallForAbi.data.result[0].CompilerVersion,
+                console.log(`[${new Date().toISOString()}] Costruisco TransactionHierarchy`);
+                const txHierarchy = await buildTransactionHierarchy(newParams.contractAddressesFrom, newParams.contractAddressesTo, newParams.fromBlock, newParams.toBlock, networkData);
+                console.log(`[${new Date().toISOString()}] TransactionHierarchy Costruita`);
+                for(let tx of txHierarchy){
+                    try {
+                        const query = { contractAddress: tx.to.toLowerCase() };
+                        let queryResult = await searchAbi(query);
+                        if (!queryResult || queryResult?.abi?.includes("Contract source code not verified")) {
+                            const anotherCallForAbi = await axios.get(
+                                `${networkData.endpoint}&module=contract&action=getsourcecode&address=${tx.to}&apikey=${networkData.apiKey}`
+                            );
+                            queryResult = {
+                                contractName: anotherCallForAbi.data.result[0].ContractName,
+                                abi: anotherCallForAbi.data.result[0].ABI,
+                                proxy: anotherCallForAbi.data.result[0].Proxy,
+                                proxyImplementation: '',
+                                sourceCode: anotherCallForAbi.data.result[0].SourceCode,
+                                contractAddress: tx.to,
+                                compilerVersion: anotherCallForAbi.data.result[0].CompilerVersion,
 
+                            }
+                        } else {
+                            console.log("contract found in the db");
+                        }
+                        const singleTxPerformance = {};
+                        contractTree = await getContractTree(null, tx.to, networkData.endpoint, networkData.apiKey, queryResult, singleTxPerformance);
+                        let temp = [tx];
+                        let storageData = await getStorageData(temp, queryResult.contractName, contractTree, tx.to, newParams.filters, newParams.smartContract, newParams.option, networkData, newParams.contractAddressesTo, returnInMemory, singleTxPerformance);
+
+                        if (returnInMemory && storageData) memoryLogs = memoryLogs.concat(storageData);
                     }
-                } else {
-                    console.log("contract found in the db");
+                    catch (innerError) {
+                    // Se l'errore è "No contract found", viene catturato qui!
+                    // Stampiamo un avviso giallo, ma il programma NON crasha.
+                    console.warn(`[Warning] Impossibile estrarre la TX ${tx.hash}: ${innerError.message}. Passo alla successiva.`);
+                    
+                    continue; 
                 }
-                const singleTxPerformance = {};
-                contractTree = await getContractTree(null, tx.to, networkData.endpoint, networkData.apiKey, queryResult, singleTxPerformance);
-                let temp = [tx];
-                let storageData = await getStorageData(temp, queryResult.contractName, contractTree, tx.to, newParams.filters, newParams.smartContract, newParams.option, networkData, newParams.contractAddressesTo, returnInMemory, singleTxPerformance);
-
-                if (returnInMemory && storageData) memoryLogs = memoryLogs.concat(storageData);
             }
         } else {
             const query = { contractAddress: oldParams.implementationContractAddress.toLowerCase() };
             let queryResult = await searchAbi(query);
-            contractTree = await getContractTree(oldParams.smartContract, oldParams.implementationContractAddress, networkData.endpoint, networkData.apiKey, queryResult, timePerformance);
+            contractTree = await getContractTree(oldParams.smartContract, oldParams.implementationContractAddress, networkData.endpoint, networkData.apiKey, queryResult);
             const transactionList = await getTransactionFromContract(networkData, oldParams.contractAddress, oldParams.fromBlock, oldParams.toBlock);
             
-            let storageData = await getStorageData(transactionList, oldParams.contractName, contractTree, oldParams.contractAddress, oldParams.filters, oldParams.smartContract, oldParams.option, networkData,null, returnInMemory,timePerformance);
+            let storageData = await getStorageData(transactionList, oldParams.contractName, contractTree, oldParams.contractAddress, oldParams.filters, oldParams.smartContract, oldParams.option, networkData,null, returnInMemory);
             
             if (storageData && storageData.length > 0) {
                 memoryLogs = storageData;
@@ -363,19 +372,24 @@ async function getStorageData(contractTransactions, mainContract, contractTree, 
                         extractedResults.push(transactionData);
                     }
                 } else {
+                    const tStartWorker = performance.now();
                     const workerData = await runWorkerForTx(tx, mainContract, contractTree, contractAddress, smartContract, option, networkData, addressRange, returnInMemory);
-                    
+                    const timeWorker = parseFloat((performance.now() - tStartWorker).toFixed(3));
                     // salvo metriche 
                     if (workerData && workerData.metrics) {
-                    const combinedMetrics = {
-                        transactionHash: tx.hash,
-                        blockNumber: parseInt(tx.blockNumber),
-                        ...singleTxPerformance, 
-                        ...workerData.metrics   
-                    };
 
-                    await saveExtractionMetrics(combinedMetrics);
-                }
+                        const totalTxTime = parseFloat(((singleTxPerformance.time_getContractTreeTotal || 0) + timeWorker).toFixed(3));
+
+                        const combinedMetrics = {
+                            transactionHash: tx.hash,
+                            blockNumber: parseInt(tx.blockNumber),
+                            time_totalTransactionExtraction: totalTxTime,
+                            ...singleTxPerformance, 
+                            ...workerData.metrics   
+                        };
+
+                        await saveExtractionMetrics(combinedMetrics);
+                    }
 
                     if (returnInMemory && workerData && workerData.data) {
                         extractedResults.push(workerData.data);

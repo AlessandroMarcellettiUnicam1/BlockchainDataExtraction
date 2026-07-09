@@ -104,6 +104,8 @@ const extractionAbiSchema = new mongoose.Schema({
 const extractionMetricsSchema = new mongoose.Schema({
     transactionHash: { type: String, required: true },
     blockNumber: { type: Number },
+
+    time_totalTransactionExtraction: { type: Number },
     
     time_getContractCodeEtherscan: { type: Number },
     time_getCompiledData: { type: Number },
