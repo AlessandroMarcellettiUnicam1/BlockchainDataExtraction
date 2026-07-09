@@ -100,4 +100,53 @@ const extractionAbiSchema = new mongoose.Schema({
     sourceCode:{type:String},
     compilerVersion:{type:String},
 })
-module.exports = {transactionSchema, extractionLogSchema,extractionAbiSchema};
+
+const extractionMetricsSchema = new mongoose.Schema({
+    transactionHash: { type: String, required: true },
+    blockNumber: { type: Number },
+    
+    time_getContractCodeEtherscan: { type: Number },
+    time_getCompiledData: { type: Number },
+    time_getContractTreeTotal: { type: Number },
+    
+    time_debugErigon: { type: Number },
+    time_traceStorageErigon: { type: Number },
+    time_debugStandard: { type: Number },
+    time_traceStorageStandard: { type: Number },
+    time_getEvents: { type: Number },
+
+    time_processTraceErigon: { type: Number },
+    time_optimizedDecodeValuesErigon: { type: Number },
+    time_decodeInternalTransactionErigon: { type: Number },
+    time_newDecodedInternalTransactioneErigon: { type: Number },
+    time_assignStorageToTheInternalErigon: { type: Number },
+    time_decodeInternalTxsStorageErigon: { type: Number },
+
+    time_processTraceStandard: { type: Number },
+    time_optimizedDecodeValuesStandard: { type: Number },
+
+    timestamp: { type: Date, default: Date.now }
+}, { versionKey: false });
+
+const baselineWorkerMetricsSchema = new mongoose.Schema({
+    jobId: { type: String, required: true },
+    blockNumber: { type: Number, required: true },
+    
+    time_totalExtractionPhase: { type: Number },
+    time_pythonConversion: { type: Number },
+    time_xesAppend: { type: Number },
+    time_ruleVerification: { type: Number },
+    time_totalJob: { type: Number },
+    
+    status: { type: String, enum: ['Success', 'No_Logs_Extracted', 'Failed'], default: 'Success' },
+    timestamp: { type: Date, default: Date.now }
+}, { versionKey: false });
+
+
+module.exports = {
+    transactionSchema, 
+    extractionLogSchema,
+    extractionAbiSchema, 
+    extractionMetricsSchema,
+    baselineWorkerMetricsSchema
+};
