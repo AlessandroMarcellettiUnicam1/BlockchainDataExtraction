@@ -149,7 +149,6 @@ async function getAllTransactions(oldParams, newParams, returnInMemory = false) 
         }
                 
         console.log("Extraction finished");
-        await mongoose.disconnect();
         return returnInMemory ? memoryLogs : [];
        
         // await removeCollectionFromDB(networkName).then(removeAddressCollection(contractAddress,process.env.LOG_DB_NAME));
@@ -278,9 +277,9 @@ async function getTransactionFromContract(networkData, contractAddress, fromBloc
 async function cleanupResources() {
     try {
         // Close database connections
-        if (mongoose.connection.readyState !== 0) {
-            await mongoose.disconnect();
-        }
+        // if (mongoose.connection.readyState !== 0) {
+        //     await mongoose.disconnect();
+        // }
         
         // Clean up web3 instance
 
