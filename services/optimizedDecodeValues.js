@@ -103,8 +103,14 @@ function decodeComplexData(shaTraces, contractTree, functionName,functionStorage
 function decodingSimpleStorage(mainContract,functionStorage,shatracesProcessed,contractTree,functionName,resultOfPreprocessing){
     let mainContractCompiled = getMainContractCompiled(mainContract);
     for (const storageKey in functionStorage) {
-        if (!shatracesProcessed.has(storageKey) && web3.utils.hexToNumber("0x" + storageKey) < 9999999) {
-            const slotNumber = web3.utils.hexToNumber("0x" + storageKey);
+        // normalizzazione
+        let cleanStorageKey = storageKey;
+        if (cleanStorageKey.startsWith("0x")) {
+            cleanStorageKey = cleanStorageKey.slice(2);
+        }
+
+        if (!shatracesProcessed.has(storageKey) && web3.utils.hexToNumber("0x" + cleanStorageKey) < 9999999) {
+            const slotNumber = web3.utils.hexToNumber("0x" + cleanStorageKey);
             const variablePerSlot = getContractVariable(slotNumber, contractTree, functionName, mainContract);
             const variables = variablePerSlot.length > 1
                 ? newReadVarFormOffset(variablePerSlot, functionStorage)
@@ -114,7 +120,6 @@ function decodingSimpleStorage(mainContract,functionStorage,shatracesProcessed,c
                     e.value = functionStorage[e.contentSlot];
                     resultOfPreprocessing.push(e);
                 }
-
             });
         }
     }

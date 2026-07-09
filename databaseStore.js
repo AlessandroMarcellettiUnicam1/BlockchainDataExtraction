@@ -1,6 +1,6 @@
 const {connectDB} = require("./config/db");
 const mongoose = require("mongoose");
-const {extractionLogSchema,extractionAbiSchema} = require("./schema/data");
+const {extractionLogSchema,extractionAbiSchema, extractionMetricsSchema, baselineWorkerMetricsSchema} = require("./schema/data");
 const {getModelByContractAddress} = require('./query/query');
 const {searchAbi} =require("./query/query");
 
@@ -49,8 +49,32 @@ async function saveAbi(storeAbi) {
         }
     }
 }
+
+async function saveExtractionMetrics(metricsData) {
+    try {
+        const ExtractionMetrics = mongoose.models.ExtractionMetrics || 
+                                 mongoose.model('ExtractionMetrics', extractionMetricsSchema, 'ExtractionMetrics');
+        await new ExtractionMetrics(metricsData).save();
+    } catch (err) {
+        console.error(`[Metrics DB Error] Errore salvataggio metriche per ${metricsData.transactionHash}: `, err);
+    }
+}
+
+// 3. Funzione per la metrica del Worker
+async function saveBaselineWorkerMetrics(jobData) {
+    try {
+        const BaselineWorkerMetrics = mongoose.models.BaselineWorkerMetrics || 
+                                     mongoose.model('BaselineWorkerMetrics', baselineWorkerMetricsSchema, 'BaselineWorkerMetrics');
+        await new BaselineWorkerMetrics(jobData).save();
+    } catch (err) {
+        console.error(`[Metrics DB Error] Errore salvataggio metriche Job ${jobData.jobId}: `, err);
+    }
+}
+
 module.exports = {
     saveTransaction,
     saveExtractionLog,
-    saveAbi
+    saveAbi,
+    saveExtractionMetrics,
+    saveBaselineWorkerMetrics
 }

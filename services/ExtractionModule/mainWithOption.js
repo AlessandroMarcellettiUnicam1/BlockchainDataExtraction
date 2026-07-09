@@ -18,6 +18,7 @@ const { fork } = require("child_process");
 const {ethers} = require("hardhat");
 const {buildTransactionHierarchy} = require("../Erigon/erigonApi");
 const { convertProcessSignalToExitCode } = require('util');
+const { saveExtractionMetrics } = require('../../databaseStore');
 
 /**
  * Method called by the server to extract the transactions
@@ -33,7 +34,7 @@ const { convertProcessSignalToExitCode } = require('util');
  * @returns {Promise<*|*[]>} - the blockchain log with the extracted data
  */
 
-async function getAllTransactions(oldParams, newParams, returnInMemory = false, timePerformance = {}) {
+async function getAllTransactions(oldParams, newParams, returnInMemory = false) {
     const network = (oldParams ? oldParams.network : null) || (newParams ? newParams.network : null);
     let networkData={
         web3Endpoint:"",
@@ -95,43 +96,52 @@ async function getAllTransactions(oldParams, newParams, returnInMemory = false, 
 
         await connectDB(networkData.networkName);
         if(!oldParams && newParams){
-            console.log(`[${new Date().toISOString()}] Costruisco TransactionHierarchy`);
-            const txHierarchy = await buildTransactionHierarchy(newParams.contractAddressesFrom, newParams.contractAddressesTo, newParams.fromBlock, newParams.toBlock, networkData);
-            console.log(`[${new Date().toISOString()}] TransactionHierarchy Costruita`);
-            for(let tx of txHierarchy){
-                const query = { contractAddress: tx.to.toLowerCase() };
-                let queryResult = await searchAbi(query);
-                if (!queryResult || queryResult?.abi?.includes("Contract source code not verified")) {
-                    const anotherCallForAbi = await axios.get(
-                        `${networkData.endpoint}&module=contract&action=getsourcecode&address=${tx.to}&apikey=${networkData.apiKey}`
-                    );
-                    queryResult = {
-                        contractName: anotherCallForAbi.data.result[0].ContractName,
-                        abi: anotherCallForAbi.data.result[0].ABI,
-                        proxy: anotherCallForAbi.data.result[0].Proxy,
-                        proxyImplementation: '',
-                        sourceCode: anotherCallForAbi.data.result[0].SourceCode,
-                        contractAddress: tx.to,
-                        compilerVersion: anotherCallForAbi.data.result[0].CompilerVersion,
+                console.log(`[${new Date().toISOString()}] Costruisco TransactionHierarchy`);
+                const txHierarchy = await buildTransactionHierarchy(newParams.contractAddressesFrom, newParams.contractAddressesTo, newParams.fromBlock, newParams.toBlock, networkData);
+                console.log(`[${new Date().toISOString()}] TransactionHierarchy Costruita`);
+                for(let tx of txHierarchy){
+                    try {
+                        const query = { contractAddress: tx.to.toLowerCase() };
+                        let queryResult = await searchAbi(query);
+                        if (!queryResult || queryResult?.abi?.includes("Contract source code not verified")) {
+                            const anotherCallForAbi = await axios.get(
+                                `${networkData.endpoint}&module=contract&action=getsourcecode&address=${tx.to}&apikey=${networkData.apiKey}`
+                            );
+                            queryResult = {
+                                contractName: anotherCallForAbi.data.result[0].ContractName,
+                                abi: anotherCallForAbi.data.result[0].ABI,
+                                proxy: anotherCallForAbi.data.result[0].Proxy,
+                                proxyImplementation: '',
+                                sourceCode: anotherCallForAbi.data.result[0].SourceCode,
+                                contractAddress: tx.to,
+                                compilerVersion: anotherCallForAbi.data.result[0].CompilerVersion,
 
+                            }
+                        } else {
+                            console.log("contract found in the db");
+                        }
+                        const singleTxPerformance = {};
+                        contractTree = await getContractTree(null, tx.to, networkData.endpoint, networkData.apiKey, queryResult, singleTxPerformance);
+                        let temp = [tx];
+                        let storageData = await getStorageData(temp, queryResult.contractName, contractTree, tx.to, newParams.filters, newParams.smartContract, newParams.option, networkData, newParams.contractAddressesTo, returnInMemory, singleTxPerformance);
+
+                        if (returnInMemory && storageData) memoryLogs = memoryLogs.concat(storageData);
                     }
-                } else {
-                    console.log("contract found in the db");
+                    catch (innerError) {
+                    // Se l'errore è "No contract found", viene catturato qui!
+                    // Stampiamo un avviso giallo, ma il programma NON crasha.
+                    console.warn(`[Warning] Impossibile estrarre la TX ${tx.hash}: ${innerError.message}. Passo alla successiva.`);
+                    
+                    continue; 
                 }
-
-                contractTree = await getContractTree(null, tx.to, networkData.endpoint, networkData.apiKey, queryResult, timePerformance);
-                let temp = [tx];
-                let storageData = await getStorageData(temp, queryResult.contractName, contractTree, tx.to, newParams.filters, newParams.smartContract, newParams.option, networkData, newParams.contractAddressesTo, returnInMemory, timePerformance);
-
-                if (returnInMemory && storageData) memoryLogs = memoryLogs.concat(storageData);
             }
         } else {
             const query = { contractAddress: oldParams.implementationContractAddress.toLowerCase() };
             let queryResult = await searchAbi(query);
-            contractTree = await getContractTree(oldParams.smartContract, oldParams.implementationContractAddress, networkData.endpoint, networkData.apiKey, queryResult, timePerformance);
+            contractTree = await getContractTree(oldParams.smartContract, oldParams.implementationContractAddress, networkData.endpoint, networkData.apiKey, queryResult);
             const transactionList = await getTransactionFromContract(networkData, oldParams.contractAddress, oldParams.fromBlock, oldParams.toBlock);
             
-            let storageData = await getStorageData(transactionList, oldParams.contractName, contractTree, oldParams.contractAddress, oldParams.filters, oldParams.smartContract, oldParams.option, networkData,null, returnInMemory,timePerformance);
+            let storageData = await getStorageData(transactionList, oldParams.contractName, contractTree, oldParams.contractAddress, oldParams.filters, oldParams.smartContract, oldParams.option, networkData,null, returnInMemory);
             
             if (storageData && storageData.length > 0) {
                 memoryLogs = storageData;
@@ -173,7 +183,7 @@ async function getAllTransactions(oldParams, newParams, returnInMemory = false, 
  * @param {*} mainContract 
  * @returns 
  */
-async function getContractTree(smartContract,impl_contract,endpoint,apiKey,queryResult, timePerformance = {}){
+async function getContractTree(smartContract,impl_contract,endpoint,apiKey,queryResult, singleTxPerformance = {}){
 
     const tStartTotal = performance.now();
     let contractsResult = null
@@ -189,7 +199,7 @@ async function getContractTree(smartContract,impl_contract,endpoint,apiKey,query
                 const tStartEtherscan = performance.now();
                 contractsResult = await getContractCodeEtherscan(impl_contract, endpoint, apiKey,queryResult);
                 const tEndEtherscan = performance.now() - tStartEtherscan;
-                timePerformance.time_getContractCodeEtherscan.push(parseFloat(tEndEtherscan.toFixed(3)));
+                singleTxPerformance.time_getContractCodeEtherscan = parseFloat(tEndEtherscan.toFixed(3));
 
                 console.log(`[${new Date().toISOString()}, DEBUG-CONTRACT TREE] ContractCode recuperato`);
                 console.log(`compilerVersion: ${contractsResult.compilerVersion}`);
@@ -199,7 +209,7 @@ async function getContractTree(smartContract,impl_contract,endpoint,apiKey,query
                 const tStartCompile = performance.now();
                 contractTree = await getCompiledData(contractsResult.contracts, contractsResult.contractName, contractsResult.compilerVersion);
                 const tEndCompile = performance.now() - tStartCompile;
-                timePerformance.time_getCompiledData.push(parseFloat(tEndCompile.toFixed(3)));
+                singleTxPerformance.time_getCompiledData = parseFloat(tEndCompile.toFixed(3));
 
                 //If contractTree is null is because It can't compile the code but the rest of the data are valid
                 contractTree.contractAbi=contractsResult.contractAbi;
@@ -217,7 +227,7 @@ async function getContractTree(smartContract,impl_contract,endpoint,apiKey,query
         }
     }
     const tEndTotal = performance.now() - tStartTotal;
-    timePerformance.time_getContractTreeTotal.push(parseFloat(tEndTotal.toFixed(3)));
+    singleTxPerformance.time_getContractTreeTotal = parseFloat(tEndTotal.toFixed(3));
     //console.log("CONTRACT-Tree: \n\n full contract tree" + contractTree + "\n\n contract compiled:" + contractCompiled);
     contractsResult = null
     //console.log("\n\n\n\n contract tree (inner): " + contractTree.contractCompiled + "abcdefg\n\n\n\n");
@@ -338,7 +348,7 @@ function applyFilters(contractTransactions, filters) {
  * @param {*} networkData 
  * @returns 
  */
-async function getStorageData(contractTransactions, mainContract, contractTree, contractAddress, filters, smartContract,option,networkData,addressRange,returnInMemory = false, timePerformance = {}) {
+async function getStorageData(contractTransactions, mainContract, contractTree, contractAddress, filters, smartContract,option,networkData,addressRange,returnInMemory = false, singleTxPerformance = {}) {
     let transactionsFiltered=null;
     let extractedResults = [];
     try{
@@ -362,14 +372,23 @@ async function getStorageData(contractTransactions, mainContract, contractTree, 
                         extractedResults.push(transactionData);
                     }
                 } else {
+                    const tStartWorker = performance.now();
                     const workerData = await runWorkerForTx(tx, mainContract, contractTree, contractAddress, smartContract, option, networkData, addressRange, returnInMemory);
-                    
-                    // estraggo metriche dal figlio
+                    const timeWorker = parseFloat((performance.now() - tStartWorker).toFixed(3));
+                    // salvo metriche 
                     if (workerData && workerData.metrics) {
-                        for (const [key, value] of Object.entries(workerData.metrics)) {
-                            timePerformance[key] = timePerformance[key] || [];
-                            timePerformance[key].push(value);
-                        }
+
+                        const totalTxTime = parseFloat(((singleTxPerformance.time_getContractTreeTotal || 0) + timeWorker).toFixed(3));
+
+                        const combinedMetrics = {
+                            transactionHash: tx.hash,
+                            blockNumber: parseInt(tx.blockNumber),
+                            time_totalTransactionExtraction: totalTxTime,
+                            ...singleTxPerformance, 
+                            ...workerData.metrics   
+                        };
+
+                        await saveExtractionMetrics(combinedMetrics);
                     }
 
                     if (returnInMemory && workerData && workerData.data) {
