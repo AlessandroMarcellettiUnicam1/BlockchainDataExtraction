@@ -1081,7 +1081,7 @@ async function getTraceStorageFromErigon(
       let storageIndexLocation = numberLocation + 1;
       const safeMemory = trace.memory || [];
       const hexKey = safeMemory[numberLocation];
-      const hexStorageIndex = trace.memory[storageIndexLocation];
+      const hexStorageIndex = safeMemory[storageIndexLocation];
 
       mapForStorage[currentIndex].trackBuffer.push({ hexKey, hexStorageIndex });
     } else if (trace.op === "STOP" || trace.op === "RETURN") {
