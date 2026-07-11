@@ -1437,7 +1437,7 @@ app.post('/api/start-compliance-monitoring', async (req, res) => {
 	try {
 		const {
 			sessionId,
-			addressFilters,
+			// addressFilters,
 			validAddress,
 			mapping,
 			parsedRules,
