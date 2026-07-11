@@ -1440,7 +1440,7 @@ app.post('/api/start-compliance-monitoring', async (req, res) => {
 			addressFilters,
 			validAddress,
 			mapping,
-			parsedRule,
+			parsedRules,
 			logMapping
 		} = req.body;
 
@@ -1451,7 +1451,7 @@ app.post('/api/start-compliance-monitoring', async (req, res) => {
 		// salvo mapping e regola che serviranno per il worker
 		await redisClient.set(
             `session:${sessionId}:config`, 
-            JSON.stringify({ mapping, parsedRule, logMapping })
+            JSON.stringify({ mapping, parsedRules, logMapping })
         );
 
 		const url = process.env.WS_ALCHEMY_MAINNET_URL;

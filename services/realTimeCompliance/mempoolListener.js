@@ -112,6 +112,7 @@ async function startBaselineListener(sessionId, url, validAddress) {
         subscription.on("data", async (blockHeader) => {
             const session = activeSubscriptions.get(`${sessionId}_baseline`);
             if (!session || !session.isCapturing) return;
+            console.log(`[Baseline] Controllo in corso per il blocco ${blockHeader.number}...`);
 
             try {
                 // prendo il blocco intero e cerco per il contratto che sto monitorando
@@ -147,6 +148,10 @@ async function startBaselineListener(sessionId, url, validAddress) {
                     }
                     }, {removeOnComplete: true });
                 }
+                else {
+                    console.log(`[Baseline] Nessuna transazione rilevante trovata per il blocco ${blockHeader.number}...`);
+                }
+
             } catch (err) {
                 console.error(`[Baseline Error] Errore parsing blocco ${blockHeader.number}:`, err.message);
             }

@@ -138,6 +138,8 @@ const baselineWorkerMetricsSchema = new mongoose.Schema({
     time_pythonConversion: { type: Number },
     time_xesAppend: { type: Number },
     time_ruleVerification: { type: Number },
+    rules_number: {type: Number },
+
     time_totalJob: { type: Number },
     
     status: { type: String, enum: ['Success', 'No_Logs_Extracted', 'Failed'], default: 'Success' },
