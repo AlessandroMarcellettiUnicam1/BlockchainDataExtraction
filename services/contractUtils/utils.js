@@ -69,7 +69,6 @@ async function getContractCodeEtherscan(contractAddress,endpoint,apiKey,queryRes
             proxy:"",
             contractName: "",
         };
-        console.log(queryResult)
         if(queryResult && !queryResult.abi.includes("Contract source code not verified")){
             data.compilerVersion=queryResult.compilerVersion;
             data.contractAbi=queryResult.abi;
@@ -94,7 +93,6 @@ async function getContractCodeEtherscan(contractAddress,endpoint,apiKey,queryRes
         let i = 0;
 
 
-            console.log(jsonCode)
 
         if (jsonCode.charAt(0) === "{") {
     
