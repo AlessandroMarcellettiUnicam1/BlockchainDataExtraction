@@ -1630,12 +1630,12 @@ function createShatrace(singleObject, sstoreBuffer, web3) {
 
       let flag = false;
       let test = i;
-
+      // for prevoius erigon: "0x" + singleObject.trackBuffer[test].hexStorageIndex,
       while (flag === false) {
         if (
           !(
             web3.utils.hexToNumber(
-              "0x" + singleObject.trackBuffer[test].hexStorageIndex,
+              singleObject.trackBuffer[test].hexStorageIndex,
             ) < 300
           )
         ) {
