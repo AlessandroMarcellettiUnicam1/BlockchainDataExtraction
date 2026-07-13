@@ -1186,12 +1186,13 @@ async function getTraceStorageFromErigon(
 
         let flag = false;
         let test = i;
+//commented for newest erigon                 "0x" + publicTrackBuffer[test].hexStorageIndex,
 
         while (flag === false) {
           if (
             !(
               web3.utils.hexToNumber(
-                "0x" + publicTrackBuffer[test].hexStorageIndex,
+                publicTrackBuffer[test].hexStorageIndex,
               ) < 300
             )
           ) {
