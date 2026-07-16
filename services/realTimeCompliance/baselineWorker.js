@@ -39,6 +39,15 @@ const baselineWorker = new Worker('baseline-queue', async (job) => {
     try {
         const mockBlockNumber = payload.blockNumber - 1000000;
 
+        const configData = await redisClient.get(`session:${sessionId}:config`);
+        const baseXes = await redisClient.get(`session:${sessionId}:xes`);
+
+        if (!configData || !baseXes) {
+            throw new Error("Configurazione o Log Base mancanti in Redis. Impossibile aggiornare lo storico.");
+        }
+
+        const { mapping, parsedRules, logMapping, implAddress } = JSON.parse(configData);
+
         const newParams = {
             contractAddressesFrom: [payload.contract], 
             contractAddressesTo: [payload.contract],
@@ -53,14 +62,14 @@ const baselineWorker = new Worker('baseline-queue', async (job) => {
                 functions: []
             },
             contractName: "",
-            implementationContractAddress: "",
+            implementationContractAddress: implAddress || "",
             smartContract: null,
             option: { default: 1, internalStorage: 1, internalTransaction: 0 } 
         };
 
         const tStartExtraction = performance.now();
-        //const extractedLogs = await getAllTransactions(null, newParams, true);
-        const extractedLogs = await mockExtraction( payload.blockNumber, payload.contract);
+        const extractedLogs = await getAllTransactions(null, newParams, true);
+        //const extractedLogs = await mockExtraction( payload.blockNumber, payload.contract);
         const extractionTime = parseFloat((performance.now() - tStartExtraction).toFixed(3));
 
         if (!extractedLogs || extractedLogs.length === 0) {
@@ -83,15 +92,6 @@ const baselineWorker = new Worker('baseline-queue', async (job) => {
 
         console.log(`[Baseline Worker] Estratte ${extractedLogs.length} transazioni dal blocco ${mockBlockNumber}.`);
 
-        // recupero dati da redis
-        const configData = await redisClient.get(`session:${sessionId}:config`);
-        const baseXes = await redisClient.get(`session:${sessionId}:xes`);
-
-        if (!configData || !baseXes) {
-            throw new Error("Configurazione o Log Base mancanti in Redis. Impossibile aggiornare lo storico.");
-        }
-
-        const { mapping, parsedRules, logMapping, enableMempool } = JSON.parse(configData);
 
         const pythonPayload = {
             data: extractedLogs,
