@@ -328,7 +328,7 @@ async function createTransactionLog(
           console.log(
             `[${new Date().toISOString()}, DEBUG-PARTIAL-3] Inizio parsing dello stream (getTraceStorage...) per TX: ${tx.hash}`,
           );
-          storageVal = await getTraceStoragePartial(
+          storageVal = await getTraceStorageInputStream(
             stream,
             networkData,
             tx.inputDecoded ? tx.inputDecoded.method : null,
@@ -1314,7 +1314,7 @@ async function getTraceStorageFromErigon(
   }
 }
 
-async function getTraceStoragePartial(
+async function getTraceStorageInputStream(
   httpStream,
   networkData,
   functionName,
@@ -1593,12 +1593,26 @@ async function getTraceStoragePartial(
       );
     }
 
+    let internalTxs = [];
+    const tDIT = performance.now();
+      internalTxs = await decodeInternalTransaction(
+        internalCalls,
+        smartContract,
+        web3,
+        networkData,
+        transactionHash,
+        blockNumber,
+      );
+      localMetrics.time_decodeInternalTransactionErigon = parseFloat(
+        (performance.now() - tDIT).toFixed(3),
+    );
+
     console.log(
       `[${new Date().toISOString()}, DEBUG-PARSER-PARTIAL-5] Tutte le elaborazioni sincrone terminate, ritorno i dati.`,
     );
     return {
       decodedValues: internalStorage,
-      internalTxs: internalCalls,
+      internalTxs: internalTxs,
     };
   } catch (err) {
     console.error("Errore durante l'elaborazione dello stream:", err);
