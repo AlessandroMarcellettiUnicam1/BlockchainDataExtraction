@@ -4,6 +4,11 @@ const { saveAbi } = require("../databaseStore");
 const { connectDB } = require("../config/db");
 const { getEventsFromInternal }= require("./decodingUtils/utils")
 const InputDataDecoder = require("ethereum-input-data-decoder");
+
+function ensureHexPrefix(value) {
+    const stringValue = String(value ?? "");
+    return stringValue.startsWith("0x") ? stringValue : "0x" + stringValue;
+}
 /**
  * 
  * @param {*} element 
@@ -14,7 +19,7 @@ async function handleUnverifiedContract(element, web3) {
         if(element.inputsCall.slice(0,2)=="0x"){
             element.input=element.inputsCall;
         }else{
-            element.input = "0x" + element.inputsCall;
+            element.input = ensureHexPrefix(element.inputsCall);
         }
     }
     
@@ -161,7 +166,7 @@ function decodeInputs(element, abi, web3, contractName) {
  */
 async function handleAbiFromDb(element, response, web3) {
     if(!element.input && element.inputsCall){
-        element.inputsCall="0x"+element.inputsCall;
+        element.inputsCall = ensureHexPrefix(element.inputsCall);
     }
     if (response.abi.includes("Contract source code not verified")) {
         await handleUnverifiedContract(element, web3);
@@ -201,7 +206,7 @@ async function handleAbiFromDb(element, response, web3) {
 async function handleAbiFetch(element, addressTo, apiKey, endpoint, web3) {
     let success = false;
     if(!element.input && element.inputsCall){
-        element.inputsCall="0x"+element.inputsCall;
+        element.inputsCall = ensureHexPrefix(element.inputsCall);
     }
     await new Promise((resolve) => setTimeout(resolve, 5000));
 

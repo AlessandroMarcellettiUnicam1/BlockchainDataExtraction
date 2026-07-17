@@ -50,6 +50,35 @@ async function saveAbi(storeAbi) {
     }
 }
 
+async function saveCompiledContractData(contractAddress, contractTree) {
+    if (!contractAddress || !contractTree) return;
+
+    try {
+        const collection = mongoose.connection.db.collection("ContractData");
+        await collection.updateOne(
+            { contractAddress: contractAddress.toLowerCase() },
+            {
+                $set: {
+                    abi: contractTree.contractAbi,
+                    contractName: contractTree.contractName,
+                    proxy: contractTree.proxy,
+                    proxyImplementation: contractTree.proxyImplementation || '',
+                    contractAddress: contractAddress.toLowerCase(),
+                    sourceCode: contractTree.sourceCode,
+                    compilerVersion: contractTree.compilerVersion,
+                    fullContractTree: contractTree.fullContractTree,
+                    storageLayoutFlag: contractTree.storageLayoutFlag,
+                    contractCompiled: contractTree.contractCompiled,
+                    compiledAt: new Date()
+                }
+            },
+            { upsert: true }
+        );
+    } catch (err) {
+        console.error(`[ContractData DB Error] Errore salvataggio dati compilati per ${contractAddress}: `, err);
+    }
+}
+
 async function saveExtractionMetrics(metricsData) {
     try {
         const ExtractionMetrics = mongoose.models.ExtractionMetrics || 
@@ -75,6 +104,7 @@ module.exports = {
     saveTransaction,
     saveExtractionLog,
     saveAbi,
+    saveCompiledContractData,
     saveExtractionMetrics,
     saveBaselineWorkerMetrics
 }

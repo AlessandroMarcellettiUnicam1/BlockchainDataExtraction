@@ -18,7 +18,7 @@ const { fork } = require("child_process");
 const {ethers} = require("hardhat");
 const {buildTransactionHierarchy} = require("../Erigon/erigonApi");
 const { convertProcessSignalToExitCode } = require('util');
-const { saveExtractionMetrics } = require('../../databaseStore');
+const { saveExtractionMetrics, saveCompiledContractData } = require('../../databaseStore');
 
 /**
  * Method called by the server to extract the transactions
@@ -138,10 +138,11 @@ async function getAllTransactions(oldParams, newParams, returnInMemory = false) 
         } else {
             const query = { contractAddress: oldParams.implementationContractAddress.toLowerCase() };
             let queryResult = await searchAbi(query);
-            contractTree = await getContractTree(oldParams.smartContract, oldParams.implementationContractAddress, networkData.endpoint, networkData.apiKey, queryResult);
+            const singleTxPerformance = {};
+            contractTree = await getContractTree(oldParams.smartContract, oldParams.implementationContractAddress, networkData.endpoint, networkData.apiKey, queryResult, singleTxPerformance);
             const transactionList = await getTransactionFromContract(networkData, oldParams.contractAddress, oldParams.fromBlock, oldParams.toBlock);
             
-            let storageData = await getStorageData(transactionList, oldParams.contractName, contractTree, oldParams.contractAddress, oldParams.filters, oldParams.smartContract, oldParams.option, networkData,null, returnInMemory);
+            let storageData = await getStorageData(transactionList, oldParams.contractName, contractTree, oldParams.contractAddress, oldParams.filters, oldParams.smartContract, oldParams.option, networkData,null, returnInMemory, singleTxPerformance);
             
             if (storageData && storageData.length > 0) {
                 memoryLogs = storageData;
@@ -193,6 +194,25 @@ async function getContractTree(smartContract,impl_contract,endpoint,apiKey,query
     } else {
         //implementation contract address
         try {   
+                if (queryResult?.fullContractTree && queryResult?.contractCompiled) {
+                    contractTree = {
+                        fullContractTree: queryResult.fullContractTree,
+                        storageLayoutFlag: queryResult.storageLayoutFlag,
+                        contractCompiled: queryResult.contractCompiled,
+                        contractAbi: queryResult.abi,
+                        sourceCode: queryResult.sourceCode,
+                        proxy: queryResult.proxy,
+                        contractName: queryResult.contractName,
+                        proxyImplementation: queryResult.proxyImplementation || '',
+                        compilerVersion: queryResult.compilerVersion
+                    };
+                    singleTxPerformance.time_getContractCodeEtherscan = 0;
+                    singleTxPerformance.time_getCompiledData = 0;
+                    const tEndTotalCached = performance.now() - tStartTotal;
+                    singleTxPerformance.time_getContractTreeTotal = parseFloat(tEndTotalCached.toFixed(3));
+                    return contractTree;
+                }
+
                 console.log(`[${new Date().toISOString()}, DEBUG-CONTRACT TREE] Inizio recupero ContractCode`);
 
                 const tStartEtherscan = performance.now();
@@ -217,6 +237,7 @@ async function getContractTree(smartContract,impl_contract,endpoint,apiKey,query
                 contractTree.contractName=contractsResult.contractName;
                 contractTree.proxyImplementation='';
                 contractTree.compilerVersion=contractsResult.compilerVersion;
+                await saveCompiledContractData(impl_contract, contractTree);
                 console.log(`[${new Date().toISOString()}, DEBUG-CONTRACT TREE] Fine recupero CompiledData e ContractTree completato`);
             }
         } catch (err) {

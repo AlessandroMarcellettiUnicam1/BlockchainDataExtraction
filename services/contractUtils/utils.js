@@ -4,6 +4,7 @@ const { execFile } = require("child_process");
 const path = require("path");
 const { fork } = require("child_process");
 const fs = require('fs');
+const { saveCompiledContractData } = require("../../databaseStore");
 /**
  * Method use to create a solcWorker use to get the compiled version of a contract
  * This i done in this way to solve the memory stack error. In this way 
@@ -397,6 +398,20 @@ async function getContractTree(smartContract,impl_contract,endpoint,apiKey,query
     } else {
         //implementation contract address
         try {
+                if (queryResult?.fullContractTree && queryResult?.contractCompiled) {
+                    return {
+                        fullContractTree: queryResult.fullContractTree,
+                        storageLayoutFlag: queryResult.storageLayoutFlag,
+                        contractCompiled: queryResult.contractCompiled,
+                        contractAbi: queryResult.abi,
+                        sourceCode: queryResult.sourceCode,
+                        proxy: queryResult.proxy,
+                        contractName: queryResult.contractName,
+                        proxyImplementation: queryResult.proxyImplementation || '',
+                        compilerVersion: queryResult.compilerVersion
+                    };
+                }
+
                 contractsResult = await getContractCodeEtherscan(impl_contract, endpoint, apiKey,queryResult,firstExtraction);
             if (contractsResult) {
                 contractTree = await getCompiledData(contractsResult.contracts, contractsResult.contractName, contractsResult.compilerVersion);
@@ -407,6 +422,7 @@ async function getContractTree(smartContract,impl_contract,endpoint,apiKey,query
                 contractTree.contractName=contractsResult.contractName;
                 contractTree.proxyImplementation='';
                 contractTree.compilerVersion=contractsResult.compilerVersion;
+                await saveCompiledContractData(impl_contract, contractTree);
             }
         } catch (err) {
             console.error('getContractCodeEtherscan error: ', err);
