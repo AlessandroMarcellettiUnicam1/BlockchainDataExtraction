@@ -200,176 +200,258 @@ function makeRpcCallStreaming(url, method, params) {
  * @param {*} option 
  * @returns 
  */
-async function createTransactionLog(tx, mainContract, contractTree, smartContract,extractionType,contractAddress,networkData,option,addressRange) {
-    let web3=new Web3(networkData.web3Endpoint)
-    if(tx.timestamp && tx.timestamp.includes("0x")){
-        tx.timeStamp=web3.utils.hexToNumber(tx.timestamp);
+async function createTransactionLog(
+  tx,
+  mainContract,
+  contractTree,
+  smartContract,
+  extractionType,
+  contractAddress,
+  option,
+  networkData,
+  addressRange,
+) {
+  const localMetrics = {
+    time_debugErigon: 0,
+    time_traceStorageErigon: 0,
+    time_debugStandard: 0,
+    time_traceStorageStandard: 0,
+    time_getEvents: 0,
+
+    time_processTraceErigon: 0,
+    time_optimizedDecodeValuesErigon: 0,
+    time_decodeInternalTransactionErigon: 0,
+    time_newDecodedInternalTransactioneErigon: 0,
+    time_assignStorageToTheInternalErigon: 0,
+    time_decodeInternalTxsStorageErigon: 0,
+
+    time_processTraceStandard: 0,
+    time_optimizedDecodeValuesStandard: 0,
+  };
+
+  let web3 = new Web3(networkData.web3Endpoint);
+  if (tx.timestamp && tx.timestamp.includes("0x")) {
+    tx.timeStamp = web3.utils.hexToNumber(tx.timestamp);
+  } else if (tx.timestamp) {
+    tx.timeStamp = Number(tx.timestamp);
+  }
+  let transactionLog = {
+    functionName: tx.inputDecoded ? tx.inputDecoded.method : tx.methodId,
+    transactionHash: tx.hash,
+    blockNumber: parseInt(tx.blockNumber),
+    contractAddress: tx.to,
+    sender: tx.from,
+    gasUsed: parseInt(tx.gasUsed),
+    timestamp: tx.timeStamp
+      ? new Date(tx.timeStamp * 1000).toISOString()
+      : new Date().toISOString(),
+    inputs: tx.inputDecoded ? decodeInputs(tx.inputDecoded, web3) : [],
+    value: tx.value,
+    storageState: [],
+    internalTxs: [],
+    events: [],
+  };
+  let storageVal = null;
+  let debugResult = null;
+  try {
+    if (option.default != 0) {
+      //if the internal transaction are extende menaning that I can use a node
+      if (option.internalTransaction == 1) {
+        const t1 = performance.now();
+        console.log(
+          `[${new Date().toISOString()}, DEBUG-1] Inizio richiesta streaming al nodo per TX: ${tx.hash}`,
+        );
+        const { stream, requiredTime } = await debugTransactionErigonStreaming(
+          tx.hash,
+          networkData.web3Endpoint,
+        );
+        console.log(
+          `[${new Date().toISOString()}, DEBUG-2] Stream ricevuto dal nodo per TX: ${tx.hash}`,
+        );
+        localMetrics.time_debugErigon = parseFloat(
+          (performance.now() - t1).toFixed(3),
+        );
+        // Capture time after launching the worker
+        // Log the timing data to CSV
+        try {
+          const t2 = performance.now();
+          console.log(
+            `[${new Date().toISOString()}, DEBUG-INTERNAL-3] Inizio parsing dello stream (getTraceStorage...) per TX: ${tx.hash}`,
+          );
+          storageVal = await getTraceStorageFromErigon(
+            stream,
+            networkData,
+            tx.inputDecoded ? tx.inputDecoded.method : null,
+            tx.hash,
+            mainContract,
+            contractTree,
+            smartContract,
+            option,
+            web3,
+            transactionLog.blockNumber,
+            localMetrics,
+          );
+          console.log(
+            `[${new Date().toISOString()}, DEBUG-INTERNAL-4] Parsing stream completato con successo per TX: ${tx.hash}`,
+          );
+          localMetrics.time_traceStorageErigon = parseFloat(
+            (performance.now() - t2).toFixed(3),
+          );
+          //storageVal.internalTxs=await newDecodedInternalTransaction(transactionLog.transactionHash, smartContract, networkData, web3);
+        } catch (err) {
+          console.log(err);
+        }
+      } else {
+        const t3 = performance.now();
+        console.log(
+          `[${new Date().toISOString()}, DEBUG-1] Inizio richiesta streaming al nodo per TX: ${tx.hash}`,
+        );
+        const { stream, requiredTime } = await debugTransactionErigonStreaming(
+          tx.hash,
+          networkData.web3Endpoint,
+        );
+        console.log(
+          `[${new Date().toISOString()}, DEBUG-2] Stream ricevuto dal nodo per TX: ${tx.hash}`,
+        );
+        localMetrics.time_debugStandard = parseFloat(
+          (performance.now() - t3).toFixed(3),
+        );
+        try {
+          const t4 = performance.now();
+          console.log(
+            `[${new Date().toISOString()}, DEBUG-PARTIAL-3] Inizio parsing dello stream (getTraceStorage...) per TX: ${tx.hash}`,
+          );
+          storageVal = await getTraceStorageInputStream(
+            stream,
+            networkData,
+            tx.inputDecoded ? tx.inputDecoded.method : null,
+            tx.hash,
+            mainContract,
+            contractTree,
+            smartContract,
+            option,
+            web3,
+            transactionLog.blockNumber,
+            localMetrics,
+          );
+          console.log(
+            `[${new Date().toISOString()} DEBUG-PARTIAL-4] Parsing stream completato con successo per TX: ${tx.hash}`,
+          );
+          localMetrics.time_traceStorageStandard = parseFloat(
+            (performance.now() - t4).toFixed(3),
+          );
+        } catch (err) {
+          console.log(err);
+        }
+      }
+      transactionLog.storageState = storageVal ? storageVal.decodedValues : [];
+      transactionLog.internalTxs = storageVal ? storageVal.internalTxs : [];
+      let storeAbi = {
+        contractName: contractTree?.contractName,
+        abi: contractTree?.contractAbi,
+        proxy: contractTree?.proxy,
+        proxyImplementation: "",
+        contractAddress: tx?.to,
+        sourceCode: contractTree?.sourceCode,
+        compilerVersion: contractTree.compilerVersion || "unknown",
+      };
+      transactionLog.finalShaTraces = undefined;
+      transactionLog.functionStorage = undefined;
+      //forse a questo punto basta controllare solo se il contratto Ã¨ un proxy o no
+      if (
+        transactionLog.functionName == null &&
+        transactionLog.internalTxs &&
+        transactionLog.internalTxs.length > 0
+      ) {
+        if (transactionLog.internalTxs[0].type == "DELEGATECALL") {
+          const addressTo = transactionLog.internalTxs[0].to;
+          const query = { contractAddress: addressTo.toLowerCase() };
+          const response = await searchAbi(query);
+          if (response) {
+            if (contractTree) {
+              storeAbi.proxy = "1";
+              storeAbi.proxyImplementation = query.contractAddress;
+            }
+            try {
+              const decoder = new InputDataDecoder(response.abi);
+              const inputData = tx.input;
+              const tempResult = decoder.decodeData(inputData);
+              transactionLog.functionName = tempResult.method;
+              if (transactionLog.inputs.length < 1) {
+                transactionLog.inputs = tempResult.inputs.map((input, i) => {
+                  let value = input;
+                  if (input._isBigNumber) {
+                    value = Number(web3.utils.hexToNumber(input._hex));
+                  }
+                  return {
+                    inputName: tempResult.names[i],
+                    type: tempResult.types[i],
+                    inputValue: value,
+                  };
+                });
+              }
+            } catch (err) {
+              console.log("errr" + err);
+            }
+            // const decoder = new InputDataDecoder(response.abi);
+          }
+        }
+      }
+      if (contractTree) {
+        await saveAbi(storeAbi);
+      }
     }
-    let transactionLog = {
-        functionName:tx.inputDecoded?tx.inputDecoded.method:tx.methodId,
-        transactionHash: tx.hash,
-        blockNumber: parseInt(tx.blockNumber),
-        contractAddress: tx.to,
-        sender: tx.from,
-        gasUsed: parseInt(tx.gasUsed),
-        timestamp: new Date(tx.timeStamp * 1000).toISOString(),
-        inputs: tx?.inputDecoded?decodeInputs(tx.inputDecoded,web3):[],
-        value:tx.value,
-        storageState: [],
-        internalTxs: [],
-        events: []
-    };
-    let storageVal=null;
-    let debugResult=null;
-    try{
-        if(option.default!=0){
-            //if the internal transaction are extende menaning that I can use a node
-            if(option.internalTransaction==1){
-                const timeBeforeLaunch = Date.now();
-
-                const { stream, requiredTime } = await debugTransactionErigonStreaming(tx.hash, networkData.web3Endpoint);
-                // Capture time after launching the worker
-                const timeAfterLaunch = Date.now();
-                timePerformance.time_debug_trace_trace=timeAfterLaunch-timeBeforeLaunch;
-                timePerformance.time_debugErigon=timeAfterLaunch-timeBeforeLaunch;
-                // Log the timing data to CSV
-                try{
-                    const timeBeforeLaunch = Date.now();
-                    storageVal = await getTraceStorageFromErigon(stream, networkData,tx.inputDecoded?tx.inputDecoded.method:null,tx.hash,mainContract,contractTree,smartContract,option,web3,transactionLog.blockNumber);
-                    //storageVal.internalTxs=await newDecodedInternalTransaction(transactionLog.transactionHash, smartContract, networkData, web3);
-                    const timeAfterLaunch = Date.now();
-                    timePerformance.time_getTraceStorageErigonTotal += timeAfterLaunch - timeBeforeLaunch;
-
-                    
-                }catch (err){
-                    console.log(err);
-                }
-            }else{
-                // Previous Hardhat-based tracing for the internalPartial path.
-                // debugResult = await debugTransaction(tx.hash, tx.blockNumber,networkData);
-                try{
-                    const timeBeforeLaunch = Date.now();
-                    const { stream } = await debugTransactionErigonStreaming(tx.hash, networkData.web3Endpoint);
-                    const timeAfterLaunch = Date.now();
-                    timePerformance.time_debug_trace_trace=timeAfterLaunch-timeBeforeLaunch;
-                    timePerformance.time_debugErigon=timeAfterLaunch-timeBeforeLaunch;
-
-                    const timeBeforeTraceStorage = Date.now();
-                    storageVal = await getTraceStorageFromErigon(stream, networkData, tx.inputDecoded?tx.inputDecoded.method:null, tx.hash, mainContract, contractTree, smartContract,option,web3,transactionLog.blockNumber);
-                    const timeAfterTraceStorage = Date.now();
-                    timePerformance.time_getTraceStorageErigonTotal += timeAfterTraceStorage - timeBeforeTraceStorage;
-                    // Previous Hardhat-based parser for the internalPartial path.
-                    // storageVal = await getTraceStorage(debugResult.response, networkData, tx.inputDecoded?tx.inputDecoded.method:null, tx.hash, mainContract, contractTree, smartContract,option,web3,transactionLog.blockNumber);
-                }catch(err){
-                    console.log(err)
-                }
-            }
-            transactionLog.storageState =storageVal ? storageVal.decodedValues:[];
-            transactionLog.internalTxs =storageVal ? storageVal.internalTxs:[];
-            let storeAbi = {
-                contractName: contractTree?.contractName,
-                abi: contractTree?.contractAbi,
-                proxy: contractTree?.proxy,
-                proxyImplementation: '',
-                contractAddress: tx?.to,
-                sourceCode: contractTree?.sourceCode,
-                compilerVersion: contractTree?.compilerVersion
-            };
-            delete transactionLog['finalShaTraces'];
-            delete transactionLog['functionStorage'];
-            //forse a questo punto basta controllare solo se il contratto è un proxy o no
-            const firstInternal = transactionLog.internalTxs?.[0];
-            if(transactionLog.functionName==null && firstInternal){
-                const firstInternalFrom = firstInternal.from?.toLowerCase();
-                const txTo = tx.to?.toLowerCase();
-                if(firstInternal.callType=="DELEGATECALL" && (!firstInternalFrom || firstInternalFrom == txTo) && firstInternal.to && firstInternal.to.toLowerCase() != txTo){
-                    const addressTo = firstInternal.to;
-                    const query = { contractAddress: addressTo.toLowerCase() };
-                    const response = await searchAbi(query);
-                    if(response){
-                        if(contractTree){
-                            storeAbi.proxy='1';
-                            storeAbi.proxyImplementation=query.contractAddress;
-                        }
-                        try{
-                            const decoder = new InputDataDecoder(response.abi);
-                            const inputData = tx.input;
-                            const tempResult = decoder.decodeData(inputData);
-                            transactionLog.functionName = tempResult.method || transactionLog.functionName;
-                            if (tempResult.method && transactionLog.inputs.length< 1) {
-                                transactionLog.inputs = tempResult.inputs.map((input, i) => {
-                                    let value = input;
-                                    if (input._isBigNumber) {
-                                        value = Number(web3.utils.hexToNumber(input._hex));
-                                    }
-                                    return {
-                                        inputName: tempResult.names[i],
-                                        type: tempResult.types[i],
-                                        inputValue: value,
-                                    };
-                                });
-                                
-                            }
-                        }catch(err){
-                            console.log("errr"+err)
-                        }
-                       // const decoder = new InputDataDecoder(response.abi);
-                        
-                    }
-                }
-                
-            }
-            if(transactionLog.functionName==null && tx.rawMethodId){
-                transactionLog.functionName = tx.rawMethodId;
-            }
-            if(contractTree){
-                const timeBeforeSaveAbi = Date.now();
-                await saveAbi(storeAbi);
-                timePerformance.time_saveAbi += Date.now() - timeBeforeSaveAbi;
-            }
-            
-        }
-        //TODO: tempo eventi
-        const timeToGetEvents=Date.now()
-        await getEventForTransaction(transactionLog,tx.hash,Number(tx.blockNumber),contractAddress,web3,contractTree,option,networkData);
-        const timeAfterGetEvents=Date.now();
-        timePerformance.time_getEvents=timeAfterGetEvents-timeToGetEvents;
-        if(addressRange && addressRange.length>1){
-            let collectionName="";
-            for(let i=0; i<addressRange.length;i++){
-                collectionName+=addressRange[i].substring(0,5).toLowerCase(); 
-            }
-           const timeBeforeSaveTransaction = Date.now();
-           await saveTransaction(transactionLog,collectionName)
-           timePerformance.time_saveTransaction += Date.now() - timeBeforeSaveTransaction;
-        } else if(addressRange && addressRange.length==1){
-            const timeBeforeSaveTransaction = Date.now();
-            await saveTransaction(transactionLog,addressRange[0].toLowerCase());
-            timePerformance.time_saveTransaction += Date.now() - timeBeforeSaveTransaction;
-        }else{
-           const timeBeforeSaveTransaction = Date.now();
-           await saveTransaction(transactionLog, tx.to!=''?tx.to:tx.from);
-           timePerformance.time_saveTransaction += Date.now() - timeBeforeSaveTransaction;
-        } 
-        
-
-    }finally{
-        if (debugResult) {
-            if (debugResult.response && debugResult.response.structLogs) {
-                debugResult.response.structLogs = null;
-            }
-            debugResult.response = null;
-            debugResult = null;
-        }
-        
-        if (storageVal) {
-            storageVal.decodedValues = null;
-            storageVal.internalTxs = null;
-            storageVal = null;
-        }
-        transactionLog=null;
+    //TODO: tempo eventi
+    const t5 = performance.now();
+    console.log(
+      `[${new Date().toISOString()}, DEBUG-5] Inizio recupero eventi (getEventForTransaction)...`,
+    );
+    await getEventForTransaction(
+      transactionLog,
+      tx.hash,
+      Number(tx.blockNumber),
+      contractAddress,
+      web3,
+      contractTree,
+      option,
+      networkData,
+    );
+    console.log(
+      `[${new Date().toISOString()}, DEBUG-6] Eventi recuperati (getEventForTransaction)...`,
+    );
+    localMetrics.time_getEvents = parseFloat(
+      (performance.now() - t5).toFixed(3),
+    );
+    if (addressRange && addressRange.length > 1) {
+      let collectionName = "";
+      for (let i = 0; i < addressRange.length; i++) {
+        collectionName += addressRange[i].substring(0, 5).toLowerCase();
+      }
+      await saveTransaction(transactionLog, collectionName);
+    } else if (addressRange && addressRange.length == 1) {
+      await saveTransaction(transactionLog, addressRange[0].toLowerCase());
+    } else {
+      await saveTransaction(transactionLog, tx.to != "" ? tx.to : tx.from);
     }
-    return ;
+
+    console.log(`[DEBUG-7] Ritorno del transaction log`);
+    return { log: transactionLog, metrics: localMetrics };
+  } finally {
+    if (debugResult) {
+      if (debugResult.response && debugResult.response.structLogs) {
+        debugResult.response.structLogs = null;
+      }
+      debugResult.response = null;
+      debugResult = null;
+    }
+
+    if (storageVal) {
+      storageVal.decodedValues = null;
+      storageVal.internalTxs = null;
+      storageVal = null;
+    }
+    transactionLog = null;
+  }
 }
 /**
  * function to get the event emitted in t
@@ -1032,8 +1114,321 @@ async function getTraceStorageFromErigon(httpStream, networkData,functionName,tr
     }
 }
 
-function createShatrace(singleObject,sstoreBuffer,web3){
-    singleObject.finalShaTraces=singleObject.trackBuffer;
+async function getTraceStorageInputStream(
+  httpStream,
+  networkData,
+  functionName,
+  transactionHash,
+  mainContract,
+  contractTree,
+  smartContract,
+  extractionOption,
+  web3,
+  blockNumber,
+  localMetrics = {},
+) {
+  let mapForStorage = {};
+  let depthToIndexMap = new Map();
+  let nextIndex = 1;
+  let bufferPC = -10;
+  let sstoreBuffer = [];
+  let sstoreOptimization = [];
+  let internalCalls = [];
+  let keccakBeforeAdd = {};
+  let finalShaTraces = [];
+  let previousTrace = null;
+
+  const parser = JSONStream.parse("result.structLogs.*");
+  httpStream.pipe(parser);
+
+  function getOrCreateIndexForDepth(depth) {
+    if (!depthToIndexMap.has(depth)) {
+      const newIndex = nextIndex++;
+      depthToIndexMap.set(depth, newIndex);
+      mapForStorage[newIndex] = {
+        trackBuffer: [],
+        functionStorage: {},
+      };
+    }
+    return depthToIndexMap.get(depth);
+  }
+
+  const tStartStream = performance.now();
+
+  function processTrace(trace, nextTrace) {
+    const currentIndex = getOrCreateIndexForDepth(trace.depth);
+
+    if (trace.op === "KECCAK256") {
+      bufferPC = trace.pc;
+      const stackLength = trace.stack.length;
+      const memoryLocation = trace.stack[stackLength - 1];
+      let numberLocation = web3.utils.hexToNumber("0x" + memoryLocation) / 32;
+      let storageIndexLocation = numberLocation + 1;
+
+      const safeMemory = trace.memory || [];
+      const hexKey = safeMemory[numberLocation];
+      const hexStorageIndex = safeMemory[storageIndexLocation];
+
+      mapForStorage[currentIndex].trackBuffer.push({ hexKey, hexStorageIndex });
+    } else if (trace.op === "STOP" || trace.op === "RETURN") {
+      for (const slot in trace.storage) {
+        mapForStorage[currentIndex].functionStorage[slot] = trace.storage[slot];
+      }
+      if (trace.op === "STOP") depthToIndexMap.delete(trace.depth);
+    } else if (trace.pc === bufferPC + 1) {
+      bufferPC = -10;
+      const lastIdx = mapForStorage[currentIndex].trackBuffer.length - 1;
+      if (lastIdx < 0) return;
+
+      mapForStorage[currentIndex].trackBuffer[lastIdx].finalKey =
+        trace.stack[trace.stack.length - 1];
+      keccakBeforeAdd = mapForStorage[currentIndex].trackBuffer[lastIdx];
+
+      if (
+        trace.op === "ADD" &&
+        (trace.stack[trace.stack.length - 1] === keccakBeforeAdd.finalKey ||
+          trace.stack[trace.stack.length - 2] === keccakBeforeAdd.finalKey) &&
+        keccakBeforeAdd.hexStorageIndex ===
+          "0000000000000000000000000000000000000000000000000000000000000000"
+      ) {
+        const keyBuff = mapForStorage[currentIndex].trackBuffer[lastIdx].hexKey;
+        const slotBuff =
+          mapForStorage[currentIndex].trackBuffer[lastIdx].hexStorageIndex;
+        mapForStorage[currentIndex].trackBuffer[lastIdx].hexKey = slotBuff;
+        mapForStorage[currentIndex].trackBuffer[lastIdx].hexStorageIndex =
+          keyBuff;
+
+        if (nextTrace && nextTrace.stack && nextTrace.stack.length > 0) {
+          mapForStorage[currentIndex].trackBuffer[lastIdx].finalKey =
+            nextTrace.stack[nextTrace.stack.length - 1];
+        }
+        mapForStorage[currentIndex].trackBuffer[lastIdx].indexSum =
+          trace.stack[trace.stack.length - 2];
+      }
+    } else if (trace.op === "SSTORE") {
+      sstoreOptimization.push(trace.stack);
+      sstoreBuffer.push(trace.stack[trace.stack.length - 1]);
+
+      for (const slot in trace.storage) {
+        mapForStorage[currentIndex].functionStorage[slot] = trace.storage[slot];
+      }
+    } else if (
+      trace.op === "CALL" ||
+      trace.op === "DELEGATECALL" ||
+      trace.op === "STATICCALL" ||
+      trace.op === "CALLCODE"
+    ) {
+      const isCall = trace.op === "CALL" || trace.op === "CALLCODE";
+      const offsetBytes = trace.stack[trace.stack.length - (isCall ? 4 : 3)];
+      const lengthBytes = trace.stack[trace.stack.length - (isCall ? 5 : 4)];
+
+      let stringDepthConstruction = "";
+      for (let i = 0; i < trace.depth - 1; i++) {
+        stringDepthConstruction += "_1";
+      }
+
+      let call = {
+        callId: "0_1" + stringDepthConstruction,
+        callType: trace.op,
+        depth: trace.depth,
+        gas: web3.utils.hexToNumber("0x" + trace.stack[trace.stack.length - 1]),
+        to: "0x" + trace.stack[trace.stack.length - 2].slice(-40),
+        inputsCall: "",
+      };
+
+      getOrCreateIndexForDepth(trace.depth + 1);
+
+      let stringMemory = (trace.memory || []).join("");
+      if (stringMemory.length > 0) {
+        call.inputsCall = stringMemory.slice(
+          web3.utils.hexToNumber("0x" + offsetBytes) * 2,
+          web3.utils.hexToNumber("0x" + offsetBytes) * 2 +
+            web3.utils.hexToNumber("0x" + lengthBytes) * 2,
+        );
+      }
+
+      internalCalls.push(call);
+    } else if (trace.op === "SLOAD") {
+      for (const slot in trace.storage) {
+        mapForStorage[currentIndex].functionStorage[slot] = trace.storage[slot];
+      }
+    }
+  }
+
+  try {
+    console.log(
+      `[${new Date().toISOString()}, DEBUG-PARSER-PARTIAL-1] Avvio lettura stream di dati...`,
+    );
+    await new Promise((resolve, reject) => {
+      parser.on("data", (trace) => {
+        if (trace.stack && trace.stack.length > 0) {
+          trace.stack = trace.stack.map((element) => {
+            let el = element.startsWith("0x") ? element.slice(2) : element;
+            return web3.utils.padLeft(el, 64);
+          });
+        }
+        if (previousTrace) {
+          processTrace(previousTrace, trace);
+        }
+        previousTrace = trace;
+      });
+
+      parser.on("end", () => {
+        if (previousTrace) processTrace(previousTrace, null);
+        console.log(
+          `[${new Date().toISOString()}, DEBUG-PARSER-PARTIAL-2] Fine lettura stream raggiunta.`,
+        );
+        resolve();
+      });
+
+      parser.on("error", (error) => reject(error));
+    });
+
+    localMetrics.time_processTraceStandard = parseFloat(
+      (performance.now() - tStartStream).toFixed(3),
+    );
+
+    const publicTrackBuffer = mapForStorage["1"]?.trackBuffer || [];
+    finalShaTraces = publicTrackBuffer;
+
+    console.log(
+      `[${new Date().toISOString()}, DEBUG-PARSER-PARTIAL-3] Inizio calcolo SHA3 Traces (cicli while)...`,
+    );
+    for (let i = 0; i < publicTrackBuffer.length; i++) {
+      if (sstoreBuffer.includes(publicTrackBuffer[i].finalKey)) {
+        const trace = {
+          finalKey: publicTrackBuffer[i].finalKey,
+          hexKey: publicTrackBuffer[i].hexKey,
+          indexSum: publicTrackBuffer[i].indexSum,
+          hexStorageIndex: publicTrackBuffer[i].hexStorageIndex,
+        };
+
+        let flag = false;
+        let test = i;
+
+        while (flag === false) {
+          const storageIndex = publicTrackBuffer[test].hexStorageIndex;
+          if (!storageIndex) {
+            flag = true; // Salta se undefined
+            continue;
+          }
+          if (
+            !(
+              web3.utils.hexToNumber(
+                "0x" + publicTrackBuffer[test].hexStorageIndex,
+              ) < 300
+            )
+          ) {
+            if (test > 0) test--;
+            else flag = true;
+          } else {
+            trace.hexStorageIndex = publicTrackBuffer[test].hexStorageIndex;
+            flag = true;
+            finalShaTraces.push(trace);
+          }
+        }
+        finalShaTraces.push(trace);
+        sstoreBuffer.splice(
+          sstoreBuffer.indexOf(publicTrackBuffer[i].finalKey),
+          1,
+        );
+      }
+    }
+
+    for (const singleObject in mapForStorage) {
+      if (
+        mapForStorage[singleObject] &&
+        mapForStorage[singleObject].trackBuffer
+      ) {
+        const validTrackBuffer = mapForStorage[singleObject].trackBuffer.filter(
+          (t) => t && t.hexStorageIndex,
+        );
+        if (
+          validTrackBuffer.length > 0 &&
+          typeof createShatrace === "function"
+        ) {
+          // Ricostruiamo l'oggetto solo con i dati validi
+          const safeObject = {
+            ...mapForStorage[singleObject],
+            trackBuffer: validTrackBuffer,
+          };
+          try {
+            createShatrace(safeObject, sstoreBuffer, web3);
+          } catch (e) {
+            console.warn(
+              `[getTraceStorage] createShatrace ignorato per l'oggetto ${singleObject} a causa di dati non validi.`,
+            );
+          }
+        }
+      }
+    }
+
+    let sstoreObject = { sstoreOptimization, sstoreBuffer };
+    if (typeof regroupShatrace === "function")
+      finalShaTraces = regroupShatrace(finalShaTraces);
+
+    let internalStorage = [];
+
+    // --- DECODIFICA STORAGE ---
+    console.log(
+      `[${new Date().toISOString()}, DEBUG-PARSER-PARTIAL4] Inizio decodifica ottimizzata (optimizedDecodeValues) e chiamate interne...`,
+    );
+    if (extractionOption.internalStorage != 0 && mapForStorage["1"]) {
+      const tODV = performance.now();
+      internalStorage =
+        contractTree && contractTree.storageLayoutFlag
+          ? await optimizedDecodeValues(
+              sstoreObject,
+              contractTree.fullContractTree,
+              mapForStorage["1"].finalShaTraces || finalShaTraces,
+              mapForStorage["1"].functionStorage,
+              functionName,
+              mainContract,
+              web3,
+              contractTree.contractCompiled,
+            )
+          : [];
+      localMetrics.time_optimizedDecodeValuesStandard = parseFloat(
+        (performance.now() - tODV).toFixed(3),
+      );
+    }
+
+    let internalTxs = [];
+    const tDIT = performance.now();
+      internalTxs = await decodeInternalTransaction(
+        internalCalls,
+        smartContract,
+        web3,
+        networkData,
+        transactionHash,
+        blockNumber,
+      );
+      localMetrics.time_decodeInternalTransactionErigon = parseFloat(
+        (performance.now() - tDIT).toFixed(3),
+    );
+
+    console.log(
+      `[${new Date().toISOString()}, DEBUG-PARSER-PARTIAL-5] Tutte le elaborazioni sincrone terminate, ritorno i dati.`,
+    );
+    return {
+      decodedValues: internalStorage,
+      internalTxs: internalTxs,
+    };
+  } catch (err) {
+    console.error("Errore durante l'elaborazione dello stream:", err);
+    throw err;
+  } finally {
+    sstoreBuffer = null;
+    sstoreOptimization = null;
+    finalShaTraces = null;
+    internalCalls = null;
+    mapForStorage = null;
+    if (global.gc) global.gc();
+  }
+}
+
+function createShatrace(singleObject, sstoreBuffer, web3) {
+  singleObject.finalShaTraces = singleObject.trackBuffer;
 
     for (let i = 0; i < singleObject.trackBuffer.length; i++) {
         if (singleObject.trackBuffer[i] && sstoreBuffer.includes(singleObject.trackBuffer[i].finalKey)) {

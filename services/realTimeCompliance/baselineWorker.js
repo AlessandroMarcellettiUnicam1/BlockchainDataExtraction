@@ -39,6 +39,15 @@ const baselineWorker = new Worker('baseline-queue', async (job) => {
     try {
         const mockBlockNumber = payload.blockNumber - 1000000;
 
+        const configData = await redisClient.get(`session:${sessionId}:config`);
+        const baseXes = await redisClient.get(`session:${sessionId}:xes`);
+
+        if (!configData || !baseXes) {
+            throw new Error("Configurazione o Log Base mancanti in Redis. Impossibile aggiornare lo storico.");
+        }
+
+        const { mapping, parsedRules, logMapping, implAddress } = JSON.parse(configData);
+
         const newParams = {
             contractAddressesFrom: [payload.contract], 
             contractAddressesTo: [payload.contract],
@@ -53,7 +62,7 @@ const baselineWorker = new Worker('baseline-queue', async (job) => {
                 functions: []
             },
             contractName: "",
-            implementationContractAddress: "",
+            implementationContractAddress: implAddress || "",
             smartContract: null,
             option: { default: 1, internalStorage: 1, internalTransaction: 0 } 
         };
@@ -83,15 +92,6 @@ const baselineWorker = new Worker('baseline-queue', async (job) => {
 
         console.log(`[Baseline Worker] Estratte ${extractedLogs.length} transazioni dal blocco ${mockBlockNumber}.`);
 
-        // recupero dati da redis
-        const configData = await redisClient.get(`session:${sessionId}:config`);
-        const baseXes = await redisClient.get(`session:${sessionId}:xes`);
-
-        if (!configData || !baseXes) {
-            throw new Error("Configurazione o Log Base mancanti in Redis. Impossibile aggiornare lo storico.");
-        }
-
-        const { mapping, parsedRule, logMapping, enableMempool } = JSON.parse(configData);
 
         const pythonPayload = {
             data: extractedLogs,
@@ -127,33 +127,53 @@ const baselineWorker = new Worker('baseline-queue', async (job) => {
 
         let complianceResult = null;
         console.log(`[Baseline Worker] Mempool disabilitata. Controllo compliance per il blocco ${mockBlockNumber}...`);
-        const rulePayload = {
-            xes_string: miniXesToVerify,
-            rule: typeof parsedRule === 'string' ? parsedRule : JSON.stringify(parsedRule),
-            mapping: logMapping
-        };
-            
+        
         const tRuleCheckTime = performance.now();
-        const ruleResponse = await axios.post('http://coblockly-backend:8000/api/verifyRuleLive', rulePayload);
-        const ruleCheckTime = parseFloat((performance.now() - tRuleCheckTime).toFixed(3));
-        complianceResult = ruleResponse.data;
-
-        await saveBaselineWorkerMetrics({
-            jobId: job.id, 
-            blockNumber: mockBlockNumber,
-            time_totalExtractionPhase: extractionTime,
-            time_pythonConversion: conversionTime,
-            time_xesAppend: appendTime,
-            time_ruleVerification: ruleCheckTime,
-            time_totalJob: parseFloat((performance.now() - tJobStart).toFixed(3)),
-            status: 'Success'
+        const verificationPromises = parsedRules.map(ruleObj => {
+            const rulePayload = {
+                xes_string: miniXesToVerify,
+                rule: typeof ruleObj.parsed === 'string' ? ruleObj.parsed : JSON.stringify(ruleObj.parsed),
+                mapping: logMapping
+            };
+            
+            return axios.post('http://coblockly-backend:8000/api/verifyRuleLive', rulePayload)
+                .then(res => ({
+                    ruleText: ruleObj.text,
+                    compliant: res.data.compliant || [],
+                    noncompliant: res.data.noncompliant || [],
+                    ignored: res.data.ignored || []
+                }))
+                .catch(err => {
+                    console.error(`[Baseline Worker] Errore verifica regola ${ruleObj.id}:`, err.message);
+                    return {
+                        ruleText: ruleObj.text,
+                        error: true,
+                        compliant: [], noncompliant: [], ignored: []
+                    };
+                });
         });
+
+        complianceResults = await Promise.all(verificationPromises);
+        
+        const ruleCheckTime = parseFloat((performance.now() - tRuleCheckTime).toFixed(3));
+
+        // await saveBaselineWorkerMetrics({
+        //     jobId: job.id, 
+        //     blockNumber: mockBlockNumber,
+        //     time_totalExtractionPhase: extractionTime,
+        //     time_pythonConversion: conversionTime,
+        //     time_xesAppend: appendTime,
+        //     time_ruleVerification: ruleCheckTime,
+        //     rules_number: parsedRules.length,
+        //     time_totalJob: parseFloat((performance.now() - tJobStart).toFixed(3)),
+        //     status: 'Success'
+        // });
 
         return { 
             success: true, 
             sessionId: sessionId, 
             blockNumber: mockBlockNumber,
-            complianceResult: complianceResult
+            complianceResult: complianceResults
         };
     }
     catch (err) {

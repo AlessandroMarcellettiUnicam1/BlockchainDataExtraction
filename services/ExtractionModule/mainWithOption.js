@@ -101,11 +101,14 @@ async function getAllTransactions(oldParams, newParams, returnInMemory = false) 
                 console.log(`[${new Date().toISOString()}] TransactionHierarchy Costruita`);
                 for(let tx of txHierarchy){
                     try {
-                        const query = { contractAddress: tx.to.toLowerCase() };
+                        const targetAbiAddress = newParams.implementationContractAddress ? 
+                                                 newParams.implementationContractAddress.toLowerCase() : 
+                                                 tx.to.toLowerCase();
+                        const query = { contractAddress: targetAbiAddress };
                         let queryResult = await searchAbi(query);
                         if (!queryResult || queryResult?.abi?.includes("Contract source code not verified")) {
                             const anotherCallForAbi = await axios.get(
-                                `${networkData.endpoint}&module=contract&action=getsourcecode&address=${tx.to}&apikey=${networkData.apiKey}`
+                                `${networkData.endpoint}&module=contract&action=getsourcecode&address=${targetAbiAddress}&apikey=${networkData.apiKey}`
                             );
                             queryResult = {
                                 contractName: anotherCallForAbi.data.result[0].ContractName,
@@ -113,7 +116,7 @@ async function getAllTransactions(oldParams, newParams, returnInMemory = false) 
                                 proxy: anotherCallForAbi.data.result[0].Proxy,
                                 proxyImplementation: '',
                                 sourceCode: anotherCallForAbi.data.result[0].SourceCode,
-                                contractAddress: tx.to,
+                                contractAddress: targetAbiAddress,
                                 compilerVersion: anotherCallForAbi.data.result[0].CompilerVersion,
 
                             }
@@ -121,7 +124,7 @@ async function getAllTransactions(oldParams, newParams, returnInMemory = false) 
                             console.log("contract found in the db");
                         }
                         const singleTxPerformance = {};
-                        contractTree = await getContractTree(null, tx.to, networkData.endpoint, networkData.apiKey, queryResult, singleTxPerformance);
+                        contractTree = await getContractTree(null, targetAbiAddress, networkData.endpoint, networkData.apiKey, queryResult, singleTxPerformance);
                         let temp = [tx];
                         let storageData = await getStorageData(temp, queryResult.contractName, contractTree, tx.to, newParams.filters, newParams.smartContract, newParams.option, networkData, newParams.contractAddressesTo, returnInMemory, singleTxPerformance);
 
