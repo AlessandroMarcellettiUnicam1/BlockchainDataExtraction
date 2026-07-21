@@ -148,6 +148,18 @@ const extractionMetricsSchema = new mongoose.Schema({
     time_saveTransaction: { type: Number },
     time_workerTotal: { type: Number },
     number_internalTxs: { type: Number },
+    number_internalTxsVisited: { type: Number },
+
+    time_debugInternalCallTracer: { type: Number },
+    time_connectDbInternal: { type: Number },
+    time_decodeInternalRecursive: { type: Number },
+    time_newDecodedInternalTransactionDetailed: { type: Number },
+    time_searchAbiInternal: { type: Number },
+    time_fetchAbiInternal: { type: Number },
+    time_fetchAbiDelayInternal: { type: Number },
+    time_decodeInputsInternal: { type: Number },
+    time_4byteLookupInternal: { type: Number },
+    time_getEventsInternal: { type: Number },
 
     timestamp: { type: Date, default: Date.now }
 }, { versionKey: false });

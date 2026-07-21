@@ -220,6 +220,33 @@ async function getContractTree(smartContract,impl_contract,endpoint,apiKey,query
                 const tEndEtherscan = performance.now() - tStartEtherscan;
                 singleTxPerformance.time_getContractCodeEtherscan = parseFloat(tEndEtherscan.toFixed(3));
 
+                if (!contractsResult) {
+                    console.warn(`[${new Date().toISOString()}, DEBUG-CONTRACT TREE] ContractCode non recuperato, uso fallback grezzo`, {
+                        impl_contract,
+                        hasQueryResult: !!queryResult,
+                        queryResultContractAddress: queryResult?.contractAddress,
+                        queryResultContractName: queryResult?.contractName,
+                        queryResultAbiPreview: typeof queryResult?.abi === 'string' ? queryResult.abi.slice(0, 80) : typeof queryResult?.abi,
+                        endpointDefined: !!endpoint,
+                        apiKeyDefined: !!apiKey
+                    });
+                    contractTree = {
+                        fullContractTree: null,
+                        storageLayoutFlag: false,
+                        contractCompiled: null,
+                        contractAbi: queryResult?.abi && !queryResult.abi.includes("Contract source code not verified") ? queryResult.abi : "[]",
+                        sourceCode: queryResult?.sourceCode || '',
+                        proxy: queryResult?.proxy || '',
+                        contractName: queryResult?.contractName || '',
+                        proxyImplementation: queryResult?.proxyImplementation || '',
+                        compilerVersion: queryResult?.compilerVersion || ''
+                    };
+                    const tEndTotalFallback = performance.now() - tStartTotal;
+                    singleTxPerformance.time_getCompiledData = 0;
+                    singleTxPerformance.time_getContractTreeTotal = parseFloat(tEndTotalFallback.toFixed(3));
+                    return contractTree;
+                }
+
                 console.log(`[${new Date().toISOString()}, DEBUG-CONTRACT TREE] ContractCode recuperato`);
                 console.log(`compilerVersion: ${contractsResult.compilerVersion}`);
             if (contractsResult) {

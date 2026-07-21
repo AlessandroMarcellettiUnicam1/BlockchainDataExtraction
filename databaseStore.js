@@ -27,6 +27,9 @@ async function saveExtractionLog(userLog) {
     }
 }
 async function saveAbi(storeAbi) {
+    if (Array.isArray(storeAbi.abi)) {
+        storeAbi.abi = JSON.stringify(storeAbi.abi);
+    }
     let query = {
         contractName: storeAbi.contractName,
         contractAddress: storeAbi.contractAddress.toLowerCase()

@@ -94,8 +94,11 @@ async function processTransaction(tx, mainContract, contractTree, contractAddres
 function decodeInput(tx,contractTree){
     if (tx.input == "0x") {
         tx.methodId = "Transfer";
-    } else if (contractTree?.contractAbi && (typeof contractTree.contractAbi !== 'object' || Object.keys(contractTree.contractAbi).length > 0)) {
-        decodeTransactionInputs(tx, contractTree.contractAbi);
+    } else {
+        tx.rawMethodId = tx.input?.slice(0, 10);
+        if (contractTree?.contractAbi && (typeof contractTree.contractAbi !== 'object' || Object.keys(contractTree.contractAbi).length > 0)) {
+            decodeTransactionInputs(tx, contractTree.contractAbi);
+        }
     }
 }
 /**
@@ -274,10 +277,13 @@ async function createTransactionLog(tx, mainContract, contractTree, smartContrac
             };
             delete transactionLog['finalShaTraces'];
             delete transactionLog['functionStorage'];
-            //forse a questo punto basta controllare solo se il contratto Ã¨ un proxy o no
-            if(transactionLog.functionName==null && transactionLog.internalTxs && transactionLog.internalTxs.length>0){
-                if(transactionLog.internalTxs[0].type=="DELEGATECALL"){
-                    const addressTo = transactionLog.internalTxs[0].to;
+            //forse a questo punto basta controllare solo se il contratto è un proxy o no
+            const firstInternal = transactionLog.internalTxs?.[0];
+            if(transactionLog.functionName==null && firstInternal){
+                const firstInternalFrom = firstInternal.from?.toLowerCase();
+                const txTo = tx.to?.toLowerCase();
+                if(firstInternal.callType=="DELEGATECALL" && (!firstInternalFrom || firstInternalFrom == txTo) && firstInternal.to && firstInternal.to.toLowerCase() != txTo){
+                    const addressTo = firstInternal.to;
                     const query = { contractAddress: addressTo.toLowerCase() };
                     const response = await searchAbi(query);
                     if(response){
@@ -289,8 +295,8 @@ async function createTransactionLog(tx, mainContract, contractTree, smartContrac
                             const decoder = new InputDataDecoder(response.abi);
                             const inputData = tx.input;
                             const tempResult = decoder.decodeData(inputData);
-                            transactionLog.functionName = tempResult.method;
-                            if (transactionLog.inputs.length< 1) {
+                            transactionLog.functionName = tempResult.method || transactionLog.functionName;
+                            if (tempResult.method && transactionLog.inputs.length< 1) {
                                 transactionLog.inputs = tempResult.inputs.map((input, i) => {
                                     let value = input;
                                     if (input._isBigNumber) {
@@ -312,6 +318,9 @@ async function createTransactionLog(tx, mainContract, contractTree, smartContrac
                     }
                 }
                 
+            }
+            if(transactionLog.functionName==null && tx.rawMethodId){
+                transactionLog.functionName = tx.rawMethodId;
             }
             if(contractTree){
                 const timeBeforeSaveAbi = Date.now();
@@ -705,7 +714,7 @@ async function getTraceStorage(traceDebugged, networkData, functionName, transac
         let internalTxs=[]
         if(extractionOption.internalTransaction==0){
             const timeBeforeDecodeInternal = Date.now();
-            internalTxs=await decodeInternalTransaction(internalCalls,smartContract,web3,networkData,transactionHash,blockNumber)
+            internalTxs=await decodeInternalTransaction(internalCalls,smartContract,web3,networkData,transactionHash,blockNumber,timePerformance)
             timePerformance.time_decodeInternalTransactionStandard = (timePerformance.time_decodeInternalTransactionStandard || 0) + (Date.now() - timeBeforeDecodeInternal);
         }else if(extractionOption.internalTransaction==1){
             const timeBeforeNewDecodeInternal = Date.now();
@@ -978,7 +987,7 @@ async function getTraceStorageFromErigon(httpStream, networkData,functionName,tr
         let internalTxs = [];
         if (extractionOption.internalTransaction == 0) {
             const timeBeforeDecodeInternal = Date.now();
-            internalTxs = await decodeInternalTransaction(internalCalls, smartContract, web3, networkData,transactionHash,blockNumber);
+            internalTxs = await decodeInternalTransaction(internalCalls, smartContract, web3, networkData,transactionHash,blockNumber,timePerformance);
             timePerformance.time_decodeInternalTransactionErigon += Date.now() - timeBeforeDecodeInternal;
         } else if (extractionOption.internalTransaction == 1) {
             const timeBeforeLaunch = Date.now();
