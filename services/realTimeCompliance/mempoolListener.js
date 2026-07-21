@@ -97,7 +97,7 @@ async function startMempoolListener(sessionId, url, validAddress, addressFilters
 }
 
 // funzione che ascolta il contratto per controllare se vengono minate nuove transazioni
-async function startBaselineListener(sessionId, url, validAddress) {
+async function startBaselineListener(sessionId, url, monitoredContracts) {
     const options = { reconnect: { auto: true, delay: 5000, maxAttempts: 10 } };
     const provider = new Web3.providers.WebsocketProvider(url, options);
     const web3 = new Web3(provider);
@@ -125,9 +125,12 @@ async function startBaselineListener(sessionId, url, validAddress) {
                         if (tx && tx.to && tx.from) {
                             const toLower = tx.to.toLowerCase();
                             const fromLower = tx.from.toLowerCase();
-                            const filterAddress = validAddress.toLowerCase();
 
-                            const match = (toLower === filterAddress || fromLower === filterAddress);
+                            // Verifica se l'indirizzo to o from è presente nell'array monitorato
+                            const match = monitoredContracts.some(addr => {
+                                const filterAddress = addr.toLowerCase();
+                                return toLower === filterAddress || fromLower === filterAddress;
+                            });
 
                             if (match) {
                                 extraction = true;
@@ -143,9 +146,9 @@ async function startBaselineListener(sessionId, url, validAddress) {
                     await baselineQueue.add('update-baseline-block', {
                         sessionId: sessionId,
                         payload: {
-                            contract: validAddress,
+                            contract: monitoredContracts,
                             blockNumber: Number(block.number)
-                    }
+                        }
                     }, {removeOnComplete: true });
                 }
                 else {

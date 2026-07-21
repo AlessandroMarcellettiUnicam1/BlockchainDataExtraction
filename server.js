@@ -1438,21 +1438,22 @@ app.post('/api/start-compliance-monitoring', async (req, res) => {
 		const {
 			sessionId,
 			// addressFilters,
-			validAddress,
-			implAddress,
+			// validAddress,
+			// implAddress,
+			monitoredContracts,
 			mapping,
 			parsedRules,
 			logMapping
 		} = req.body;
 
-		if (!sessionId || !validAddress) {
+		if (!sessionId || !monitoredContracts || monitoredContracts.length === 0) {
             return res.status(400).json({ error: "Parametri mancanti" });
         }
 
 		// salvo mapping e regola che serviranno per il worker
 		await redisClient.set(
             `session:${sessionId}:config`, 
-            JSON.stringify({ mapping, parsedRules, logMapping, implAddress })
+            JSON.stringify({ mapping, parsedRules, logMapping, monitoredContracts })
         );
 
 		const url = process.env.WS_ALCHEMY_MAINNET_URL;
@@ -1464,8 +1465,8 @@ app.post('/api/start-compliance-monitoring', async (req, res) => {
 		// }
 
 		// avvio il listener del contratto
-		startBaselineListener(sessionId, url, validAddress)
-            .catch(err => console.error(`[Baseline Listener Error] ${err.message}`));
+		startBaselineListener(sessionId, url, monitoredContracts)
+            .catch(err => console.error(`[Baseline Listener Error] ${err.message}`))
 
 		res.status(200).json({ 
 			success: true, 

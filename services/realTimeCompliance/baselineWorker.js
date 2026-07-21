@@ -39,11 +39,11 @@ const baselineWorker = new Worker('baseline-queue', async (job) => {
             throw new Error("Configurazione o Log Base mancanti in Redis. Impossibile aggiornare lo storico.");
         }
 
-        const { mapping, parsedRules, logMapping, implAddress } = JSON.parse(configData);
+        const { mapping, parsedRules, logMapping, monitoredContracts } = JSON.parse(configData);
 
         const newParams = {
-            contractAddressesFrom: [payload.contract], 
-            contractAddressesTo: [payload.contract],
+            contractAddressesFrom: payload.contract, 
+            contractAddressesTo: payload.contract,
             fromBlock: mockBlockNumber,
             toBlock: mockBlockNumber, 
             network: "Mainnet",
@@ -55,7 +55,7 @@ const baselineWorker = new Worker('baseline-queue', async (job) => {
                 functions: []
             },
             contractName: "",
-            implementationContractAddress: implAddress || "",
+            implementationContractAddress: "", //impl address da aggiungere in caso
             smartContract: null,
             option: { default: 1, internalStorage: 1, internalTransaction: 0 } 
         };
