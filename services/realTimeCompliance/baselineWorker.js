@@ -14,7 +14,7 @@ console.log('[Baseline Worker] Worker inizializzato, in attesa di job in coda...
 
 (async () => {
     try {
-        await connectDB(); 
+        await connectDB("Mainnet"); 
         console.log(`[Baseline Worker] Connesso a MongoDB con successo.`);
     } catch (err) {
         console.error(`[Baseline Worker] Errore critico di connessione a MongoDB:`, err.message);
@@ -23,13 +23,6 @@ console.log('[Baseline Worker] Worker inizializzato, in attesa di job in coda...
 })();
 
 const baselineWorker = new Worker('baseline-queue', async (job) => {
-    /*
-    1. estraggo i dati dalla coda (hash, contratto e blockNumber)
-    2. creo i parmas da inserire in getAllTransactions(null, newParams, true)
-    3. converto il log ottenuto tramite endopint di CoBlocklyBackend
-    4. lo appendo tramite la funzione appendXes
-    5. lo sovrascrivo in Redis
-    */
 
     const { sessionId, payload } = job.data;
 
@@ -157,17 +150,17 @@ const baselineWorker = new Worker('baseline-queue', async (job) => {
         
         const ruleCheckTime = parseFloat((performance.now() - tRuleCheckTime).toFixed(3));
 
-        // await saveBaselineWorkerMetrics({
-        //     jobId: job.id, 
-        //     blockNumber: mockBlockNumber,
-        //     time_totalExtractionPhase: extractionTime,
-        //     time_pythonConversion: conversionTime,
-        //     time_xesAppend: appendTime,
-        //     time_ruleVerification: ruleCheckTime,
-        //     rules_number: parsedRules.length,
-        //     time_totalJob: parseFloat((performance.now() - tJobStart).toFixed(3)),
-        //     status: 'Success'
-        // });
+        await saveBaselineWorkerMetrics({
+            jobId: job.id, 
+            blockNumber: mockBlockNumber,
+            time_totalExtractionPhase: extractionTime,
+            time_pythonConversion: conversionTime,
+            time_xesAppend: appendTime,
+            time_ruleVerification: ruleCheckTime,
+            rules_number: parsedRules.length,
+            time_totalJob: parseFloat((performance.now() - tJobStart).toFixed(3)),
+            status: 'Success'
+        });
 
         return { 
             success: true, 
