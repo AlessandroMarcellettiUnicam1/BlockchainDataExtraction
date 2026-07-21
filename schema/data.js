@@ -99,6 +99,10 @@ const extractionAbiSchema = new mongoose.Schema({
     contractAddress: {type: String},
     sourceCode:{type:String},
     compilerVersion:{type:String},
+    fullContractTree: {type: mongoose.Schema.Types.Mixed},
+    storageLayoutFlag: {type: Boolean},
+    contractCompiled: {type: mongoose.Schema.Types.Mixed},
+    compiledAt: {type: Date},
 })
 
 const extractionMetricsSchema = new mongoose.Schema({
@@ -110,9 +114,17 @@ const extractionMetricsSchema = new mongoose.Schema({
     time_getContractCodeEtherscan: { type: Number },
     time_getCompiledData: { type: Number },
     time_getContractTreeTotal: { type: Number },
+
+    time_traceFilter: { type: Number },
+    time_processTraceBatch: { type: Number },
+    time_getCode_onlypubliccontract: { type: Number },
+    time_compile: { type: Number },
+    time_debug_trace_trace: { type: Number },
     
     time_debugErigon: { type: Number },
     time_traceStorageErigon: { type: Number },
+    time_getTraceStorageErigonTotal: { type: Number },
+    time_parseTraceStreamErigon: { type: Number },
     time_debugStandard: { type: Number },
     time_traceStorageStandard: { type: Number },
     time_getEvents: { type: Number },
@@ -126,6 +138,28 @@ const extractionMetricsSchema = new mongoose.Schema({
 
     time_processTraceStandard: { type: Number },
     time_optimizedDecodeValuesStandard: { type: Number },
+    time_decodeInternalTransactionStandard: { type: Number },
+    time_newDecodedInternalTransactioneStandard: { type: Number },
+
+    time_decodeStorage_public: { type: Number },
+    time_getCode_allInternalContracts_decode: { type: Number },
+    time_decodeStorage_internalTx: { type: Number },
+    time_saveAbi: { type: Number },
+    time_saveTransaction: { type: Number },
+    time_workerTotal: { type: Number },
+    number_internalTxs: { type: Number },
+    number_internalTxsVisited: { type: Number },
+
+    time_debugInternalCallTracer: { type: Number },
+    time_connectDbInternal: { type: Number },
+    time_decodeInternalRecursive: { type: Number },
+    time_newDecodedInternalTransactionDetailed: { type: Number },
+    time_searchAbiInternal: { type: Number },
+    time_fetchAbiInternal: { type: Number },
+    time_fetchAbiDelayInternal: { type: Number },
+    time_decodeInputsInternal: { type: Number },
+    time_4byteLookupInternal: { type: Number },
+    time_getEventsInternal: { type: Number },
 
     timestamp: { type: Date, default: Date.now }
 }, { versionKey: false });

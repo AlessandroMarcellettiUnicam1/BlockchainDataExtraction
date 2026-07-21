@@ -3,7 +3,8 @@ const axios = require("axios");
 const { execFile } = require("child_process");
 const path = require("path");
 const { fork } = require("child_process");
-
+const fs = require('fs');
+const { saveCompiledContractData } = require("../../databaseStore");
 /**
  * Method use to create a solcWorker use to get the compiled version of a contract
  * This i done in this way to solve the memory stack error. In this way 
@@ -16,7 +17,7 @@ function compileInChildProcess(input, compilerVersion) {
     const workerPath = path.join(__dirname, "solcWorker.js");
     return new Promise((resolve, reject) => {
         const worker = fork(workerPath, [], {
-            execArgv: ["--max-old-space-size=4096", "--expose-gc"],
+            execArgv: ["--max-old-space-size=8192", "--expose-gc"],
         });
 
         let settled = false;
@@ -92,7 +93,6 @@ async function getContractCodeEtherscan(contractAddress,endpoint,apiKey,queryRes
         jsonCode=data.sourceCode;
         let i = 0;
 
-
     
         if (jsonCode.charAt(0) === "{") {
     
@@ -134,8 +134,7 @@ async function getContractCodeEtherscan(contractAddress,endpoint,apiKey,queryRes
             
         };
     }catch (err){
-        console.log("error in getContractCodeEtherscan:", err.message);
-        throw err;
+        console.log("error",err)
     }finally{
         if(response){
             response=null;
@@ -198,10 +197,8 @@ async function getCompiledData(contracts, contractName,compilerVersion) {
     const contractStorageTree = storageData;
     //get tree of functions for contract, NOT including inherited
     const contractTree = await getFunctionContractTree(source);
-
     //construct full function tree including also the inherited ones
     const contractFunctionTree = await constructFullFunctionContractTree(contractTree);
-
     //construct full contract tree including also variables
     const fullContractTree = await injectVariablesToTree(contractFunctionTree, contractStorageTree);
     if (Object.keys(contractStorageTree).length === 0){
@@ -401,6 +398,20 @@ async function getContractTree(smartContract,impl_contract,endpoint,apiKey,query
     } else {
         //implementation contract address
         try {
+                if (queryResult?.fullContractTree && queryResult?.contractCompiled) {
+                    return {
+                        fullContractTree: queryResult.fullContractTree,
+                        storageLayoutFlag: queryResult.storageLayoutFlag,
+                        contractCompiled: queryResult.contractCompiled,
+                        contractAbi: queryResult.abi,
+                        sourceCode: queryResult.sourceCode,
+                        proxy: queryResult.proxy,
+                        contractName: queryResult.contractName,
+                        proxyImplementation: queryResult.proxyImplementation || '',
+                        compilerVersion: queryResult.compilerVersion
+                    };
+                }
+
                 contractsResult = await getContractCodeEtherscan(impl_contract, endpoint, apiKey,queryResult,firstExtraction);
             if (contractsResult) {
                 contractTree = await getCompiledData(contractsResult.contracts, contractsResult.contractName, contractsResult.compilerVersion);
@@ -411,6 +422,7 @@ async function getContractTree(smartContract,impl_contract,endpoint,apiKey,query
                 contractTree.contractName=contractsResult.contractName;
                 contractTree.proxyImplementation='';
                 contractTree.compilerVersion=contractsResult.compilerVersion;
+                await saveCompiledContractData(impl_contract, contractTree);
             }
         } catch (err) {
             console.error('getContractCodeEtherscan error: ', err);
