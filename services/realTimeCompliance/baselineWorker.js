@@ -123,18 +123,19 @@ const baselineWorker = new Worker('baseline-queue', async (job) => {
         
         const tRuleCheckTotal = performance.now();
         
-        const verificationPromises = parsedRules.map(async (ruleObj, index) => { // <-- Aggiungi async
+        const verificationPromises = parsedRules.map(async (ruleObj, index) => { 
             const ruleIndex = index + 1;
             const redisKey = `session:${sessionId}:rule:${ruleIndex}:resolved_traces`;
             
-            // FASE B: Recupero dei case_id già risolti da Redis
-            const resolvedCases = await redisClient.smembers(redisKey);
+            // FASE B: Recupero storico completo (Hash invece di Set)
+            const resolvedData = await redisClient.hgetall(redisKey); // Ritorna { "id1": "{status, trace}", ... }
+            const resolvedCasesIds = Object.keys(resolvedData); // Array dei soli ID da ignorare in Python
 
             const rulePayload = {
                 xes_string: miniXesToVerify,
                 rule: typeof ruleObj.parsed === 'string' ? ruleObj.parsed : JSON.stringify(ruleObj.parsed),
                 mapping: logMapping,
-                resolved_cases: resolvedCases // <-- Aggiungi questo campo per Python
+                resolved_cases: resolvedCasesIds // Python riceve la blacklist
             };
             
             const tStartSingleRule = performance.now();
@@ -143,25 +144,40 @@ const baselineWorker = new Worker('baseline-queue', async (job) => {
                 .then(async res => { 
                     const tEndSingleRule = performance.now();
                     
-                    const compliant = res.data.compliant || [];
-                    const noncompliant = res.data.noncompliant || [];
+                    const newCompliant = res.data.compliant || [];
+                    const newNoncompliant = res.data.noncompliant || [];
 
-                    const definitiveCases = [
-                        ...compliant.map(trace => typeof trace === 'string' ? trace : trace[mapping.case_col]),
-                        ...noncompliant.map(trace => typeof trace === 'string' ? trace : trace[mapping.case_col])
-                    ].filter(Boolean); // Rimuove eventuali null/undefined
+                    const updates = {};
+                    newCompliant.forEach(trace => {
+                        const id = typeof trace === 'string' ? trace : trace[mapping.case_col];
+                        if (id) updates[id] = JSON.stringify({ status: 'compliant', trace });
+                    });
+                    newNoncompliant.forEach(trace => {
+                        const id = typeof trace === 'string' ? trace : trace[mapping.case_col];
+                        if (id) updates[id] = JSON.stringify({ status: 'noncompliant', trace });
+                    });
 
-                    // Salvo i nuovi case_id in Redis
-                    if (definitiveCases.length > 0) {
-                        await redisClient.sadd(redisKey, ...definitiveCases);
+                    if (Object.keys(updates).length > 0) {
+                        await redisClient.hset(redisKey, updates); 
                     }
+
+                    const finalCompliant = [...newCompliant];
+                    const finalNoncompliant = [...newNoncompliant];
+
+                    Object.values(resolvedData).forEach(valString => {
+                        const parsed = JSON.parse(valString);
+                        if (parsed.status === 'compliant') finalCompliant.push(parsed.trace);
+                        if (parsed.status === 'noncompliant') finalNoncompliant.push(parsed.trace);
+                    });
 
                     return {
                         ruleText: ruleObj.text,
                         ruleIndex: ruleIndex,
                         executionTime: parseFloat((tEndSingleRule - tStartSingleRule).toFixed(3)),
-                        compliant: compliant,
-                        noncompliant: noncompliant,
+                        compliant: finalCompliant,      
+                        noncompliant: finalNoncompliant,
+                        tempCompliant: res.data.tempCompliant || [], 
+                        tempNonCompliant: res.data.tempNonCompliant || [],
                         ignored: res.data.ignored || []
                     };
                 })
@@ -173,7 +189,11 @@ const baselineWorker = new Worker('baseline-queue', async (job) => {
                         ruleIndex: index + 1,
                         executionTime: parseFloat((tEndSingleRule - tStartSingleRule).toFixed(3)),
                         error: true,
-                        compliant: [], noncompliant: [], ignored: []
+                        compliant: [], 
+                        noncompliant: [], 
+                        tempCompliant: [],    
+                        tempNonCompliant: [], 
+                        ignored: []
                     };
                 });
         });
