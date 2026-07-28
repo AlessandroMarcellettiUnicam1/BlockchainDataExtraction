@@ -103,11 +103,23 @@ async function saveBaselineWorkerMetrics(jobData) {
     }
 }
 
+async function saveCompleteXesLog(data) {
+    try {
+        const CompleteXesLog = mongoose.models.CompleteXesLog || 
+                               mongoose.model('CompleteXesLog', completeXesLogSchema, 'CompleteXesLogs');
+        await new CompleteXesLog(data).save();
+        console.log(`[DB] Log XES completo salvato con successo per la sessione ${data.sessionId}`);
+    } catch (err) {
+        console.error(`[DB Error] Errore salvataggio XES Log per la sessione ${data.sessionId}: `, err);
+    }
+}
+
 module.exports = {
     saveTransaction,
     saveExtractionLog,
     saveAbi,
     saveCompiledContractData,
     saveExtractionMetrics,
-    saveBaselineWorkerMetrics
+    saveBaselineWorkerMetrics,
+    saveCompleteXesLog
 }

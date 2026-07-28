@@ -2,6 +2,7 @@ const { Web3 } = require('web3');
 const { txQueue, baselineQueue } = require('../../config/redisClient'); 
 const { adaptMempoolTx } = require('../simulationUtils/txAdapter');
 const systemEvents = require('../../config/sse');
+const { saveCompleteXesLog } = require('../../databaseStore');
 
 // mappa per memorizzare le sessioni attive
 const activeSubscriptions = new Map();
@@ -170,6 +171,25 @@ async function startBaselineListener(sessionId, url, monitoredContracts) {
 }
 
 async function stopMempoolListener(sessionId) {
+    try {
+        const finalXes = await redisClient.get(`session:${sessionId}:xes`);
+        const configData = await redisClient.get(`session:${sessionId}:config`);
+        
+        if (finalXes && configData) {
+            const { monitoredContracts } = JSON.parse(configData);
+            
+            await saveCompleteXesLog({
+                sessionId: sessionId,
+                monitoredContracts: monitoredContracts,
+                xesString: finalXes
+            });
+        } else {
+            console.warn(`[Listener] Dati Redis non trovati ${sessionId}.`);
+        }
+    } catch (err) {
+        console.error(`[Listener] Errore durante il salvataggio del log XES finale:`, err.message);
+    }
+
     const session = activeSubscriptions.get(sessionId);
     if (session) {
         session.isCapturing = false;

@@ -187,11 +187,19 @@ const baselineWorkerMetricsSchema = new mongoose.Schema({
     timestamp: { type: Date, default: Date.now }
 }, { versionKey: false });
 
+const completeXesLogSchema = new mongoose.Schema({
+    sessionId: { type: String, required: true },
+    monitoredContracts: { type: [String], required: true }, 
+    xesString: { type: String, required: true }, 
+    timestamp: { type: Date, default: Date.now }
+}, { versionKey: false });
+
 
 module.exports = {
     transactionSchema, 
     extractionLogSchema,
     extractionAbiSchema, 
     extractionMetricsSchema,
-    baselineWorkerMetricsSchema
+    baselineWorkerMetricsSchema,
+    completeXesLogSchema
 };
