@@ -167,12 +167,19 @@ const extractionMetricsSchema = new mongoose.Schema({
 const baselineWorkerMetricsSchema = new mongoose.Schema({
     jobId: { type: String, required: true },
     blockNumber: { type: Number, required: true },
+    number_txs_extracted: { type: Number },
     
     time_totalExtractionPhase: { type: Number },
     time_pythonConversion: { type: Number },
     time_xesAppend: { type: Number },
     time_ruleVerification: { type: Number },
     rules_number: {type: Number },
+    time_rule_1: { type: Number },
+    time_rule_2: { type: Number },
+    time_rule_3: { type: Number },
+    time_rule_4: { type: Number },
+    time_rule_5: { type: Number },
+    time_rule_6: { type: Number },
 
     time_totalJob: { type: Number },
     

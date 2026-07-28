@@ -118,46 +118,66 @@ const baselineWorker = new Worker('baseline-queue', async (job) => {
         await redisClient.set(`session:${sessionId}:xes`, updatedXes);
         console.log(`[Baseline Worker] Log Base aggiornato per sessione ${sessionId}.`);
 
-        let complianceResult = null;
-        console.log(`[Baseline Worker] Controllo compliance per il blocco ${payload.blockNumber}...`);
+        let complianceResults = null;
+        console.log(`[Baseline Worker] Mempool disabilitata. Controllo compliance per il blocco ${payload.blockNumber}...`);
         
-        const tRuleCheckTime = performance.now();
-        const verificationPromises = parsedRules.map(ruleObj => {
+        const tRuleCheckTotal = performance.now();
+        
+        const verificationPromises = parsedRules.map((ruleObj, index) => {
             const rulePayload = {
                 xes_string: miniXesToVerify,
                 rule: typeof ruleObj.parsed === 'string' ? ruleObj.parsed : JSON.stringify(ruleObj.parsed),
                 mapping: logMapping
             };
             
+            // Avvio timer INDIVIDUALE per questa specifica regola
+            const tStartSingleRule = performance.now();
+            
             return axios.post('http://coblockly-backend:8000/api/verifyRuleLive', rulePayload)
-                .then(res => ({
-                    ruleText: ruleObj.text,
-                    compliant: res.data.compliant || [],
-                    noncompliant: res.data.noncompliant || [],
-                    ignored: res.data.ignored || []
-                }))
+                .then(res => {
+                    const tEndSingleRule = performance.now();
+                    return {
+                        ruleText: ruleObj.text,
+                        ruleIndex: index + 1, // Assegna 1, 2, 3...
+                        executionTime: parseFloat((tEndSingleRule - tStartSingleRule).toFixed(3)),
+                        compliant: res.data.compliant || [],
+                        noncompliant: res.data.noncompliant || [],
+                        ignored: res.data.ignored || []
+                    };
+                })
                 .catch(err => {
+                    const tEndSingleRule = performance.now();
                     console.error(`[Baseline Worker] Errore verifica regola ${ruleObj.id}:`, err.message);
                     return {
                         ruleText: ruleObj.text,
+                        ruleIndex: index + 1,
+                        executionTime: parseFloat((tEndSingleRule - tStartSingleRule).toFixed(3)),
                         error: true,
                         compliant: [], noncompliant: [], ignored: []
                     };
                 });
         });
 
+        // 6 regole in parallelo
         complianceResults = await Promise.all(verificationPromises);
         
-        const ruleCheckTime = parseFloat((performance.now() - tRuleCheckTime).toFixed(3));
+        const ruleCheckTotalTime = parseFloat((performance.now() - tRuleCheckTotal).toFixed(3));
+
+        const individualRuleMetrics = {};
+        complianceResults.forEach(result => {
+            individualRuleMetrics[`time_rule_${result.ruleIndex}`] = result.executionTime;
+        });
 
         await saveBaselineWorkerMetrics({
             jobId: job.id, 
             blockNumber: payload.blockNumber,
+            number_txs_extracted: extractedLogs.length,
             time_totalExtractionPhase: extractionTime,
             time_pythonConversion: conversionTime,
             time_xesAppend: appendTime,
-            time_ruleVerification: ruleCheckTime,
+            time_ruleVerification: ruleCheckTotalTime,
             rules_number: parsedRules.length,
+            ...individualRuleMetrics, 
             time_totalJob: parseFloat((performance.now() - tJobStart).toFixed(3)),
             status: 'Success'
         });
