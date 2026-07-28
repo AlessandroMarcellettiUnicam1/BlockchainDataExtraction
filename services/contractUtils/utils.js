@@ -59,9 +59,9 @@ function compileInChildProcess(input, compilerVersion) {
 async function getContractCodeEtherscan(contractAddress,endpoint,apiKey,queryResult,firstExtraction=true) {
     let contracts = [];
     let response=[];
-    let buffer;
+    let buffer = "";
     
-    try{    
+    try{
         let jsonCode;
         let data={
             compilerVersion:"",
@@ -70,7 +70,7 @@ async function getContractCodeEtherscan(contractAddress,endpoint,apiKey,queryRes
             proxy:"",
             contractName: "",
         };
-        if(queryResult && !queryResult.abi.includes("Contract source code not verified")){
+        if(queryResult && typeof queryResult.abi === "string" && !queryResult.abi.includes("Contract source code not verified")){
             data.compilerVersion=queryResult.compilerVersion;
             data.contractAbi=queryResult.abi;
             data.sourceCode=queryResult.sourceCode;
@@ -78,33 +78,35 @@ async function getContractCodeEtherscan(contractAddress,endpoint,apiKey,queryRes
             data.contractName=queryResult.contractName;
         }else{
             if (!firstExtraction) {
-                return;
+                return null;
             }
             response = await axios.get(endpoint + `&module=contract&action=getsourcecode&address=${contractAddress}&apikey=${apiKey}`);
-            if (response.data.result[0].SourceCode === "") {
-                throw new Error("No contract found");
-            } 
-            data.compilerVersion=response.data.result[0].CompilerVersion;
-            data.contractAbi=response.data.result[0].ABI;
-            data.sourceCode=response.data.result[0].SourceCode;
-            data.proxy=response.data.result[0].Proxy
-            data.contractName=response.data.result[0].ContractName;
+            const etherscanResult = response?.data?.result?.[0];
+            if (!etherscanResult || etherscanResult.SourceCode === "" || etherscanResult.ABI === "Contract source code not verified") {
+                console.warn("getContractCodeEtherscan: no verified contract source available", {
+                    contractAddress,
+                    hasResult: !!etherscanResult,
+                    abiPreview: typeof etherscanResult?.ABI === "string" ? etherscanResult.ABI.slice(0, 80) : typeof etherscanResult?.ABI
+                });
+                return null;
+            }
+            data.compilerVersion=etherscanResult.CompilerVersion;
+            data.contractAbi=etherscanResult.ABI;
+            data.sourceCode=etherscanResult.SourceCode;
+            data.proxy=etherscanResult.Proxy;
+            data.contractName=etherscanResult.ContractName;
         }
         jsonCode=data.sourceCode;
         let i = 0;
 
-    
         if (jsonCode.charAt(0) === "{") {
-    
             if(jsonCode.charAt(1)==="{"){
                 jsonCode = JSON.parse(jsonCode.slice(1, -1)).sources
             }else{
                 jsonCode = JSON.parse(jsonCode).sources
             }
             
-    
             for (const contract in jsonCode) {
-    
                 let contractReplaced = contract.replace("node_modules/", "").replace("lib/", "")
                 let actualContract = 'contract' + i;
                 let code = jsonCode[contract].content;
@@ -112,9 +114,6 @@ async function getContractCodeEtherscan(contractAddress,endpoint,apiKey,queryRes
                 contracts[contractReplaced] = {};
                 contracts[contractReplaced].nameId = actualContract;
                 contracts[contractReplaced].content = code;
-    
-                //input.sources[contract] = {}
-                //input.sources[contract].content = code
                 i++;
                 buffer += code
             }
@@ -135,6 +134,7 @@ async function getContractCodeEtherscan(contractAddress,endpoint,apiKey,queryRes
         };
     }catch (err){
         console.log("error",err)
+        return null;
     }finally{
         if(response){
             response=null;

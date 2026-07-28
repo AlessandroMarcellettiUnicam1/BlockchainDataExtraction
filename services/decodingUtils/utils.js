@@ -32,21 +32,94 @@ function decodeTransactionInputs(tx,contractAbi,web3) {
 
 //TODO basta che giro per gli address dei contratti una volta sola che tanto con il metodo get event prendo tutti gli eventi generati in quella trasazione
 
-async function getEvents(transactionHash, block, contractAddress,web3,contractAbi) {
-    let myContract = new web3.eth.Contract(JSON.parse(contractAbi), contractAddress);
+function parseAbiSafely(abi) {
+    if (!abi || abi === "[]" || (typeof abi === "string" && abi.includes("Contract source code not verified"))) return null;
+    if (Array.isArray(abi)) return abi;
+    try {
+        return JSON.parse(abi);
+    } catch (err) {
+        console.log("ABI parse failed for event decoding: " + err.message);
+        return null;
+    }
+}
+
+function normalizeEventValues(values) {
+    return Object.fromEntries(
+        Object.entries(values || {})
+            .filter(([key]) => key !== "__length__" && Number.isNaN(Number(key)))
+            .map(([key, value]) => [key, typeof value === "bigint" ? Number(value) : value])
+    );
+}
+
+function getEventSignature(web3, eventAbi) {
+    const signature = `${eventAbi.name}(${eventAbi.inputs.map((input) => input.type).join(",")})`;
+    return web3.utils.sha3(signature);
+}
+
+function hasUsableAbiForEvents(abi) {
+    return !!parseAbiSafely(abi);
+}
+
+function getProxyImplementationAddress(contractData) {
+    return (
+        contractData?.proxyImplementation ||
+        contractData?.Implementation ||
+        contractData?.implementation ||
+        ""
+    ).toLowerCase();
+}
+
+async function decodeReceiptEventsForAddress(transactionHash, contractAddress, abi, networkData, web3) {
+    const targetAbi = parseAbiSafely(abi);
+    if (!targetAbi) return [];
+
+    const receiptLogs = await getEventFromErigon(transactionHash, networkData);
+    const eventByTopic = new Map(
+        targetAbi
+            .filter((item) => item.type === "event" && !item.anonymous)
+            .map((eventAbi) => [getEventSignature(web3, eventAbi), eventAbi])
+    );
+    const normalizedAddress = contractAddress.toLowerCase();
+    const decodedEvents = [];
+
+    for (const log of receiptLogs || []) {
+        if (log.address?.toLowerCase() !== normalizedAddress) continue;
+        const topic0 = log.topics?.[0];
+        const eventAbi = eventByTopic.get(topic0);
+        if (!eventAbi) continue;
+        try {
+            const decoded = web3.eth.abi.decodeLog(eventAbi.inputs, log.data || "0x", log.topics.slice(1));
+            decodedEvents.push({
+                eventName: eventAbi.name,
+                eventValues: normalizeEventValues(decoded),
+                eventFrom: normalizedAddress,
+                eventSignature: web3.utils.hexToNumber(log.logIndex).toString()
+            });
+        } catch (err) {
+            console.log("Receipt event decode failed: " + err.message);
+        }
+    }
+
+    return decodedEvents;
+}
+async function getEvents(transactionHash, block, contractAddress, web3, contractAbi, networkData) {
+    if (networkData?.web3Endpoint) {
+        const decodedReceiptEvents = await decodeReceiptEventsForAddress(transactionHash, contractAddress, contractAbi, networkData, web3);
+        if (decodedReceiptEvents.length > 0) return decodedReceiptEvents;
+    }
+
+    const parsedAbi = parseAbiSafely(contractAbi);
+    if (!parsedAbi) return [];
+
+    let myContract = new web3.eth.Contract(parsedAbi, contractAddress);
     let filteredEvents = [];
     const pastEvents = await myContract.getPastEvents("allEvents", {fromBlock: block, toBlock: block});
     myContract=null;
     pastEvents.forEach((element)=>{
-        if(transactionHash==element.transactionHash){
-                for (const value in element.returnValues) {
-                    if (typeof element.returnValues[value] === "bigint") {
-                        element.returnValues[value] = Number(element.returnValues[value]);
-                    }
-                }
+        if(transactionHash==element.transactionHash && element.event){
                 const event = {
                     eventName: element.event,
-                    eventValues: element.returnValues,
+                    eventValues: normalizeEventValues(element.returnValues),
                     eventFrom:contractAddress.toLowerCase(),
                     eventSignature:element.logIndex.toString()
                 };
@@ -55,7 +128,6 @@ async function getEvents(transactionHash, block, contractAddress,web3,contractAb
     })
     return filteredEvents;
 }
-
 async function getEventFromErigon(transactionHash,networkData){
     const body = {
     jsonrpc: "2.0",
@@ -106,48 +178,33 @@ async function getEventFromHardHat(transactionHash,networkData,hardhat,blockNumb
  * @returns 
  */
 async function getEventsFromInternal(transactionHash, block, contractAddress, networkData, web3) {
-  let filteredEvents = [];
-  let targetAbi;
-  let targetAddress = contractAddress;
-  // Fetch ABI
-  let proxyInfo = await searchAbi({ contractAddress });
+  if (!contractAddress) return [];
+  const normalizedAddress = contractAddress.toLowerCase();
+  let proxyInfo = await searchAbi({ contractAddress: normalizedAddress });
   if (!proxyInfo) {
-    proxyInfo = { abi: await handleAbiFetch(contractAddress, networkData.apiKey, networkData.endpoint) };
+    proxyInfo = await handleAbiFetch(normalizedAddress, networkData.apiKey, networkData.endpoint);
   }
-  let implInfo;
-  // Handle proxy logic
-  if (proxyInfo.proxy === '1' && proxyInfo.proxyImplementation) {
-    implInfo = await searchAbi({ contractAddress: proxyInfo.proxyImplementation });
-    if (implInfo && implInfo.abi && !implInfo.abi.includes("Contract source code not verified")) {
-      targetAbi = JSON.parse(implInfo.abi);
+
+  let targetAbi = proxyInfo?.abi;
+  let implementationAddress = getProxyImplementationAddress(proxyInfo);
+
+  if (proxyInfo?.proxy === '1' && !implementationAddress) {
+    const refreshedProxyInfo = await handleAbiFetch(normalizedAddress, networkData.apiKey, networkData.endpoint);
+    implementationAddress = getProxyImplementationAddress(refreshedProxyInfo);
+    targetAbi = refreshedProxyInfo?.abi || targetAbi;
+  }
+
+  if (proxyInfo?.proxy === '1' && implementationAddress) {
+    let implInfo = await searchAbi({ contractAddress: implementationAddress });
+    if (!implInfo || !hasUsableAbiForEvents(implInfo.abi)) {
+      implInfo = await handleAbiFetch(implementationAddress, networkData.apiKey, networkData.endpoint);
     }
-  } else if (proxyInfo && proxyInfo.abi && !proxyInfo.abi.includes("Contract source code not verified")) {
-    targetAbi = JSON.parse(proxyInfo.abi);
-  }
-
-  if (!targetAbi) return [];
-
-  // Decode events
-  const contract = new web3.eth.Contract(targetAbi, targetAddress);
-  const pastEvents = await contract.getPastEvents("allEvents", { fromBlock: block, toBlock: block });
-
-  for (const e of pastEvents) {
-    if (e.transactionHash === transactionHash && e.event) {
-      const eventValues = Object.fromEntries(
-        Object.entries(e.returnValues).map(([k, v]) => [k, typeof v === 'bigint' ? Number(v) : v])
-      );
-      if(e.event){
-        filteredEvents.push({
-            eventName: e.event,
-            eventValues,
-            eventFrom: contractAddress.toLowerCase(),
-            eventSignature: e.logIndex.toString(),
-            });
-        }
+    if (hasUsableAbiForEvents(implInfo?.abi)) {
+      targetAbi = implInfo.abi;
     }
   }
 
-  return filteredEvents;
+  return await decodeReceiptEventsForAddress(transactionHash, normalizedAddress, targetAbi, networkData, web3);
 }
 /**
  * 
@@ -161,21 +218,21 @@ async function handleAbiFetch(addressTo, apiKey, endpoint) {
     const callForAbi = await axios.get(
         `${endpoint}&module=contract&action=getsourcecode&address=${addressTo}&apikey=${apiKey}`
     );
+    const result = callForAbi.data.result?.[0] || {};
     const storeAbi = {
-        contractName: callForAbi.data.result[0].ContractName,
-        abi: callForAbi.data.result[0].ABI,
-        proxy: callForAbi.data.result[0].Proxy,
-        proxyImplementation: '',
-        contractAddress: addressTo,
-        compilerVersion:callForAbi.data.result[0].CompilerVersion,
-        sourceCode:callForAbi.data.result[0].SourceCode
+        contractName: result.ContractName,
+        abi: result.ABI,
+        proxy: result.Proxy,
+        proxyImplementation: result.Implementation || '',
+        contractAddress: addressTo.toLowerCase(),
+        compilerVersion: result.CompilerVersion,
+        sourceCode: result.SourceCode
     }
     if (!callForAbi.data.message.includes("NOTOK")) {
         await saveAbi(storeAbi);
     }
-    return storeAbi.abi
+    return storeAbi;
 }
-
 /**
  * 
  * @param {*} transactionHash 
@@ -323,3 +380,4 @@ module.exports={
     getEventFromHardHat,
     getEventsFromInternal,
 }
+

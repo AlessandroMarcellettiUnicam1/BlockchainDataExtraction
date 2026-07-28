@@ -76,7 +76,7 @@ async function processTransaction(tx, mainContract, contractTree, contractAddres
     decodeInput(tx, contractTree)
     try{
         console.log(`Processing transaction: ${tx.hash}`);
-        let transactionLog=await createTransactionLog(tx, mainContract, contractTree, smartContract,extractionType,contractAddress,networkData,option,addressRange);
+        let transactionLog=await createTransactionLog(tx, mainContract, contractTree, smartContract,extractionType,contractAddress,option,networkData,addressRange);
         
         return [];
         
@@ -91,13 +91,26 @@ async function processTransaction(tx, mainContract, contractTree, contractAddres
  * @param {*} tx 
  * @param {*} contractTree 
  */
+function hasUsableAbi(abi) {
+    if (!abi) return false;
+    if (typeof abi === "string") {
+        const trimmedAbi = abi.trim();
+        return trimmedAbi !== "" && trimmedAbi !== "[]" && !trimmedAbi.includes("Contract source code not verified");
+    }
+    return Array.isArray(abi) ? abi.length > 0 : Object.keys(abi).length > 0;
+}
+
 function decodeInput(tx,contractTree){
     if (tx.input == "0x") {
         tx.methodId = "Transfer";
     } else {
         tx.rawMethodId = tx.input?.slice(0, 10);
-        if (contractTree?.contractAbi && (typeof contractTree.contractAbi !== 'object' || Object.keys(contractTree.contractAbi).length > 0)) {
-            decodeTransactionInputs(tx, contractTree.contractAbi);
+        if (hasUsableAbi(contractTree?.contractAbi)) {
+            try {
+                decodeTransactionInputs(tx, contractTree.contractAbi);
+            } catch (err) {
+                console.log("Public transaction input decode failed, using method id fallback: " + err.message);
+            }
         }
     }
 }
@@ -357,45 +370,51 @@ async function createTransactionLog(
       };
       transactionLog.finalShaTraces = undefined;
       transactionLog.functionStorage = undefined;
-      //forse a questo punto basta controllare solo se il contratto è un proxy o no
-      if (
-        transactionLog.functionName == null &&
-        transactionLog.internalTxs &&
-        transactionLog.internalTxs.length > 0
-      ) {
-        if (transactionLog.internalTxs[0].type == "DELEGATECALL") {
-          const addressTo = transactionLog.internalTxs[0].to;
-          const query = { contractAddress: addressTo.toLowerCase() };
-          const response = await searchAbi(query);
-          if (response) {
-            if (contractTree) {
-              storeAbi.proxy = "1";
-              storeAbi.proxyImplementation = query.contractAddress;
+      const methodIdFallback = tx.methodId || tx.rawMethodId || (tx.input && tx.input !== "0x" ? tx.input.slice(0, 10) : null);
+      const sameAddress = (left, right) => left && right && left.toLowerCase() === right.toLowerCase();
+      const proxyDelegateCall = transactionLog.internalTxs?.find((internalTx) =>
+        (internalTx?.callType === "DELEGATECALL" || internalTx?.type === "DELEGATECALL") &&
+        internalTx?.to &&
+        tx?.to &&
+        (!internalTx.from || sameAddress(internalTx.from, tx.to)) &&
+        !sameAddress(internalTx.to, tx.to)
+      );
+      const functionNameIsOnlyMethodId = typeof transactionLog.functionName === "string" && /^0x[0-9a-fA-F]{8}$/.test(transactionLog.functionName);
+      const functionNameNeedsDecode = transactionLog.functionName == null || functionNameIsOnlyMethodId;
+
+      if (functionNameNeedsDecode && proxyDelegateCall) {
+        const query = { contractAddress: proxyDelegateCall.to.toLowerCase() };
+        const response = await searchAbi(query);
+        const hasUsableAbi = (abi) => typeof abi === "string" && abi !== "[]" && !abi.includes("Contract source code not verified");
+        if (hasUsableAbi(response?.abi)) {
+          if (contractTree) {
+            storeAbi.proxy = "1";
+            storeAbi.proxyImplementation = query.contractAddress;
+          }
+          try {
+            const decoder = new InputDataDecoder(response.abi);
+            const tempResult = decoder.decodeData(tx.input);
+            transactionLog.functionName = tempResult.method || methodIdFallback;
+            if (transactionLog.inputs.length < 1) {
+              transactionLog.inputs = tempResult.inputs.map((input, i) => {
+                let value = input;
+                if (input._isBigNumber) {
+                  value = Number(web3.utils.hexToNumber(input._hex));
+                }
+                return {
+                  inputName: tempResult.names[i],
+                  type: tempResult.types[i],
+                  inputValue: value,
+                };
+              });
             }
-            try {
-              const decoder = new InputDataDecoder(response.abi);
-              const inputData = tx.input;
-              const tempResult = decoder.decodeData(inputData);
-              transactionLog.functionName = tempResult.method;
-              if (transactionLog.inputs.length < 1) {
-                transactionLog.inputs = tempResult.inputs.map((input, i) => {
-                  let value = input;
-                  if (input._isBigNumber) {
-                    value = Number(web3.utils.hexToNumber(input._hex));
-                  }
-                  return {
-                    inputName: tempResult.names[i],
-                    type: tempResult.types[i],
-                    inputValue: value,
-                  };
-                });
-              }
-            } catch (err) {
-              console.log("errr" + err);
-            }
-            // const decoder = new InputDataDecoder(response.abi);
+          } catch (err) {
+            console.log("Proxy implementation decode failed, using method id fallback: " + err.message);
           }
         }
+      }
+      if ((transactionLog.functionName == null || /^0x[0-9a-fA-F]{8}$/.test(transactionLog.functionName)) && methodIdFallback) {
+        transactionLog.functionName = methodIdFallback;
       }
       if (contractTree) {
         await saveAbi(storeAbi);
@@ -473,7 +492,7 @@ async function getEventForTransaction(transactionLog, hash, blockNumber, contrac
         }
         
         if (contractTree && contractTree.contractAbi && Object.keys(contractTree.contractAbi).length !== 0) {
-            let publicEvents = await getEvents(hash, blockNumber, contractAddress, web3, contractTree.contractAbi);
+            let publicEvents = await getEvents(hash, blockNumber, contractAddress, web3, contractTree.contractAbi, networkData);
             publicEvents.forEach((ele) => {
                 if (!seenEvent.has(ele.eventSignature)) {
                     transactionLog.events.push(ele)
@@ -537,7 +556,7 @@ async function getEventForTransaction(transactionLog, hash, blockNumber, contrac
         let seenEvent = new Set();
         if (contractTree && Object.keys(contractTree.contractAbi).length !== 0) {
 
-            let publicEvents = await getEvents(hash, blockNumber, contractAddress, web3, contractTree.contractAbi);
+            let publicEvents = await getEvents(hash, blockNumber, contractAddress, web3, contractTree.contractAbi, networkData);
             publicEvents.forEach((ele) => {
                 if (!seenEvent.has(ele.eventSignature)) {
                     transactionLog.events.push(ele)
@@ -1601,3 +1620,4 @@ function normalizeStorageEntries(rawStorage) {
     }
     return normalized;
 }
+

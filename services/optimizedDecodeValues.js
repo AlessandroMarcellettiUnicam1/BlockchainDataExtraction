@@ -3,6 +3,11 @@ const fs = require('fs');
 let web3;
 let mainContractName;
 let contractCompiled;
+function ensureHexPrefix(value) {
+    if (value === undefined || value === null) return "0x";
+    const stringValue = String(value);
+    return stringValue.startsWith("0x") ? stringValue : "0x" + stringValue;
+}
 /**
  * Optimizes and decodes values from the given storage and contract data.
  *
@@ -72,7 +77,7 @@ async function optimizedDecodeValues(sstore, contractTree, shaTraces, functionSt
 function decodeComplexData(shaTraces, contractTree, functionName,functionStorage, mainContract, shatracesProcessed, resultOfPreprocessing) {
     for (const shatrace of shaTraces) {
         if (shatrace.hexStorageIndex) {
-            let slotNumber = web3.utils.hexToNumber("0x" + shatrace.hexStorageIndex);
+            let slotNumber = web3.utils.hexToNumber(ensureHexPrefix(shatrace.hexStorageIndex));
             if (slotNumber < 300 && !shatracesProcessed.has(shatrace.finalKey)) {
                 let variabilePerSlot = getContractVariable(slotNumber, contractTree, functionName, mainContract)[0];
 
@@ -109,8 +114,8 @@ function decodingSimpleStorage(mainContract,functionStorage,shatracesProcessed,c
             cleanStorageKey = cleanStorageKey.slice(2);
         }
 
-        if (!shatracesProcessed.has(storageKey) && web3.utils.hexToNumber("0x" + cleanStorageKey) < 9999999) {
-            const slotNumber = web3.utils.hexToNumber("0x" + cleanStorageKey);
+        if (!shatracesProcessed.has(storageKey) && web3.utils.hexToNumber(ensureHexPrefix(cleanStorageKey)) < 9999999) {
+            const slotNumber = web3.utils.hexToNumber(ensureHexPrefix(cleanStorageKey));
             const variablePerSlot = getContractVariable(slotNumber, contractTree, functionName, mainContract);
             const variables = variablePerSlot.length > 1
                 ? newReadVarFormOffset(variablePerSlot, functionStorage)
@@ -238,14 +243,14 @@ function extractComplexKey(variable, shaTraces, functionStorage,shatracesProcess
  */
 function readStructFromComplexData(variable, shaTraces, functionStorage,shatracesProcessed,arrayShaTrace){
     let members=getStructMembersByVariable(variable,contractCompiled);
-    // if(Number(variable.slot)!==web3.utils.hexToNumber("0x"+variable.contentSlot)){
+    // if(Number(variable.slot)!==web3.utils.hexToNumber(ensureHexPrefix(variable.contentSlot))){
     //     variable.contentSlot=web3.utils.padLeft( web3.utils.numberToHex(variable.slot).slice(2),64);        
     // }
     variable.element=[];
     members.forEach((element)=>{
         let slotElementStruct;
-        if(web3.utils.hexToNumber("0x"+variable.contentSlot)>9999999){
-            slotElementStruct=BigInt(element.slot)+web3.utils.hexToNumber("0x"+variable.contentSlot)
+        if(web3.utils.hexToNumber(ensureHexPrefix(variable.contentSlot))>9999999){
+            slotElementStruct=BigInt(element.slot)+web3.utils.hexToNumber(ensureHexPrefix(variable.contentSlot))
         }else{
             slotElementStruct=BigInt(element.slot)+BigInt(variable.slot);
         }
@@ -317,17 +322,17 @@ function readMapping(variable,shaTraces ,functionStorage,shatracesProcessed,arra
  * @returns {Object} The updated variable object with the read string value.
  */
 function readString (variable,shaTraces ,functionStorage,shatracesProcessed,arrayShaTrace) {
-    if(functionStorage[shaTraces.finalKey] !== web3.utils.padLeft("0", 64)&& functionStorage[variable.contentSlot] &&web3.utils.hexToNumber("0x"+functionStorage[variable.contentSlot])<9999999){
-        let stringLength=web3.utils.hexToNumber("0x"+functionStorage[variable.contentSlot]);
+    if(functionStorage[shaTraces.finalKey] !== web3.utils.padLeft("0", 64)&& functionStorage[variable.contentSlot] &&web3.utils.hexToNumber(ensureHexPrefix(functionStorage[variable.contentSlot]))<9999999){
+        let stringLength=web3.utils.hexToNumber(ensureHexPrefix(functionStorage[variable.contentSlot]));
         let slotDiff = stringLength % 64;
         let slotUsed = (stringLength - slotDiff) / 64;
         if (slotDiff > 0) {
             slotUsed = slotUsed + 1;
         }
         let listOfBlock = "";
-        let startString = web3.utils.keccak256("0x"+variable.contentSlot).slice(2);
+        let startString = web3.utils.keccak256(ensureHexPrefix(variable.contentSlot)).slice(2);
         for (let i = 0; i < slotUsed; i++) {
-            let num = web3.utils.hexToNumber("0x" + startString);
+            let num = web3.utils.hexToNumber(ensureHexPrefix(startString));
             let bigNumberindex = BigInt(i);
             num = num + bigNumberindex;
             let slotResult = web3.utils.numberToHex(num).substring(2);
@@ -386,12 +391,12 @@ function readArrayComplexDyn(variable,shaTraces,functionStorage,shatracesProcess
         variable.contentSlot=shaTraces.finalKey;
         return readStringArray(variable,shaTraces,functionStorage,shatracesProcessed);
     }else if(variable.type.includes("struct")){
-        let keyslot=web3.utils.keccak256("0x"+variable.contentSlot).slice(2);
+        let keyslot=web3.utils.keccak256(ensureHexPrefix(variable.contentSlot)).slice(2);
         if(shaTraces.indexSum===undefined){
             shatracesProcessed.add(keyslot)
             variable.contentSlot=keyslot
             return readStructFromDynamicArary(variable,shaTraces,functionStorage,shatracesProcessed,arrayShaTrace)
-            // variable.slot=web3.utils.hexToNumber("0x"+keyslot);
+            // variable.slot=web3.utils.hexToNumber(ensureHexPrefix(keyslot));
         }else{
             let keySlotToNumber=web3.utils.hexToNumber(keyslot);
             let keyResult=web3.utils.numberToHex(keySlotToNumber+BigInt(shaTraces.indexSum)).slice(2);
@@ -411,16 +416,16 @@ Se la struttura è composta da 9 elementi (semplici) salterò non di length e ba
 */
 function readStructFromDynamicArary(variable,shaTraces,functionStorage,shatracesProcessed,arrayShaTrace){
     let members=getStructMembersByVariable(variable,contractCompiled);
-    // if(Number(variable.slot)!==web3.utils.hexToNumber("0x"+variable.contentSlot)){
+    // if(Number(variable.slot)!==web3.utils.hexToNumber(ensureHexPrefix(variable.contentSlot))){
     //     variable.contentSlot=web3.utils.padLeft( web3.utils.numberToHex(variable.slot).slice(2),64);        
     // }
     variable.element=[];
     members.forEach((element)=>{
         let slotElementStruct;
         
-        if(web3.utils.hexToNumber("0x"+variable.contentSlot)>9999999){
-            let slotToReach= (web3.utils.hexToNumber("0x"+variable.arrayLength)-1)*members.length
-            slotElementStruct=(BigInt(element.slot)+BigInt(slotToReach))+web3.utils.hexToNumber("0x"+variable.contentSlot)
+        if(web3.utils.hexToNumber(ensureHexPrefix(variable.contentSlot))>9999999){
+            let slotToReach= (web3.utils.hexToNumber(ensureHexPrefix(variable.arrayLength))-1)*members.length
+            slotElementStruct=(BigInt(element.slot)+BigInt(slotToReach))+web3.utils.hexToNumber(ensureHexPrefix(variable.contentSlot))
         }
         element.slot=slotElementStruct;
         element.contentSlot=web3.utils.padLeft( web3.utils.numberToHex(slotElementStruct).slice(2),64);
@@ -432,17 +437,17 @@ function readStructFromDynamicArary(variable,shaTraces,functionStorage,shatraces
 }
 //siccome sono in un array è diverso dalla variabile singola
 function readStringArray(variable,shaTraces ,functionStorage,shatracesProcessed){
-    if(functionStorage[shaTraces.finalKey] !== web3.utils.padLeft("0", 64) && web3.utils.hexToNumber("0x"+functionStorage[variable.contentSlot])<9999999){
-        let stringLength=web3.utils.hexToNumber("0x"+functionStorage[variable.contentSlot]);
+    if(functionStorage[shaTraces.finalKey] !== web3.utils.padLeft("0", 64) && web3.utils.hexToNumber(ensureHexPrefix(functionStorage[variable.contentSlot]))<9999999){
+        let stringLength=web3.utils.hexToNumber(ensureHexPrefix(functionStorage[variable.contentSlot]));
         let slotDiff = stringLength % 64;
         let slotUsed = (stringLength - slotDiff) / 64;
         if (slotDiff > 0) {
             slotUsed = slotUsed + 1;
         }
         let listOfBlock = "";
-        let startString = web3.utils.keccak256("0x"+shaTraces.finalKey).slice(2);
+        let startString = web3.utils.keccak256(ensureHexPrefix(shaTraces.finalKey)).slice(2);
         for (let i = 0; i < slotUsed; i++) {
-            let num = web3.utils.hexToNumber("0x" + startString);
+            let num = web3.utils.hexToNumber(ensureHexPrefix(startString));
             let bigNumberindex = BigInt(i);
             num = num + bigNumberindex;
             let slotResult = web3.utils.numberToHex(num).substring(2);
@@ -459,7 +464,7 @@ function readStringArray(variable,shaTraces ,functionStorage,shatracesProcessed)
 
 function readBytesArrayDynamic(variable,shaTraces ,functionStorage,shatracesProcessed){
     if(variable.type.includes("32")){
-        let keyOfSlot=web3.utils.keccak256("0x"+variable.contentSlot);
+        let keyOfSlot=web3.utils.keccak256(ensureHexPrefix(variable.contentSlot));
         variable.value=[];
         if(shaTraces.indexSum==undefined){
             shatracesProcessed.add(keyOfSlot)
@@ -479,11 +484,11 @@ function readBytesArrayDynamic(variable,shaTraces ,functionStorage,shatracesProc
 function readUintArrayDynamic(variable,shaTraces ,functionStorage,shatracesProcessed){
     if(variable.type.includes("256")){
         if(functionStorage[variable.contentSlot]){
-            let keyOfSlot=web3.utils.keccak256("0x"+variable.contentSlot);
+            let keyOfSlot=web3.utils.keccak256(ensureHexPrefix(variable.contentSlot));
             variable.value=[];
             if(shaTraces.indexSum==undefined){
-                if(web3.utils.hexToNumber("0x"+variable.arrayLength)>0){
-                    for(let i=0;i<web3.utils.hexToNumber("0x"+variable.arrayLength);i++){
+                if(web3.utils.hexToNumber(ensureHexPrefix(variable.arrayLength))>0){
+                    for(let i=0;i<web3.utils.hexToNumber(ensureHexPrefix(variable.arrayLength));i++){
                         let keySlot=web3.utils.numberToHex(web3.utils.hexToNumber(keyOfSlot)+BigInt(i)).slice(2);
                         shatracesProcessed.add(keySlot)
                         variable.value.push(functionStorage[keySlot]);
@@ -514,10 +519,10 @@ function decodeOptimizeDynamicArray(variable,shaTraces ,functionStorage,shatrace
 }
 function decodeOptimizeBytesDynamicArray(variable,shaTraces ,functionStorage,shatracesProcessed){
     let result=[];
-    let keySlot=web3.utils.keccak256("0x"+variable.contentSlot).slice(2);
+    let keySlot=web3.utils.keccak256(ensureHexPrefix(variable.contentSlot)).slice(2);
     variable.value=functionStorage[keySlot]
     let typeSize=parseInt(variable.type.split(")")[0].split("bytes")[1]);
-    let arrayLength=web3.utils.hexToNumber("0x"+functionStorage[variable.contentSlot]);
+    let arrayLength=web3.utils.hexToNumber(ensureHexPrefix(functionStorage[variable.contentSlot]));
     let charsForElement = typeSize *2;
     const slotLength = 64;
     for (let i=0;i<arrayLength;i++){
@@ -532,10 +537,10 @@ function decodeOptimizeBytesDynamicArray(variable,shaTraces ,functionStorage,sha
 }
 function decodeOptimizeUintDynamicArray(variable,shaTraces ,functionStorage,shatracesProcessed){
     let result=[];
-    let keySlot=web3.utils.keccak256("0x"+variable.contentSlot).slice(2);
+    let keySlot=web3.utils.keccak256(ensureHexPrefix(variable.contentSlot)).slice(2);
     variable.value=functionStorage[keySlot]
     let typeSize=parseInt(variable.type.split(")")[0].split("uint")[1]);
-    let arrayLength=web3.utils.hexToNumber("0x"+functionStorage[variable.contentSlot]);
+    let arrayLength=web3.utils.hexToNumber(ensureHexPrefix(functionStorage[variable.contentSlot]));
     let charsForElement = typeSize / 4;
     const slotLength = 64;
     for (let i=0;i<arrayLength;i++){
@@ -574,9 +579,9 @@ function decodePrimitive(variable,functionStorage){
         if(variable.value){
         let value = variable.value;
         if (type.includes("uint")) {
-            return Number(web3.utils.hexToNumber("0x" + value));
+            return Number(web3.utils.hexToNumber(ensureHexPrefix(value)));
         } else if (type.includes("bool")) {
-            return web3.eth.abi.decodeParameter("bool", "0x" + value);
+            return web3.eth.abi.decodeParameter("bool", ensureHexPrefix(value));
         } else if (type.includes("bytes")) {
             // return JSON.stringify(web3.utils.hexToBytes("0x" + value)).replace("\"", "");
             return "0x"+value;
@@ -584,10 +589,10 @@ function decodePrimitive(variable,functionStorage){
         } else if (type.includes("address")) {
             return "0x" + value.slice(-40);
         } else if (type.includes("enum")) {
-            let bigIntvalue = web3.eth.abi.decodeParameter("uint256", "0x" + value);
+            let bigIntvalue = web3.eth.abi.decodeParameter("uint256", ensureHexPrefix(value));
             return Number(bigIntvalue);
         }else if (type.includes("string")) {
-            return web3.utils.hexToAscii("0x" + value).replace(/\0/g, '');
+            return web3.utils.hexToAscii(ensureHexPrefix(value)).replace(/\0/g, '');
         }
         return value;
         }else{
@@ -606,7 +611,7 @@ function decodePartialPrimitive(variable,functionStorage,contractCompiled){
     // let type=variable.type;
     if (type.includes("enum")) {
         let value = variable.value;
-        let bigIntvalue = web3.eth.abi.decodeParameter("uint256", "0x" + value);
+        let bigIntvalue = web3.eth.abi.decodeParameter("uint256", ensureHexPrefix(value));
         return Number(bigIntvalue);
     }else if (type.includes("array")){
         return decodeArray(variable,functionStorage);
@@ -615,7 +620,7 @@ function decodePartialPrimitive(variable,functionStorage,contractCompiled){
     }
 }
 function readStruct(variable,functionStorage,contractCompiled){
-    // if(Number(variable.slot)!==web3.utils.hexToNumber("0x"+variable.contentSlot)){
+    // if(Number(variable.slot)!==web3.utils.hexToNumber(ensureHexPrefix(variable.contentSlot))){
     //     variable.contentSlot=web3.utils.padLeft( web3.utils.numberToHex(variable.slot).slice(2),64);        
     // }
     if(variable.element){
@@ -632,14 +637,14 @@ function readStruct(variable,functionStorage,contractCompiled){
         variable.element=[];
         members.forEach((element)=>{
             // Number(variable.slot)
-            let slotElementStruct=Number(element.slot)+web3.utils.hexToNumber("0x"+variable.contentSlot);
+            let slotElementStruct=Number(element.slot)+web3.utils.hexToNumber(ensureHexPrefix(variable.contentSlot));
             element.slot=slotElementStruct;
             element.contentSlot=web3.utils.padLeft( web3.utils.numberToHex(slotElementStruct).slice(2),64);
             if(functionStorage[element.contentSlot]){
                 element.value=functionStorage[element.contentSlot];
                 variable.element.push(element);
             }
-            // if(slotElementStruct===Number(web3.utils.hexToNumber("0x"+variable.contentSlot)) ){
+            // if(slotElementStruct===Number(web3.utils.hexToNumber(ensureHexPrefix(variable.contentSlot))) ){
             //     variable.type=element.type;
             //     variable.memberName=element.label;   
             // }
@@ -718,7 +723,7 @@ function decodeUintArray(variable,functionStorage){
         if(variable.value==undefined){
             return variable;
         }
-        variable.decodedValue=web3.utils.hexToNumber("0x"+variable.value);
+        variable.decodedValue=web3.utils.hexToNumber(ensureHexPrefix(variable.value));
         return variable
     }else{
         let typeSize=parseInt(variable.type.split(")")[0].split("uint")[1]);
@@ -732,7 +737,7 @@ function decodeUintArray(variable,functionStorage){
             let endOfTheElement = startOfTheElement - charsForElement;
             let valueExatracted = variable.value.slice(endOfTheElement,startOfTheElement);
             let valuePadded=web3.utils.padLeft(valueExatracted,64);
-            variable.decodedValue.push(web3.utils.hexToNumber("0x"+valuePadded));
+            variable.decodedValue.push(web3.utils.hexToNumber(ensureHexPrefix(valuePadded)));
         }
         return variable;
     }

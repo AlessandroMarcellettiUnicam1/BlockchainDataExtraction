@@ -186,104 +186,135 @@ async function getAllTransactions(oldParams, newParams, returnInMemory = false) 
  * @param {*} mainContract 
  * @returns 
  */
+function createRawContractTreeFallback(queryResult = {}) {
+    const abi = typeof queryResult?.abi === "string" && !queryResult.abi.includes("Contract source code not verified")
+        ? queryResult.abi
+        : "[]";
+    return {
+        fullContractTree: null,
+        storageLayoutFlag: false,
+        contractCompiled: null,
+        contractAbi: abi,
+        sourceCode: queryResult?.sourceCode || "",
+        proxy: queryResult?.proxy || "",
+        contractName: queryResult?.contractName || "",
+        proxyImplementation: queryResult?.proxyImplementation || "",
+        compilerVersion: queryResult?.compilerVersion || ""
+    };
+}
+
 async function getContractTree(smartContract,impl_contract,endpoint,apiKey,queryResult, singleTxPerformance = {}){
 
     const tStartTotal = performance.now();
     let contractsResult = null
-    // if the contract is uploaded by the user then the contract is compiled
     let contractTree = null;
     if (smartContract) {
         contractsResult = smartContract
     } else {
-        //implementation contract address
-        try {   
-                if (queryResult?.fullContractTree && queryResult?.contractCompiled) {
-                    contractTree = {
-                        fullContractTree: queryResult.fullContractTree,
-                        storageLayoutFlag: queryResult.storageLayoutFlag,
-                        contractCompiled: queryResult.contractCompiled,
-                        contractAbi: queryResult.abi,
-                        sourceCode: queryResult.sourceCode,
-                        proxy: queryResult.proxy,
-                        contractName: queryResult.contractName,
-                        proxyImplementation: queryResult.proxyImplementation || '',
-                        compilerVersion: queryResult.compilerVersion
-                    };
-                    singleTxPerformance.time_getContractCodeEtherscan = 0;
-                    singleTxPerformance.time_getCompiledData = 0;
-                    const tEndTotalCached = performance.now() - tStartTotal;
-                    singleTxPerformance.time_getContractTreeTotal = parseFloat(tEndTotalCached.toFixed(3));
-                    return contractTree;
-                }
-
-                console.log(`[${new Date().toISOString()}, DEBUG-CONTRACT TREE] Inizio recupero ContractCode`);
-
-                const tStartEtherscan = performance.now();
-                contractsResult = await getContractCodeEtherscan(impl_contract, endpoint, apiKey,queryResult);
-                const tEndEtherscan = performance.now() - tStartEtherscan;
-                singleTxPerformance.time_getContractCodeEtherscan = parseFloat(tEndEtherscan.toFixed(3));
-
-                if (!contractsResult) {
-                    console.warn(`[${new Date().toISOString()}, DEBUG-CONTRACT TREE] ContractCode non recuperato, uso fallback grezzo`, {
-                        impl_contract,
-                        hasQueryResult: !!queryResult,
-                        queryResultContractAddress: queryResult?.contractAddress,
-                        queryResultContractName: queryResult?.contractName,
-                        queryResultAbiPreview: typeof queryResult?.abi === 'string' ? queryResult.abi.slice(0, 80) : typeof queryResult?.abi,
-                        endpointDefined: !!endpoint,
-                        apiKeyDefined: !!apiKey
-                    });
-                    contractTree = {
-                        fullContractTree: null,
-                        storageLayoutFlag: false,
-                        contractCompiled: null,
-                        contractAbi: queryResult?.abi && !queryResult.abi.includes("Contract source code not verified") ? queryResult.abi : "[]",
-                        sourceCode: queryResult?.sourceCode || '',
-                        proxy: queryResult?.proxy || '',
-                        contractName: queryResult?.contractName || '',
-                        proxyImplementation: queryResult?.proxyImplementation || '',
-                        compilerVersion: queryResult?.compilerVersion || ''
-                    };
-                    const tEndTotalFallback = performance.now() - tStartTotal;
-                    singleTxPerformance.time_getCompiledData = 0;
-                    singleTxPerformance.time_getContractTreeTotal = parseFloat(tEndTotalFallback.toFixed(3));
-                    return contractTree;
-                }
-
-                console.log(`[${new Date().toISOString()}, DEBUG-CONTRACT TREE] ContractCode recuperato`);
-                console.log(`compilerVersion: ${contractsResult.compilerVersion}`);
-            if (contractsResult) {
-                console.log(`[${new Date().toISOString()}, DEBUG-CONTRACT TREE] Inizio recupero CompiledData`);
-
-                const tStartCompile = performance.now();
-                contractTree = await getCompiledData(contractsResult.contracts, contractsResult.contractName, contractsResult.compilerVersion);
-                const tEndCompile = performance.now() - tStartCompile;
-                singleTxPerformance.time_getCompiledData = parseFloat(tEndCompile.toFixed(3));
-
-                //If contractTree is null is because It can't compile the code but the rest of the data are valid
-                contractTree.contractAbi=contractsResult.contractAbi;
-                contractTree.sourceCode=contractsResult.sourceCode;
-                contractTree.proxy=contractsResult.proxy;
-                contractTree.contractName=contractsResult.contractName;
-                contractTree.proxyImplementation='';
-                contractTree.compilerVersion=contractsResult.compilerVersion;
-                await saveCompiledContractData(impl_contract, contractTree);
-                console.log(`[${new Date().toISOString()}, DEBUG-CONTRACT TREE] Fine recupero CompiledData e ContractTree completato`);
+        try {
+            if (queryResult?.fullContractTree && queryResult?.contractCompiled) {
+                contractTree = {
+                    fullContractTree: queryResult.fullContractTree,
+                    storageLayoutFlag: queryResult.storageLayoutFlag,
+                    contractCompiled: queryResult.contractCompiled,
+                    contractAbi: queryResult.abi,
+                    sourceCode: queryResult.sourceCode,
+                    proxy: queryResult.proxy,
+                    contractName: queryResult.contractName,
+                    proxyImplementation: queryResult.proxyImplementation || '',
+                    compilerVersion: queryResult.compilerVersion
+                };
+                singleTxPerformance.time_getContractCodeEtherscan = 0;
+                singleTxPerformance.time_getCompiledData = 0;
+                const tEndTotalCached = performance.now() - tStartTotal;
+                singleTxPerformance.time_getContractTreeTotal = parseFloat(tEndTotalCached.toFixed(3));
+                return contractTree;
             }
+
+            console.log(`[${new Date().toISOString()}, DEBUG-CONTRACT TREE] Inizio recupero ContractCode`);
+
+            const tStartEtherscan = performance.now();
+            contractsResult = await getContractCodeEtherscan(impl_contract, endpoint, apiKey, queryResult);
+            const tEndEtherscan = performance.now() - tStartEtherscan;
+            singleTxPerformance.time_getContractCodeEtherscan = parseFloat(tEndEtherscan.toFixed(3));
+
+            if (!contractsResult) {
+                console.warn(`[${new Date().toISOString()}, DEBUG-CONTRACT TREE] ContractCode non recuperato, uso fallback grezzo`, {
+                    impl_contract,
+                    hasQueryResult: !!queryResult,
+                    queryResultContractAddress: queryResult?.contractAddress,
+                    queryResultContractName: queryResult?.contractName,
+                    queryResultAbiPreview: typeof queryResult?.abi === 'string' ? queryResult.abi.slice(0, 80) : typeof queryResult?.abi,
+                    endpointDefined: !!endpoint,
+                    apiKeyDefined: !!apiKey
+                });
+                contractTree = createRawContractTreeFallback(queryResult);
+                const tEndTotalFallback = performance.now() - tStartTotal;
+                singleTxPerformance.time_getCompiledData = 0;
+                singleTxPerformance.time_getContractTreeTotal = parseFloat(tEndTotalFallback.toFixed(3));
+                return contractTree;
+            }
+
+            console.log(`[${new Date().toISOString()}, DEBUG-CONTRACT TREE] ContractCode recuperato`);
+            console.log(`compilerVersion: ${contractsResult.compilerVersion}`);
         } catch (err) {
             console.error('getContractCodeEtherscan error: ', err);
-            
-            throw new Error(err.message)
+            console.warn(`[${new Date().toISOString()}, DEBUG-CONTRACT TREE] Errore Etherscan/compilazione, continuo con fallback grezzo`, {
+                impl_contract,
+                errorMessage: err?.message,
+                hasQueryResult: !!queryResult,
+                queryResultContractAddress: queryResult?.contractAddress,
+                queryResultContractName: queryResult?.contractName,
+                queryResultAbiPreview: typeof queryResult?.abi === 'string' ? queryResult.abi.slice(0, 80) : typeof queryResult?.abi,
+                endpointDefined: !!endpoint,
+                apiKeyDefined: !!apiKey
+            });
+            contractTree = createRawContractTreeFallback(queryResult);
+            singleTxPerformance.time_getCompiledData = 0;
         }
     }
+
+    if (contractsResult) {
+        try {
+            console.log(`[${new Date().toISOString()}, DEBUG-CONTRACT TREE] Inizio recupero CompiledData`);
+
+            const tStartCompile = performance.now();
+            contractTree = await getCompiledData(contractsResult.contracts, contractsResult.contractName, contractsResult.compilerVersion);
+            const tEndCompile = performance.now() - tStartCompile;
+            singleTxPerformance.time_getCompiledData = parseFloat(tEndCompile.toFixed(3));
+
+            if (!contractTree) {
+                contractTree = createRawContractTreeFallback(queryResult);
+            }
+            contractTree.contractAbi=contractsResult.contractAbi;
+            contractTree.sourceCode=contractsResult.sourceCode;
+            contractTree.proxy=contractsResult.proxy;
+            contractTree.contractName=contractsResult.contractName;
+            contractTree.proxyImplementation='';
+            contractTree.compilerVersion=contractsResult.compilerVersion;
+            await saveCompiledContractData(impl_contract, contractTree);
+            console.log(`[${new Date().toISOString()}, DEBUG-CONTRACT TREE] Fine recupero CompiledData e ContractTree completato`);
+        } catch (err) {
+            console.error('getCompiledData error: ', err);
+            console.warn(`[${new Date().toISOString()}, DEBUG-CONTRACT TREE] Errore compilazione, continuo con fallback grezzo`, {
+                impl_contract,
+                errorMessage: err?.message
+            });
+            contractTree = createRawContractTreeFallback(queryResult);
+            contractTree.contractAbi = contractsResult.contractAbi || contractTree.contractAbi;
+            contractTree.sourceCode = contractsResult.sourceCode || contractTree.sourceCode;
+            contractTree.proxy = contractsResult.proxy || contractTree.proxy;
+            contractTree.contractName = contractsResult.contractName || contractTree.contractName;
+            contractTree.compilerVersion = contractsResult.compilerVersion || contractTree.compilerVersion;
+            singleTxPerformance.time_getCompiledData = 0;
+        }
+    }
+
     const tEndTotal = performance.now() - tStartTotal;
     singleTxPerformance.time_getContractTreeTotal = parseFloat(tEndTotal.toFixed(3));
-    //console.log("CONTRACT-Tree: \n\n full contract tree" + contractTree + "\n\n contract compiled:" + contractCompiled);
     contractsResult = null
-    //console.log("\n\n\n\n contract tree (inner): " + contractTree.contractCompiled + "abcdefg\n\n\n\n");
     return contractTree;
 }
-
 /**
  * Recursive function to get all the trasaction in a block range
  * @param {*} networkData 
