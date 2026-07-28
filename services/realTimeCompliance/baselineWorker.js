@@ -30,7 +30,7 @@ const baselineWorker = new Worker('baseline-queue', async (job) => {
     const tJobStart = performance.now();
 
     try {
-        const mockBlockNumber = payload.blockNumber - 1000000;
+        // const mockBlockNumber = payload.blockNumber;
 
         const configData = await redisClient.get(`session:${sessionId}:config`);
         const baseXes = await redisClient.get(`session:${sessionId}:xes`);
@@ -44,8 +44,8 @@ const baselineWorker = new Worker('baseline-queue', async (job) => {
         const newParams = {
             contractAddressesFrom: payload.contract, 
             contractAddressesTo: payload.contract,
-            fromBlock: mockBlockNumber,
-            toBlock: mockBlockNumber, 
+            fromBlock: payload.blockNumber,
+            toBlock: payload.blockNumber, 
             network: "Mainnet",
             filters: {
                 gasUsed: null,
@@ -66,11 +66,11 @@ const baselineWorker = new Worker('baseline-queue', async (job) => {
         const extractionTime = parseFloat((performance.now() - tStartExtraction).toFixed(3));
 
         if (!extractedLogs || extractedLogs.length === 0) {
-            console.warn(`[Baseline Worker] Nessun log estratto per il blocco ${mockBlockNumber}. Il blocco potrebbe essere vuoto o non indicizzato. Ignoro il job.`);
+            console.warn(`[Baseline Worker] Nessun log estratto per il blocco ${payload.blockNumber}. Il blocco potrebbe essere vuoto o non indicizzato. Ignoro il job.`);
             
             await saveBaselineWorkerMetrics({
                 jobId: job.id, 
-                blockNumber: mockBlockNumber,
+                blockNumber: payload.blockNumber,
                 time_totalExtractionPhase: extractionTime,
                 time_totalJob: parseFloat((performance.now() - tJobStart).toFixed(3)),
                 status: 'No_Logs_Extracted'
@@ -79,11 +79,11 @@ const baselineWorker = new Worker('baseline-queue', async (job) => {
             return { 
                 success: false,
                 sessionId: sessionId , 
-                blockNumber: mockBlockNumber 
+                blockNumber: payload.blockNumber 
             };
         }
 
-        console.log(`[Baseline Worker] Estratte ${extractedLogs.length} transazioni dal blocco ${mockBlockNumber}.`);
+        console.log(`[Baseline Worker] Estratte ${extractedLogs.length} transazioni dal blocco ${payload.blockNumber}.`);
 
 
         const pythonPayload = {
@@ -91,11 +91,11 @@ const baselineWorker = new Worker('baseline-queue', async (job) => {
             case_col: mapping.case_col,
             activity_col: mapping.activity_col,
             time_col: mapping.time_col,
-            xes_name: `baseline_block_${mockBlockNumber}`,
+            xes_name: `baseline_block_${payload.blockNumber}`,
             extract_columns: false 
         };
 
-        console.log(`[Baseline Worker] Invio dati del blocco ${mockBlockNumber} a Python per conversione XES...`);
+        console.log(`[Baseline Worker] Invio dati del blocco ${payload.blockNumber} a Python per conversione XES...`);
         const tStartConversion = performance.now();
         const pythonResponse = await axios.post('http://coblockly-backend:8000/api/convertToXes', pythonPayload);
         const conversionTime = parseFloat((performance.now() - tStartConversion).toFixed(3));
@@ -116,10 +116,10 @@ const baselineWorker = new Worker('baseline-queue', async (job) => {
         }
 
         await redisClient.set(`session:${sessionId}:xes`, updatedXes);
-        console.log(`[Baseline Worker] Log Base aggiornato e consolidato su Redis per sessione ${sessionId}.`);
+        console.log(`[Baseline Worker] Log Base aggiornato per sessione ${sessionId}.`);
 
         let complianceResult = null;
-        console.log(`[Baseline Worker] Mempool disabilitata. Controllo compliance per il blocco ${mockBlockNumber}...`);
+        console.log(`[Baseline Worker] Controllo compliance per il blocco ${payload.blockNumber}...`);
         
         const tRuleCheckTime = performance.now();
         const verificationPromises = parsedRules.map(ruleObj => {
@@ -152,7 +152,7 @@ const baselineWorker = new Worker('baseline-queue', async (job) => {
 
         await saveBaselineWorkerMetrics({
             jobId: job.id, 
-            blockNumber: mockBlockNumber,
+            blockNumber: payload.blockNumber,
             time_totalExtractionPhase: extractionTime,
             time_pythonConversion: conversionTime,
             time_xesAppend: appendTime,
@@ -165,15 +165,15 @@ const baselineWorker = new Worker('baseline-queue', async (job) => {
         return { 
             success: true, 
             sessionId: sessionId, 
-            blockNumber: mockBlockNumber,
+            blockNumber: payload.blockNumber,
             complianceResult: complianceResults
         };
     }
     catch (err) {
-        console.error(`[Baseline Worker] Errore durante l'elaborazione di ${mockBlockNumber}:`, err.message);
+        console.error(`[Baseline Worker] Errore durante l'elaborazione di ${payload.blockNumber}:`, err.message);
         await saveBaselineWorkerMetrics({
             jobId: job.id, 
-            blockNumber: mockBlockNumber,
+            blockNumber: payload.blockNumber,
             time_totalJob: parseFloat((performance.now() - tJobStart).toFixed(3)),
             status: 'Failed'
         });

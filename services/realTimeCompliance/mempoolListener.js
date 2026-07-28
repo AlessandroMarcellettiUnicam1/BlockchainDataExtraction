@@ -112,11 +112,11 @@ async function startBaselineListener(sessionId, url, monitoredContracts) {
         subscription.on("data", async (blockHeader) => {
             const session = activeSubscriptions.get(`${sessionId}_baseline`);
             if (!session || !session.isCapturing) return;
-            console.log(`[Baseline] Controllo in corso per il blocco ${blockHeader.number}...`);
+            console.log(`[Baseline] Controllo in corso per il blocco ${blockHeader.number-1500000}...`);
 
             try {
-                // prendo il blocco intero e cerco per il contratto che sto monitorando
-                const block = await web3.eth.getBlock(blockHeader.number, true);
+                // prendo il blocco (mock) intero e cerco per il contratto che sto monitorando
+                const block = await web3.eth.getBlock(blockHeader.number - 1500000, true);
 
                 let extraction = false;
                 
@@ -141,7 +141,7 @@ async function startBaselineListener(sessionId, url, monitoredContracts) {
                 }
 
                 if (extraction) {
-                    console.log(`[Baseline] Trovate tx rilevanti nel blocco ${block.number}. In coda per estrazione.`);  
+                    console.log(`[Baseline] Trovate tx rilevanti nel blocco ${block.number-1500000}. In coda per estrazione.`);  
                     
                     await baselineQueue.add('update-baseline-block', {
                         sessionId: sessionId,
@@ -152,11 +152,11 @@ async function startBaselineListener(sessionId, url, monitoredContracts) {
                     }, {removeOnComplete: true });
                 }
                 else {
-                    console.log(`[Baseline] Nessuna transazione rilevante trovata per il blocco ${blockHeader.number}...`);
+                    console.log(`[Baseline] Nessuna transazione rilevante trovata per il blocco ${blockHeader.number-1500000}...`);
                 }
 
             } catch (err) {
-                console.error(`[Baseline Error] Errore parsing blocco ${blockHeader.number}:`, err.message);
+                console.error(`[Baseline Error] Errore parsing blocco ${blockHeader.number-1500000}:`, err.message);
             }
         });
 
