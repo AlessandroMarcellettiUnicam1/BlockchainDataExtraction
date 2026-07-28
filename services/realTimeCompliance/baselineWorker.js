@@ -62,6 +62,7 @@ const baselineWorker = new Worker('baseline-queue', async (job) => {
 
         const tStartExtraction = performance.now();
         const extractedLogs = await getAllTransactions(null, newParams, true);
+        console.log(`Extracted Logs: ${extractedLogs}`);
         //const extractedLogs = await mockExtraction( payload.blockNumber, payload.contract);
         const extractionTime = parseFloat((performance.now() - tStartExtraction).toFixed(3));
 
@@ -84,10 +85,12 @@ const baselineWorker = new Worker('baseline-queue', async (job) => {
         }
 
         console.log(`[Baseline Worker] Estratte ${extractedLogs.length} transazioni dal blocco ${payload.blockNumber}.`);
-
+        console.log(`[DEBUG Struttura] Esempio di transazione:`, JSON.stringify(extractedLogs[0]).substring(0, 300));
+        
+        const cleanExtractedLogs = extractedLogs.map(item => item.log ? item.log : item);
 
         const pythonPayload = {
-            data: extractedLogs,
+            data: cleanExtractedLogs,
             case_col: mapping.case_col,
             activity_col: mapping.activity_col,
             time_col: mapping.time_col,
@@ -122,20 +125,31 @@ const baselineWorker = new Worker('baseline-queue', async (job) => {
         console.log(`[Baseline Worker] Mempool disabilitata. Controllo compliance per il blocco ${payload.blockNumber}...`);
         
         const tRuleCheckTotal = performance.now();
+        if (!logMapping.gasLimit) {
+            logMapping.gasLimit = "gasLimit";
+        }
         
         const verificationPromises = parsedRules.map(async (ruleObj, index) => { 
             const ruleIndex = index + 1;
             const redisKey = `session:${sessionId}:rule:${ruleIndex}:resolved_traces`;
             
-            // FASE B: Recupero storico completo (Hash invece di Set)
-            const resolvedData = await redisClient.hgetall(redisKey); // Ritorna { "id1": "{status, trace}", ... }
-            const resolvedCasesIds = Object.keys(resolvedData); // Array dei soli ID da ignorare in Python
+            // FASE B: Recupero storico completo
+            const allData = await redisClient.hgetall(redisKey); // Legge TUTTI gli stati
+            const resolvedCasesIds = [];
+            
+            // Diciamo a Python di ignorare SOLO quelli già definitivi
+            Object.entries(allData).forEach(([id, valString]) => {
+                const parsed = JSON.parse(valString);
+                if (parsed.status === 'compliant' || parsed.status === 'noncompliant') {
+                    resolvedCasesIds.push(id);
+                }
+            });
 
             const rulePayload = {
                 xes_string: miniXesToVerify,
                 rule: typeof ruleObj.parsed === 'string' ? ruleObj.parsed : JSON.stringify(ruleObj.parsed),
                 mapping: logMapping,
-                resolved_cases: resolvedCasesIds // Python riceve la blacklist
+                resolved_cases: resolvedCasesIds 
             };
             
             const tStartSingleRule = performance.now();
@@ -144,56 +158,71 @@ const baselineWorker = new Worker('baseline-queue', async (job) => {
                 .then(async res => { 
                     const tEndSingleRule = performance.now();
                     
-                    const newCompliant = res.data.compliant || [];
-                    const newNoncompliant = res.data.noncompliant || [];
+                    // Funzione sicura per estrarre l'ID da un array di eventi
+                    const getTraceId = (trace) => {
+                        if (typeof trace === 'string') return trace;
+                        if (Array.isArray(trace) && trace.length > 0) {
+                            return trace[0][mapping.case_col] || trace[0]["case:concept:name"];
+                        }
+                        return null;
+                    };
 
                     const updates = {};
-                    newCompliant.forEach(trace => {
-                        const id = typeof trace === 'string' ? trace : trace[mapping.case_col];
-                        if (id) updates[id] = JSON.stringify({ status: 'compliant', trace });
-                    });
-                    newNoncompliant.forEach(trace => {
-                        const id = typeof trace === 'string' ? trace : trace[mapping.case_col];
-                        if (id) updates[id] = JSON.stringify({ status: 'noncompliant', trace });
-                    });
+                    
+                    // Salviamo TUTTI i nuovi stati (non solo i definitivi) in Redis
+                    const processCategory = (traceArray, status) => {
+                        (traceArray || []).forEach(trace => {
+                            const id = getTraceId(trace);
+                            if (id) {
+                                updates[id] = JSON.stringify({ status, trace });
+                                allData[id] = updates[id]; // Aggiorniamo anche in memoria locale
+                            }
+                        });
+                    };
+
+                    processCategory(res.data.compliant, 'compliant');
+                    processCategory(res.data.noncompliant, 'noncompliant');
+                    processCategory(res.data.tempCompliant, 'tempCompliant');
+                    processCategory(res.data.tempNonCompliant, 'tempNonCompliant');
+                    processCategory(res.data.ignored, 'ignored');
 
                     if (Object.keys(updates).length > 0) {
                         await redisClient.hset(redisKey, updates); 
                     }
 
-                    const finalCompliant = [...newCompliant];
-                    const finalNoncompliant = [...newNoncompliant];
+                    // FASE C: Ricostruzione del pacchetto completo per il Frontend
+                    const finalResult = {
+                        compliant: [],
+                        noncompliant: [],
+                        tempCompliant: [],
+                        tempNonCompliant: [],
+                        ignored: []
+                    };
 
-                    Object.values(resolvedData).forEach(valString => {
+                    Object.values(allData).forEach(valString => {
                         const parsed = JSON.parse(valString);
-                        if (parsed.status === 'compliant') finalCompliant.push(parsed.trace);
-                        if (parsed.status === 'noncompliant') finalNoncompliant.push(parsed.trace);
+                        if (finalResult[parsed.status]) {
+                            finalResult[parsed.status].push(parsed.trace);
+                        }
                     });
 
                     return {
                         ruleText: ruleObj.text,
                         ruleIndex: ruleIndex,
                         executionTime: parseFloat((tEndSingleRule - tStartSingleRule).toFixed(3)),
-                        compliant: finalCompliant,      
-                        noncompliant: finalNoncompliant,
-                        tempCompliant: res.data.tempCompliant || [], 
-                        tempNonCompliant: res.data.tempNonCompliant || [],
-                        ignored: res.data.ignored || []
+                        ...finalResult // Espande dinamicamente i 5 array compilati
                     };
                 })
                 .catch(err => {
                     const tEndSingleRule = performance.now();
-                    console.error(`[Baseline Worker] Errore verifica regola ${ruleObj.id}:`, err.message);
+                    const pythonError = err.response ? JSON.stringify(err.response.data) : err.message;
+                    console.error(`[Baseline Worker] Errore verifica regola ${ruleObj.id}:`, pythonError);
                     return {
                         ruleText: ruleObj.text,
-                        ruleIndex: index + 1,
+                        ruleIndex: ruleIndex,
                         executionTime: parseFloat((tEndSingleRule - tStartSingleRule).toFixed(3)),
                         error: true,
-                        compliant: [], 
-                        noncompliant: [], 
-                        tempCompliant: [],    
-                        tempNonCompliant: [], 
-                        ignored: []
+                        compliant: [], noncompliant: [], tempCompliant: [], tempNonCompliant: [], ignored: []
                     };
                 });
         });

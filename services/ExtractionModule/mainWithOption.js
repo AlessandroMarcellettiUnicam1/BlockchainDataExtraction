@@ -127,7 +127,7 @@ async function getAllTransactions(oldParams, newParams, returnInMemory = false) 
                         contractTree = await getContractTree(null, targetAbiAddress, networkData.endpoint, networkData.apiKey, queryResult, singleTxPerformance);
                         let temp = [tx];
                         let storageData = await getStorageData(temp, queryResult.contractName, contractTree, tx.to, newParams.filters, newParams.smartContract, newParams.option, networkData, newParams.contractAddressesTo, returnInMemory, singleTxPerformance);
-
+                        console.log(`Storage Data: ${storageData}`)
                         if (returnInMemory && storageData) memoryLogs = memoryLogs.concat(storageData);
                     }
                     catch (innerError) {
@@ -152,7 +152,8 @@ async function getAllTransactions(oldParams, newParams, returnInMemory = false) 
             }
         }
                 
-        console.log("Extraction finished");
+        console.log(`Extraction finished: ${memoryLogs}`);
+        
         return returnInMemory ? memoryLogs : [];
        
         // await removeCollectionFromDB(networkName).then(removeAddressCollection(contractAddress,process.env.LOG_DB_NAME));

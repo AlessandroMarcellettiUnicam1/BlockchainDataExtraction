@@ -78,7 +78,7 @@ async function processTransaction(tx, mainContract, contractTree, contractAddres
         console.log(`Processing transaction: ${tx.hash}`);
         let transactionLog=await createTransactionLog(tx, mainContract, contractTree, smartContract,extractionType,contractAddress,option,networkData,addressRange);
         
-        return [];
+        return transactionLog;
         
     }finally{
         timePerformance.time_workerTotal = Date.now() - timeWorkerStart;
@@ -1535,7 +1535,7 @@ function regroupShatrace(finalShaTraces){
 
 // Handle messages from main process
 process.on("message", async (data) => {
-    const { tx, mainContract, contractTree, contractAddress, smartContract,option, networkData,extractionType,addressRange } = data;
+    const { tx, mainContract, contractTree, contractAddress, smartContract,option, networkData,extractionType,addressRange, returnInMemory } = data; 
     let transactionLog;
     try {
         
@@ -1543,7 +1543,7 @@ process.on("message", async (data) => {
         await connectDB(networkData.networkName);
         
         // Process the transaction
-        await processTransaction(tx, mainContract, contractTree, contractAddress, smartContract,extractionType,option,networkData,addressRange);
+        let extractedLog = await processTransaction(tx, mainContract, contractTree, contractAddress, smartContract,extractionType,option,networkData,addressRange);
 
         // Clean up
         // await mongoose.disconnect();
@@ -1563,6 +1563,7 @@ process.on("message", async (data) => {
         // Send success message
         process.send({
             status: "done",
+            data: returnInMemory ? extractedLog : null, 
             metrics: timePerformance
         });
         // Exit successfully

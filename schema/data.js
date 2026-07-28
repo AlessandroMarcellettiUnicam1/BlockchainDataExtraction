@@ -173,19 +173,12 @@ const baselineWorkerMetricsSchema = new mongoose.Schema({
     time_pythonConversion: { type: Number },
     time_xesAppend: { type: Number },
     time_ruleVerification: { type: Number },
-    rules_number: {type: Number },
-    time_rule_1: { type: Number },
-    time_rule_2: { type: Number },
-    time_rule_3: { type: Number },
-    time_rule_4: { type: Number },
-    time_rule_5: { type: Number },
-    time_rule_6: { type: Number },
 
     time_totalJob: { type: Number },
     
     status: { type: String, enum: ['Success', 'No_Logs_Extracted', 'Failed'], default: 'Success' },
     timestamp: { type: Date, default: Date.now }
-}, { versionKey: false });
+},{ versionKey: false, strict: false });
 
 const completeXesLogSchema = new mongoose.Schema({
     sessionId: { type: String, required: true },
