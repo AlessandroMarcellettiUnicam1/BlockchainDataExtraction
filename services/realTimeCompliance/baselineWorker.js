@@ -123,25 +123,45 @@ const baselineWorker = new Worker('baseline-queue', async (job) => {
         
         const tRuleCheckTotal = performance.now();
         
-        const verificationPromises = parsedRules.map((ruleObj, index) => {
+        const verificationPromises = parsedRules.map(async (ruleObj, index) => { // <-- Aggiungi async
+            const ruleIndex = index + 1;
+            const redisKey = `session:${sessionId}:rule:${ruleIndex}:resolved_traces`;
+            
+            // FASE B: Recupero dei case_id già risolti da Redis
+            const resolvedCases = await redisClient.smembers(redisKey);
+
             const rulePayload = {
                 xes_string: miniXesToVerify,
                 rule: typeof ruleObj.parsed === 'string' ? ruleObj.parsed : JSON.stringify(ruleObj.parsed),
-                mapping: logMapping
+                mapping: logMapping,
+                resolved_cases: resolvedCases // <-- Aggiungi questo campo per Python
             };
             
-            // Avvio timer INDIVIDUALE per questa specifica regola
             const tStartSingleRule = performance.now();
             
             return axios.post('http://coblockly-backend:8000/api/verifyRuleLive', rulePayload)
-                .then(res => {
+                .then(async res => { 
                     const tEndSingleRule = performance.now();
+                    
+                    const compliant = res.data.compliant || [];
+                    const noncompliant = res.data.noncompliant || [];
+
+                    const definitiveCases = [
+                        ...compliant.map(trace => typeof trace === 'string' ? trace : trace[mapping.case_col]),
+                        ...noncompliant.map(trace => typeof trace === 'string' ? trace : trace[mapping.case_col])
+                    ].filter(Boolean); // Rimuove eventuali null/undefined
+
+                    // Salvo i nuovi case_id in Redis
+                    if (definitiveCases.length > 0) {
+                        await redisClient.sadd(redisKey, ...definitiveCases);
+                    }
+
                     return {
                         ruleText: ruleObj.text,
-                        ruleIndex: index + 1, // Assegna 1, 2, 3...
+                        ruleIndex: ruleIndex,
                         executionTime: parseFloat((tEndSingleRule - tStartSingleRule).toFixed(3)),
-                        compliant: res.data.compliant || [],
-                        noncompliant: res.data.noncompliant || [],
+                        compliant: compliant,
+                        noncompliant: noncompliant,
                         ignored: res.data.ignored || []
                     };
                 })
