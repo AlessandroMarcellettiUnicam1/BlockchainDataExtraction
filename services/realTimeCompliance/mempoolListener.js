@@ -3,6 +3,7 @@ const { txQueue, baselineQueue } = require('../../config/redisClient');
 const { adaptMempoolTx } = require('../simulationUtils/txAdapter');
 const systemEvents = require('../../config/sse');
 const { saveCompleteXesLog } = require('../../databaseStore');
+const { connectDB } = require('../../config/db');
 
 // mappa per memorizzare le sessioni attive
 const activeSubscriptions = new Map();
@@ -173,6 +174,7 @@ async function startBaselineListener(sessionId, url, monitoredContracts) {
 
 async function stopMempoolListener(sessionId) {
     try {
+        await connectDB("Mainnet");
         const finalXes = await redisClient.get(`session:${sessionId}:xes`);
         const configData = await redisClient.get(`session:${sessionId}:config`);
         
