@@ -61,8 +61,8 @@ const baselineWorker = new Worker('baseline-queue', async (job) => {
         };
 
         const tStartExtraction = performance.now();
-        // const extractedLogs = await getAllTransactions(null, newParams, true);
-        const extractedLogs = await mockExtraction( payload.blockNumber, payload.contract);
+        const extractedLogs = await getAllTransactions(null, newParams, true);
+        //const extractedLogs = await mockExtraction( payload.blockNumber, payload.contract);
         const extractionTime = parseFloat((performance.now() - tStartExtraction).toFixed(3));
 
         if (!extractedLogs || extractedLogs.length === 0) {
@@ -178,8 +178,20 @@ const baselineWorker = new Worker('baseline-queue', async (job) => {
                     const updates = {};
                     const buildUpdate = (arr, statusName) => {
                         arr.forEach(trace => {
-                            const id = typeof trace === 'string' ? trace : trace[mapping.case_col];
-                            if (id) updates[id] = JSON.stringify({ status: statusName, trace });
+                            let id = null;
+                            if (typeof trace === 'string') {
+                                id = trace;
+                            } else if (Array.isArray(trace) && trace.length > 0) {
+                                id = trace[0][mapping.case_col];
+                            } else if (typeof trace === 'object') {
+                                id = trace[mapping.case_col];
+                            }
+
+                            if (id) {
+                                updates[String(id)] = JSON.stringify({ status: statusName, trace });
+                            } else {
+                                console.warn(`[Worker] Impossibile trovare il Case ID con la colonna "${mapping.case_col}"`);
+                            }
                         });
                     };
 
@@ -220,7 +232,7 @@ const baselineWorker = new Worker('baseline-queue', async (job) => {
                         ruleText: ruleObj.text,
                         ruleIndex: ruleIndex,
                         executionTime: parseFloat((tEndSingleRule - tStartSingleRule).toFixed(3)),
-                        traceMetrics: traceMetrics,
+                        cleanTraceMetrics: [],
                         error: true,
                         compliant: [], noncompliant: [], tempCompliant: [], tempNonCompliant: [], ignored: []
                     };

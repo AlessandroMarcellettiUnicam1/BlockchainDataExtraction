@@ -1,5 +1,5 @@
 const { Web3 } = require('web3');
-const { txQueue, baselineQueue } = require('../../config/redisClient'); 
+const { txQueue, baselineQueue, redisClient } = require('../../config/redisClient'); 
 const { adaptMempoolTx } = require('../simulationUtils/txAdapter');
 const systemEvents = require('../../config/sse');
 const { saveCompleteXesLog } = require('../../databaseStore');
@@ -150,7 +150,7 @@ async function startBaselineListener(sessionId, url, monitoredContracts) {
                         sessionId: sessionId,
                         payload: {
                             contract: monitoredContracts,
-                            blockNumber: Number(block.number)
+                            blockNumber: mockBlockNumber
                         }
                     }, {removeOnComplete: true });
                 }

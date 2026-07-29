@@ -809,13 +809,14 @@ async function mockExtraction(blockNumber, contract) {
     const generateRandomHash = () => "0x" + getRandomHex(64);
     const getRandomGas = () => Math.floor(Math.random() * (500000 - 21000 + 1)) + 21000;
 
+    const selectedContract = Array.isArray(contract) ? contract[0] : contract;
+
     // Genero un numero casuale di transazioni per questo blocco (da 1 a 5)
     const txCount = Math.floor(Math.random() * 5) + 1;
     const mockLogs = [];
 
     for (let i = 0; i < txCount; i++) {
         const funcName = getRandomItem(functionNames);
-        
         // Generazione input dinamici base per rendere il log XES più realistico
         let mockInputs = [];
         if (funcName === "transfer" || funcName === "approve") {
@@ -829,18 +830,16 @@ async function mockExtraction(blockNumber, contract) {
             functionName: funcName,
             transactionHash: generateRandomHash(),
             blockNumber: parseInt(blockNumber),
-            contractAddress: contract.toLowerCase(), 
-            sender: generateRandomAddress(),      
+            contractAddress: selectedContract.toLowerCase(), // <--- ORA FUNZIONA CORRETTAMENTE
+            sender: generateRandomAddress(), 
             gasUsed: getRandomGas(),
             timestamp: new Date().toISOString(),
             inputs: mockInputs,
             value: getRandomItem(ethValues),
-            
             // Campi pesanti lasciati vuoti per la simulazione rapida
             storageState: [], 
-            internalTxs: [],  
+            internalTxs: [], 
             events: [],
-            
             status: "Success"
         };
 
