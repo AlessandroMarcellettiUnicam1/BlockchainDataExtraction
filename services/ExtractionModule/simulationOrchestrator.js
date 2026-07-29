@@ -799,8 +799,8 @@ async function mockProcessSimulation(params, targetAddress, networkData, hash = 
 
 async function mockExtraction(blockNumber, contract) {
     // Liste di dati fittizi per la randomizzazione
-    const functionNames = ["transfer", "approve", "swap", "deposit", "withdraw", "mint", "burn"];
-    const ethValues = ["0x0", "0x0", "0x0", "0x0", "0x38d7ea4c68000", "0xde0b6b3a7640000", "0x1bc16d674ec80000"]; // 0x0 prevalente
+    const functionNames = ["transfer", "approve", "swap", "deposit", "withdraw", "borrow", "supply"];
+    const ethValues = ["0x0", "0x0", "0x0", "0x38d7ea4c68000", "0xde0b6b3a7640000", "0x1bc16d674ec80000"]; // 0x0 prevalente
     
     // Helper per la randomizzazione
     const getRandomItem = (arr) => arr[Math.floor(Math.random() * arr.length)];
@@ -848,7 +848,7 @@ async function mockExtraction(blockNumber, contract) {
     }
 
     // Ritardo artificiale casuale tra 5000ms (5s) e 15000ms (15s)
-    await new Promise(resolve => setTimeout(resolve, Math.floor(Math.random() * 10000) + 5000));
+    await new Promise(resolve => setTimeout(resolve, Math.floor(Math.random() * 5000) + 5000));
 
     return mockLogs;
 }

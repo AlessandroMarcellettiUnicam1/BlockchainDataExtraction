@@ -1412,7 +1412,7 @@ app.post('/api/generate-base-xes', async (req, res) => {
 		const columns = pythonResponse.data.columns;
 
 		// await redisClient.set(`session:${sessionId}:xes`, xesString);
-		await redisClient.setex(`session:${sessionId}:xes`, 43200, xesString); // creo nuova sessione che scade dopo 12 ore
+		await redisClient.setex(`session:${sessionId}:xes`, 259200, xesString); // 72h 
 
 		res.status(200).json({ 
             success: true, 
@@ -1564,6 +1564,62 @@ baselineQueueEvents.on('completed', ({ jobId, returnvalue }) => {
             success: returnvalue.success,
 			complianceResult: returnvalue.complianceResult
         });
+    }
+});
+
+app.get('/api/traces/:sessionId/:ruleIndex', async (req, res) => {
+    try {
+        const { sessionId, ruleIndex } = req.params;
+        const { status } = req.query; // Opzionale: '?status=compliant' o '?status=noncompliant'
+
+        if (!sessionId || !ruleIndex) {
+            return res.status(400).json({ error: "Parametri mancanti" });
+        }
+
+        const redisKey = `session:${sessionId}:rule:${ruleIndex}:resolved_traces`;
+        
+        // Legge tutti i campi (caseId) e i valori associati da Redis
+        const resolvedData = await redisClient.hgetall(redisKey);
+
+        const traces = [];
+        
+        // Cicla le chiavi di Redis per ricostruire l'array
+        for (const [caseId, valString] of Object.entries(resolvedData)) {
+            const parsed = JSON.parse(valString);
+            
+            // Se è richiesto uno status specifico, filtra, altrimenti restituisci tutto
+            if (!status || parsed.status === status) {
+                traces.push({ 
+                    caseId: caseId, 
+                    status: parsed.status, 
+                    trace: parsed.trace 
+                });
+            }
+        }
+
+        res.status(200).json({ success: true, count: traces.length, traces });
+
+    } catch (error) {
+        console.error(`[API] Errore recupero tracce da Redis per sessione ${req.params.sessionId}:`, error);
+        res.status(500).json({ success: false, error: "Errore interno durante il recupero delle tracce" });
+    }
+});
+
+app.get('/api/timeline/:sessionId/:stepIndex', async (req, res) => {
+    try {
+        const { sessionId, stepIndex } = req.params;
+        
+        // LINDEX recupera un elemento specifico dalla lista cronologica in Redis (0-based)
+        const snapshotStr = await redisClient.lindex(`session:${sessionId}:timeline`, parseInt(stepIndex));
+        
+        if (!snapshotStr) {
+            return res.status(404).json({ success: false, error: "Step non trovato" });
+        }
+
+        res.status(200).json({ success: true, data: JSON.parse(snapshotStr) });
+    } catch (error) {
+        console.error(`[API Timeline] Errore recupero step da Redis:`, error);
+        res.status(500).json({ success: false, error: "Errore interno durante il recupero dello step" });
     }
 });
 

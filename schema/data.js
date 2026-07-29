@@ -164,8 +164,14 @@ const extractionMetricsSchema = new mongoose.Schema({
     timestamp: { type: Date, default: Date.now }
 }, { versionKey: false });
 
+const traceMetricSchema = new mongoose.Schema({
+    case_id: { type: String },
+    number_of_events: { type: Number },
+    validation_time_ms: { type: Number },
+    trace_status: { type: String }
+}, { _id: false });
+
 const baselineWorkerMetricsSchema = new mongoose.Schema({
-    jobId: { type: String, required: true },
     blockNumber: { type: Number, required: true },
     number_txs_extracted: { type: Number },
     
@@ -173,17 +179,16 @@ const baselineWorkerMetricsSchema = new mongoose.Schema({
     time_pythonConversion: { type: Number },
     time_xesAppend: { type: Number },
     time_ruleVerification: { type: Number },
-    rules_number: {type: Number },
-    time_rule_1: { type: Number },
-    time_rule_2: { type: Number },
-    time_rule_3: { type: Number },
-    time_rule_4: { type: Number },
-    time_rule_5: { type: Number },
-    time_rule_6: { type: Number },
+    rules_number: { type: Number },
+    
+    rule_1_metrics: [traceMetricSchema],
+    rule_2_metrics: [traceMetricSchema],
+    rule_3_metrics: [traceMetricSchema],
+    rule_4_metrics: [traceMetricSchema],
+    rule_5_metrics: [traceMetricSchema],
+    rule_6_metrics: [traceMetricSchema],
 
     time_totalJob: { type: Number },
-    
-    status: { type: String, enum: ['Success', 'No_Logs_Extracted', 'Failed'], default: 'Success' },
     timestamp: { type: Date, default: Date.now }
 }, { versionKey: false });
 

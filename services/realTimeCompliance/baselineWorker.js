@@ -61,8 +61,8 @@ const baselineWorker = new Worker('baseline-queue', async (job) => {
         };
 
         const tStartExtraction = performance.now();
-        const extractedLogs = await getAllTransactions(null, newParams, true);
-        //const extractedLogs = await mockExtraction( payload.blockNumber, payload.contract);
+        // const extractedLogs = await getAllTransactions(null, newParams, true);
+        const extractedLogs = await mockExtraction( payload.blockNumber, payload.contract);
         const extractionTime = parseFloat((performance.now() - tStartExtraction).toFixed(3));
 
         if (!extractedLogs || extractedLogs.length === 0) {
@@ -127,9 +127,17 @@ const baselineWorker = new Worker('baseline-queue', async (job) => {
             const ruleIndex = index + 1;
             const redisKey = `session:${sessionId}:rule:${ruleIndex}:resolved_traces`;
             
-            // FASE B: Recupero storico completo (Hash invece di Set)
-            const resolvedData = await redisClient.hgetall(redisKey); // Ritorna { "id1": "{status, trace}", ... }
-            const resolvedCasesIds = Object.keys(resolvedData); // Array dei soli ID da ignorare in Python
+            // Recupero storico completo (Hash invece di Set)
+            const resolvedData = await redisClient.hgetall(redisKey); 
+            const resolvedCasesIds = [];
+            
+            // Invia a Python SOLO le tracce definitivamente concluse
+            for (const [id, valString] of Object.entries(resolvedData)) {
+                const parsedStatus = JSON.parse(valString).status;
+                if (parsedStatus === 'compliant' || parsedStatus === 'noncompliant') {
+                    resolvedCasesIds.push(id);
+                }
+            }
 
             const rulePayload = {
                 xes_string: miniXesToVerify,
@@ -144,41 +152,59 @@ const baselineWorker = new Worker('baseline-queue', async (job) => {
                 .then(async res => { 
                     const tEndSingleRule = performance.now();
                     
+                    // 1. Dati PURI restituiti da Python (Le novità del blocco corrente)
                     const newCompliant = res.data.compliant || [];
                     const newNoncompliant = res.data.noncompliant || [];
+                    const newTempCompliant = res.data.tempCompliant || [];
+                    const newTempNonCompliant = res.data.tempNonCompliant || [];
+                    const newIgnored = res.data.ignored || [];
+                    
+                    const rawTraceMetrics = res.data.trace_metrics || [];
 
+                    // 2. Pulizia metriche per MongoDB (Rimuovo l'intera traccia pesante)
+                    const cleanTraceMetrics = rawTraceMetrics.map(tm => ({
+                        case_id: tm.case_id,
+                        number_of_events: tm.number_of_events,
+                        validation_time_ms: tm.validation_time_ms,
+                        trace_status: tm.trace_status
+                    }));
+
+                    // 3. Aggiornamento stato definitivo in Redis (BLACKLIST)
                     const updates = {};
-                    newCompliant.forEach(trace => {
-                        const id = typeof trace === 'string' ? trace : trace[mapping.case_col];
-                        if (id) updates[id] = JSON.stringify({ status: 'compliant', trace });
-                    });
-                    newNoncompliant.forEach(trace => {
-                        const id = typeof trace === 'string' ? trace : trace[mapping.case_col];
-                        if (id) updates[id] = JSON.stringify({ status: 'noncompliant', trace });
-                    });
+                    const buildUpdate = (arr, statusName) => {
+                        arr.forEach(trace => {
+                            const id = typeof trace === 'string' ? trace : trace[mapping.case_col];
+                            if (id) updates[id] = JSON.stringify({ status: statusName, trace });
+                        });
+                    };
 
+                    buildUpdate(newCompliant, 'compliant');
+                    buildUpdate(newNoncompliant, 'noncompliant');
+                    buildUpdate(newTempCompliant, 'tempCompliant');
+                    buildUpdate(newTempNonCompliant, 'tempNonCompliant');
+                    buildUpdate(newIgnored, 'ignored');
+
+                    // L'hset sovrascrive lo stato precedente della traccia aggiornandolo all'ultimo noto
                     if (Object.keys(updates).length > 0) {
                         await redisClient.hset(redisKey, updates); 
                     }
 
-                    const finalCompliant = [...newCompliant];
-                    const finalNoncompliant = [...newNoncompliant];
-
-                    Object.values(resolvedData).forEach(valString => {
-                        const parsed = JSON.parse(valString);
-                        if (parsed.status === 'compliant') finalCompliant.push(parsed.trace);
-                        if (parsed.status === 'noncompliant') finalNoncompliant.push(parsed.trace);
-                    });
-
+                    // 4. Costruzione Payload PER IL FRONTEND
+                    // Inviamo solo le tracce valutate in questo specifico step.
                     return {
                         ruleText: ruleObj.text,
                         ruleIndex: ruleIndex,
                         executionTime: parseFloat((tEndSingleRule - tStartSingleRule).toFixed(3)),
-                        compliant: finalCompliant,      
-                        noncompliant: finalNoncompliant,
-                        tempCompliant: res.data.tempCompliant || [], 
-                        tempNonCompliant: res.data.tempNonCompliant || [],
-                        ignored: res.data.ignored || []
+                        
+                        // Per il salvataggio su MongoDB (invisibile al frontend, gestito sotto)
+                        cleanTraceMetrics: cleanTraceMetrics, 
+                        
+                        // Payload live per il frontend (solo novità)
+                        compliant: newCompliant,      
+                        noncompliant: newNoncompliant,
+                        tempCompliant: newTempCompliant, 
+                        tempNonCompliant: newTempNonCompliant,
+                        ignored: newIgnored
                     };
                 })
                 .catch(err => {
@@ -188,6 +214,7 @@ const baselineWorker = new Worker('baseline-queue', async (job) => {
                         ruleText: ruleObj.text,
                         ruleIndex: index + 1,
                         executionTime: parseFloat((tEndSingleRule - tStartSingleRule).toFixed(3)),
+                        traceMetrics: traceMetrics,
                         error: true,
                         compliant: [], 
                         noncompliant: [], 
@@ -203,13 +230,17 @@ const baselineWorker = new Worker('baseline-queue', async (job) => {
         
         const ruleCheckTotalTime = parseFloat((performance.now() - tRuleCheckTotal).toFixed(3));
 
-        const individualRuleMetrics = {};
+        // Mappatura dinamica delle metriche nelle colonne hardcoded
+        const ruleMetricsMap = {};
         complianceResults.forEach(result => {
-            individualRuleMetrics[`time_rule_${result.ruleIndex}`] = result.executionTime;
+            if (result.ruleIndex >= 1 && result.ruleIndex <= 6) {
+                // Inserisce l'array pulito nella colonna rule_X_metrics
+                ruleMetricsMap[`rule_${result.ruleIndex}_metrics`] = result.cleanTraceMetrics || [];
+            }
         });
 
+        // Salvataggio nel DB
         await saveBaselineWorkerMetrics({
-            jobId: job.id, 
             blockNumber: payload.blockNumber,
             number_txs_extracted: extractedLogs.length,
             time_totalExtractionPhase: extractionTime,
@@ -217,16 +248,35 @@ const baselineWorker = new Worker('baseline-queue', async (job) => {
             time_xesAppend: appendTime,
             time_ruleVerification: ruleCheckTotalTime,
             rules_number: parsedRules.length,
-            ...individualRuleMetrics, 
-            time_totalJob: parseFloat((performance.now() - tJobStart).toFixed(3)),
-            status: 'Success'
+            ...ruleMetricsMap, // Espande: rule_1_metrics: [...], rule_2_metrics: [...], ecc.
+            time_totalJob: parseFloat((performance.now() - tJobStart).toFixed(3))
+            // Rimosso status e jobId
         });
+
+        // NOTA BENE: Prima di ritornare il risultato a Node/Frontend,
+        // rimuovo le traceMetrics per non intasare l'evento SSE, 
+        // lasciando solo le tracce reali.
+        const finalComplianceResult = complianceResults.map(result => {
+            const { cleanTraceMetrics, executionTime, ...frontendPayload } = result;
+            return frontendPayload;
+        });
+
+        const timelineSnapshot = {
+            step: parsedRules.length > 0 ? "Processed" : "No rules",
+            sourceType: 'BASELINE_UPDATE',
+            sourceId: `Block_${payload.blockNumber}`,
+            blockNumber: payload.blockNumber,
+            ruleResults: finalComplianceResult
+        };
+
+        // 2. Lo accodo nella List di Redis (l'indice partirà da 0)
+        await redisClient.rpush(`session:${sessionId}:timeline`, JSON.stringify(timelineSnapshot));
 
         return { 
             success: true, 
             sessionId: sessionId, 
             blockNumber: payload.blockNumber,
-            complianceResult: complianceResults
+            complianceResult: finalComplianceResult
         };
     }
     catch (err) {
