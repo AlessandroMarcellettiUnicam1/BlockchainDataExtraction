@@ -1,6 +1,6 @@
 const {connectDB} = require("./config/db");
 const mongoose = require("mongoose");
-const {extractionLogSchema,extractionAbiSchema, extractionMetricsSchema, baselineWorkerMetricsSchema} = require("./schema/data");
+const {extractionLogSchema,extractionAbiSchema, extractionMetricsSchema, baselineWorkerMetricsSchema, singleTraceSchema} = require("./schema/data");
 const {getModelByContractAddress} = require('./query/query');
 const {searchAbi} =require("./query/query");
 
@@ -103,14 +103,18 @@ async function saveBaselineWorkerMetrics(jobData) {
     }
 }
 
-async function saveCompleteXesLog(data) {
+async function saveIndividualTraces(tracesArray) {
     try {
-        const CompleteXesLog = mongoose.models.CompleteXesLog || 
-                               mongoose.model('CompleteXesLog', completeXesLogSchema, 'CompleteXesLogs');
-        await new CompleteXesLog(data).save();
-        console.log(`[DB] Log XES completo salvato con successo per la sessione ${data.sessionId}`);
+        const SingleTraceModel = mongoose.models.SingleTrace || 
+                                 mongoose.model('SingleTrace', singleTraceSchema, 'SingleTraces');
+        
+        if (tracesArray && tracesArray.length > 0) {
+            // insertMany è molto più performante per salvare grandi array rispetto al .save() in un ciclo for
+            await SingleTraceModel.insertMany(tracesArray);
+            console.log(`[DB] Salvate ${tracesArray.length} tracce individuali con successo in 'SingleTraces'.`);
+        }
     } catch (err) {
-        console.error(`[DB Error] Errore salvataggio XES Log per la sessione ${data.sessionId}: `, err);
+        console.error(`[DB Error] Errore salvataggio tracce individuali: `, err);
     }
 }
 
@@ -121,5 +125,5 @@ module.exports = {
     saveCompiledContractData,
     saveExtractionMetrics,
     saveBaselineWorkerMetrics,
-    saveCompleteXesLog
+    saveIndividualTraces
 }

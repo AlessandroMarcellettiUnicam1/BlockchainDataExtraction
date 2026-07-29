@@ -2,7 +2,7 @@ const { Web3 } = require('web3');
 const { txQueue, baselineQueue, redisClient } = require('../../config/redisClient'); 
 const { adaptMempoolTx } = require('../simulationUtils/txAdapter');
 const systemEvents = require('../../config/sse');
-const { saveCompleteXesLog } = require('../../databaseStore');
+const { saveIndividualTraces } = require('../../databaseStore');
 const { connectDB } = require('../../config/db');
 
 // mappa per memorizzare le sessioni attive
@@ -179,18 +179,37 @@ async function stopMempoolListener(sessionId) {
         const configData = await redisClient.get(`session:${sessionId}:config`);
         
         if (finalXes && configData) {
-            const { monitoredContracts } = JSON.parse(configData);
+            const { mapping } = JSON.parse(configData);
+            const caseCol = mapping.case_col;
             
-            await saveCompleteXesLog({
-                sessionId: sessionId,
-                monitoredContracts: monitoredContracts,
-                xesString: finalXes
+            // Estrai i blocchi <trace>...</trace> e salvali individualmente
+            const traceRegex = /<trace>[\s\S]*?<\/trace>/g;
+            const traceMatches = finalXes.match(traceRegex) || [];
+            
+            const tracesToSave = traceMatches.map((traceXml) => {
+                // Regex robusta per ignorare eventuali backslash di escape (\") creati da Redis
+                let caseIdMatch = traceXml.match(new RegExp(`<string key="${caseCol}" value=\\\\?"([^"\\\\]+)\\\\?"`));
+                if (!caseIdMatch) caseIdMatch = traceXml.match(/<string key="case:concept:name" value=\\?"([^"\\]+)\\?"/);
+                if (!caseIdMatch) caseIdMatch = traceXml.match(/<string key="case_id" value=\\?"([^"\\]+)\\?"/);
+                
+                const caseId = caseIdMatch ? caseIdMatch[1] : "Unknown";
+
+                return {
+                    sessionId: sessionId,
+                    case_id: caseId,
+                    trace_xml: traceXml
+                };
             });
+
+            if (tracesToSave.length > 0) {
+                await saveIndividualTraces(tracesToSave);
+            }
+
         } else {
             console.warn(`[Listener] Dati Redis non trovati ${sessionId}.`);
         }
     } catch (err) {
-        console.error(`[Listener] Errore durante il salvataggio del log XES finale:`, err.message);
+        console.error(`[Listener] Errore durante il salvataggio delle tracce XES:`, err.message);
     }
 
     const session = activeSubscriptions.get(sessionId);
@@ -213,7 +232,6 @@ async function stopMempoolListener(sessionId) {
     await txQueue.drain(true);
     await baselineQueue.drain(true);
 }
-
 module.exports = {
     startMempoolListener,
     stopMempoolListener,
