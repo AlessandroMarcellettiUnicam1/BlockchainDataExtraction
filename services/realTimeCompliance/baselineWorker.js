@@ -84,10 +84,12 @@ const baselineWorker = new Worker('baseline-queue', async (job) => {
         }
 
         console.log(`[Baseline Worker] Estratte ${extractedLogs.length} transazioni dal blocco ${payload.blockNumber}.`);
-
+        console.log(`[DEBUG Struttura] Esempio di transazione:`, JSON.stringify(extractedLogs[0]).substring(0, 300));
+        
+        const cleanExtractedLogs = extractedLogs.map(item => item.log ? item.log : item);
 
         const pythonPayload = {
-            data: extractedLogs,
+            data: cleanExtractedLogs,
             case_col: mapping.case_col,
             activity_col: mapping.activity_col,
             time_col: mapping.time_col,
@@ -122,6 +124,9 @@ const baselineWorker = new Worker('baseline-queue', async (job) => {
         console.log(`[Baseline Worker] Mempool disabilitata. Controllo compliance per il blocco ${payload.blockNumber}...`);
         
         const tRuleCheckTotal = performance.now();
+        if (!logMapping.gasLimit) {
+            logMapping.gasLimit = "gasLimit";
+        }
         
         const verificationPromises = parsedRules.map(async (ruleObj, index) => { 
             const ruleIndex = index + 1;
@@ -143,7 +148,7 @@ const baselineWorker = new Worker('baseline-queue', async (job) => {
                 xes_string: miniXesToVerify,
                 rule: typeof ruleObj.parsed === 'string' ? ruleObj.parsed : JSON.stringify(ruleObj.parsed),
                 mapping: logMapping,
-                resolved_cases: resolvedCasesIds // Python riceve la blacklist
+                resolved_cases: resolvedCasesIds 
             };
             
             const tStartSingleRule = performance.now();
@@ -209,18 +214,15 @@ const baselineWorker = new Worker('baseline-queue', async (job) => {
                 })
                 .catch(err => {
                     const tEndSingleRule = performance.now();
-                    console.error(`[Baseline Worker] Errore verifica regola ${ruleObj.id}:`, err.message);
+                    const pythonError = err.response ? JSON.stringify(err.response.data) : err.message;
+                    console.error(`[Baseline Worker] Errore verifica regola ${ruleObj.id}:`, pythonError);
                     return {
                         ruleText: ruleObj.text,
-                        ruleIndex: index + 1,
+                        ruleIndex: ruleIndex,
                         executionTime: parseFloat((tEndSingleRule - tStartSingleRule).toFixed(3)),
                         traceMetrics: traceMetrics,
                         error: true,
-                        compliant: [], 
-                        noncompliant: [], 
-                        tempCompliant: [],    
-                        tempNonCompliant: [], 
-                        ignored: []
+                        compliant: [], noncompliant: [], tempCompliant: [], tempNonCompliant: [], ignored: []
                     };
                 });
         });

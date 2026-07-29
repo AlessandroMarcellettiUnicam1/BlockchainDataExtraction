@@ -190,7 +190,7 @@ const baselineWorkerMetricsSchema = new mongoose.Schema({
 
     time_totalJob: { type: Number },
     timestamp: { type: Date, default: Date.now }
-}, { versionKey: false });
+},{ versionKey: false, strict: false });
 
 const completeXesLogSchema = new mongoose.Schema({
     sessionId: { type: String, required: true },

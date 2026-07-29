@@ -3,6 +3,7 @@ const { txQueue, baselineQueue } = require('../../config/redisClient');
 const { adaptMempoolTx } = require('../simulationUtils/txAdapter');
 const systemEvents = require('../../config/sse');
 const { saveCompleteXesLog } = require('../../databaseStore');
+const { connectDB } = require('../../config/db');
 
 // mappa per memorizzare le sessioni attive
 const activeSubscriptions = new Map();
@@ -113,12 +114,12 @@ async function startBaselineListener(sessionId, url, monitoredContracts) {
         subscription.on("data", async (blockHeader) => {
             const session = activeSubscriptions.get(`${sessionId}_baseline`);
             if (!session || !session.isCapturing) return;
-            const targetBlockNumber = Number(blockHeader.number) - 1500000;
-            console.log(`[Baseline] Controllo in corso per il blocco ${targetBlockNumber}...`);
+            const mockBlockNumber = Number(blockHeader.number) - 1500000;
+            console.log(`[Baseline] Controllo in corso per il blocco ${mockBlockNumber}...`);
 
             try {
                 // prendo il blocco (mock) intero e cerco per il contratto che sto monitorando
-                const block = await web3.eth.getBlock(targetBlockNumber, true);
+                const block = await web3.eth.getBlock(mockBlockNumber, true);
 
                 let extraction = false;
                 
@@ -143,7 +144,7 @@ async function startBaselineListener(sessionId, url, monitoredContracts) {
                 }
 
                 if (extraction) {
-                    console.log(`[Baseline] Trovate tx rilevanti nel blocco ${targetBlockNumber}. In coda per estrazione.`);  
+                    console.log(`[Baseline] Trovate tx rilevanti nel blocco ${mockBlockNumber}. In coda per estrazione.`);  
                     
                     await baselineQueue.add('update-baseline-block', {
                         sessionId: sessionId,
@@ -154,11 +155,11 @@ async function startBaselineListener(sessionId, url, monitoredContracts) {
                     }, {removeOnComplete: true });
                 }
                 else {
-                    console.log(`[Baseline] Nessuna transazione rilevante trovata per il blocco ${targetBlockNumber}...`);
+                    console.log(`[Baseline] Nessuna transazione rilevante trovata per il blocco ${mockBlockNumber}...`);
                 }
 
             } catch (err) {
-                console.error(`[Baseline Error] Errore parsing blocco ${targetBlockNumber}:`, err.message);
+                console.error(`[Baseline Error] Errore parsing blocco ${mockBlockNumber}:`, err.message);
             }
         });
 
@@ -173,6 +174,7 @@ async function startBaselineListener(sessionId, url, monitoredContracts) {
 
 async function stopMempoolListener(sessionId) {
     try {
+        await connectDB("Mainnet");
         const finalXes = await redisClient.get(`session:${sessionId}:xes`);
         const configData = await redisClient.get(`session:${sessionId}:config`);
         
