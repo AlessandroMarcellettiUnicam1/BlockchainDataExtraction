@@ -61,8 +61,8 @@ const baselineWorker = new Worker('baseline-queue', async (job) => {
         };
 
         const tStartExtraction = performance.now();
-        const extractedLogs = await getAllTransactions(null, newParams, true);
-        //const extractedLogs = await mockExtraction( payload.blockNumber, payload.contract);
+        //const extractedLogs = await getAllTransactions(null, newParams, true);
+        const extractedLogs = await mockExtraction( payload.blockNumber, payload.contract);
         const extractionTime = parseFloat((performance.now() - tStartExtraction).toFixed(3));
 
         if (!extractedLogs || extractedLogs.length === 0) {
@@ -131,19 +131,10 @@ const baselineWorker = new Worker('baseline-queue', async (job) => {
         const verificationPromises = parsedRules.map(async (ruleObj, index) => { 
             const ruleIndex = index + 1;
             const redisKey = `session:${sessionId}:rule:${ruleIndex}:resolved_traces`;
+            const blacklistKey = `session:${sessionId}:rule:${ruleIndex}:blacklist`;
             
-            // Recupero storico completo (Hash invece di Set)
-            const resolvedData = await redisClient.hgetall(redisKey); 
-            const resolvedCasesIds = [];
-            
-            // Invia a Python SOLO le tracce definitivamente concluse
-            for (const [id, valString] of Object.entries(resolvedData)) {
-                const parsedStatus = JSON.parse(valString).status;
-                if (parsedStatus === 'compliant' || parsedStatus === 'noncompliant') {
-                    resolvedCasesIds.push(id);
-                }
-            }
-
+            // Lettura istantanea solo degli ID, zero overhead CPU
+            const resolvedCasesIds = await redisClient.smembers(blacklistKey);
             const rulePayload = {
                 xes_string: miniXesToVerify,
                 rule: typeof ruleObj.parsed === 'string' ? ruleObj.parsed : JSON.stringify(ruleObj.parsed),
@@ -176,6 +167,8 @@ const baselineWorker = new Worker('baseline-queue', async (job) => {
 
                     // 3. Aggiornamento stato definitivo in Redis (BLACKLIST)
                     const updates = {};
+                    const newBlacklistIds = []; // Array per i nuovi ID risolti
+
                     const buildUpdate = (arr, statusName) => {
                         arr.forEach(trace => {
                             let id = null;
@@ -188,7 +181,13 @@ const baselineWorker = new Worker('baseline-queue', async (job) => {
                             }
 
                             if (id) {
-                                updates[String(id)] = JSON.stringify({ status: statusName, trace });
+                                const strId = String(id);
+                                updates[strId] = JSON.stringify({ status: statusName, trace });
+                                
+                                // Se lo stato è definitivo, lo aggiungiamo all'array da inviare al Set
+                                if (statusName === 'compliant' || statusName === 'noncompliant') {
+                                    newBlacklistIds.push(strId);
+                                }
                             } else {
                                 console.warn(`[Worker] Impossibile trovare il Case ID con la colonna "${mapping.case_col}"`);
                             }
@@ -204,6 +203,11 @@ const baselineWorker = new Worker('baseline-queue', async (job) => {
                     // L'hset sovrascrive lo stato precedente della traccia aggiornandolo all'ultimo noto
                     if (Object.keys(updates).length > 0) {
                         await redisClient.hset(redisKey, updates); 
+                    }
+                    
+                    // Aggiungi in blocco i nuovi ID definitivi al Set di Redis
+                    if (newBlacklistIds.length > 0) {
+                        await redisClient.sadd(blacklistKey, newBlacklistIds);
                     }
 
                     // 4. Costruzione Payload PER IL FRONTEND
