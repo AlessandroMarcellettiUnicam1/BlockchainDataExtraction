@@ -179,6 +179,7 @@ const baselineWorkerMetricsSchema = new mongoose.Schema({
     time_pythonConversion: { type: Number },
     time_xesAppend: { type: Number },
     time_ruleVerification: { type: Number },
+    time_redisVerificationQueries: { type: Number, required: false },
     rules_number: { type: Number },
     
     rule_1_metrics: [traceMetricSchema],

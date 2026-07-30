@@ -129,12 +129,15 @@ const baselineWorker = new Worker('baseline-queue', async (job) => {
         }
         
         const verificationPromises = parsedRules.map(async (ruleObj, index) => { 
+            let ruleRedisTime = 0;
             const ruleIndex = index + 1;
             const redisKey = `session:${sessionId}:rule:${ruleIndex}:resolved_traces`;
             const blacklistKey = `session:${sessionId}:rule:${ruleIndex}:blacklist`;
             
             // Lettura istantanea solo degli ID, zero overhead CPU
-            const resolvedCasesIds = await redisClient.smembers(blacklistKey);
+            const tRedis1 = performance.now();
+            const resolvedCasesIds = await redisClient.smembers(blacklistKey); 
+            ruleRedisTime += (performance.now() - tRedis1);
             const rulePayload = {
                 xes_string: miniXesToVerify,
                 rule: typeof ruleObj.parsed === 'string' ? ruleObj.parsed : JSON.stringify(ruleObj.parsed),
@@ -201,14 +204,14 @@ const baselineWorker = new Worker('baseline-queue', async (job) => {
                     buildUpdate(newIgnored, 'ignored');
 
                     // L'hset sovrascrive lo stato precedente della traccia aggiornandolo all'ultimo noto
+                    const tRedis2 = performance.now();
                     if (Object.keys(updates).length > 0) {
                         await redisClient.hset(redisKey, updates); 
                     }
-                    
-                    // Aggiungi in blocco i nuovi ID definitivi al Set di Redis
                     if (newBlacklistIds.length > 0) {
                         await redisClient.sadd(blacklistKey, newBlacklistIds);
                     }
+                    ruleRedisTime += (performance.now() - tRedis2);
 
                     // 4. Costruzione Payload PER IL FRONTEND
                     // Inviamo solo le tracce valutate in questo specifico step.
@@ -216,6 +219,7 @@ const baselineWorker = new Worker('baseline-queue', async (job) => {
                         ruleText: ruleObj.text,
                         ruleIndex: ruleIndex,
                         executionTime: parseFloat((tEndSingleRule - tStartSingleRule).toFixed(3)),
+                        ruleRedisTime: ruleRedisTime, // <-- Passa il dato fuori dalla Promise
                         
                         // Per il salvataggio su MongoDB (invisibile al frontend, gestito sotto)
                         cleanTraceMetrics: cleanTraceMetrics, 
@@ -236,6 +240,7 @@ const baselineWorker = new Worker('baseline-queue', async (job) => {
                         ruleText: ruleObj.text,
                         ruleIndex: ruleIndex,
                         executionTime: parseFloat((tEndSingleRule - tStartSingleRule).toFixed(3)),
+                        ruleRedisTime: ruleRedisTime,
                         cleanTraceMetrics: [],
                         error: true,
                         compliant: [], noncompliant: [], tempCompliant: [], tempNonCompliant: [], ignored: []
@@ -248,13 +253,21 @@ const baselineWorker = new Worker('baseline-queue', async (job) => {
         
         const ruleCheckTotalTime = parseFloat((performance.now() - tRuleCheckTotal).toFixed(3));
 
+        let totalRedisVerificationTime = 0;
+
         // Mappatura dinamica delle metriche nelle colonne hardcoded
         const ruleMetricsMap = {};
         complianceResults.forEach(result => {
+            totalRedisVerificationTime += (result.ruleRedisTime || 0); // Somma i tempi
+            
             if (result.ruleIndex >= 1 && result.ruleIndex <= 6) {
-                // Inserisce l'array pulito nella colonna rule_X_metrics
                 ruleMetricsMap[`rule_${result.ruleIndex}_metrics`] = result.cleanTraceMetrics || [];
             }
+        });
+        
+        const finalComplianceResult = complianceResults.map(result => {
+            const { cleanTraceMetrics, executionTime, ruleRedisTime, ...frontendPayload } = result;
+            return frontendPayload;
         });
 
         // Salvataggio nel DB
@@ -265,6 +278,7 @@ const baselineWorker = new Worker('baseline-queue', async (job) => {
             time_pythonConversion: conversionTime,
             time_xesAppend: appendTime,
             time_ruleVerification: ruleCheckTotalTime,
+            time_redisVerificationQueries: parseFloat(totalRedisVerificationTime.toFixed(3)),
             rules_number: parsedRules.length,
             ...ruleMetricsMap, // Espande: rule_1_metrics: [...], rule_2_metrics: [...], ecc.
             time_totalJob: parseFloat((performance.now() - tJobStart).toFixed(3))
@@ -274,10 +288,6 @@ const baselineWorker = new Worker('baseline-queue', async (job) => {
         // NOTA BENE: Prima di ritornare il risultato a Node/Frontend,
         // rimuovo le traceMetrics per non intasare l'evento SSE, 
         // lasciando solo le tracce reali.
-        const finalComplianceResult = complianceResults.map(result => {
-            const { cleanTraceMetrics, executionTime, ...frontendPayload } = result;
-            return frontendPayload;
-        });
 
         const timelineSnapshot = {
             step: parsedRules.length > 0 ? "Processed" : "No rules",
