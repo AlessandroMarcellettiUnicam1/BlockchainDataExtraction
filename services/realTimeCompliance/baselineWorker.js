@@ -319,7 +319,8 @@ const baselineWorker = new Worker('baseline-queue', async (job) => {
     }
 }, {
     connection: connectionOptions,
-    concurrency: 1 // impostazione per impedire race conditions su letture e scritture di Redis
+    concurrency: 1, // impostazione per impedire race conditions su letture e scritture di Redis
+    lockDuration: 60000
 });
 
 baselineWorker.on('ready', () => {
