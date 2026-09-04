@@ -282,12 +282,8 @@ const baselineWorker = new Worker('baseline-queue', async (job) => {
             rules_number: parsedRules.length,
             ...ruleMetricsMap, // Espande: rule_1_metrics: [...], rule_2_metrics: [...], ecc.
             time_totalJob: parseFloat((performance.now() - tJobStart).toFixed(3))
-            // Rimosso status e jobId
         });
 
-        // NOTA BENE: Prima di ritornare il risultato a Node/Frontend,
-        // rimuovo le traceMetrics per non intasare l'evento SSE, 
-        // lasciando solo le tracce reali.
 
         const timelineSnapshot = {
             step: parsedRules.length > 0 ? "Processed" : "No rules",

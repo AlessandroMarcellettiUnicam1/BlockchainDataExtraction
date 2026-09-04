@@ -15,6 +15,7 @@ const { connectionOptions, txQueue, mempoolQueueEvents, baselineQueueEvents } = 
 const { appendXes } = require('./services/simulationUtils/appendXes');
 const { logMetrics } = require('./services/simulationUtils/performanceMetrics');
 const { performance } = require('perf_hooks');
+const { runHistoricalCompliance } = require('./services/realTimeCompliance/mockMonitoring');
 
 
 // const { getAllTransactions } = require("./services/main");
@@ -1620,6 +1621,26 @@ app.get('/api/timeline/:sessionId/:stepIndex', async (req, res) => {
     } catch (error) {
         console.error(`[API Timeline] Errore recupero step da Redis:`, error);
         res.status(500).json({ success: false, error: "Errore interno durante il recupero dello step" });
+    }
+});
+
+// Endpoint per avviare l'analisi storica in background
+app.post('/api/start-historical-analysis', async (req, res) => {
+    const params = req.body;
+    
+    try {
+        // Avvia la funzione in background senza 'await' per non bloccare la risposta HTTP
+        runHistoricalCompliance(params).catch(err => {
+            console.error("Errore critico durante l'analisi storica in background:", err);
+        });
+
+        // Risponde immediatamente al client
+        res.json({ 
+            success: true, 
+            message: "Historical analysis started in background. Metrics and logs are being saved to the database." 
+        });
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
     }
 });
 
