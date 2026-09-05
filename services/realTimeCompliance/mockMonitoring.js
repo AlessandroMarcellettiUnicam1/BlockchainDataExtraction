@@ -1,10 +1,9 @@
-const { redisClient } = require("../../config/redisClient");
 const { appendXes } = require('../simulationUtils/appendXes');
 const { getAllTransactions } = require('../ExtractionModule/mainWithOption');
 const { connectDB } = require('../../config/db');
 const axios = require('axios');
 const { performance } = require('perf_hooks');
-const { saveBaselineWorkerMetrics, getSessionBaseLog, upsertSessionBaseLog } = require('../../databaseStore');
+const { saveBaselineWorkerMetrics, getSessionBaseLog, upsertSessionBaseLog, appendTimelineStep, upsertResolvedTraces, getBlacklistCaseIds, addToBlacklist } = require('../../databaseStore');
 const { mockExtraction } = require('../ExtractionModule/simulationOrchestrator'); 
 
 /**
@@ -49,8 +48,8 @@ async function runHistoricalCompliance(params) {
             };
 
             const tStartExtraction = performance.now();
-            //const extractedLogs = await getAllTransactions(null, newParams, true);
-            const extractedLogs = await mockExtraction(currentBlock, monitoredContracts);
+            const extractedLogs = await getAllTransactions(null, newParams, true);
+            //const extractedLogs = await mockExtraction(currentBlock, monitoredContracts);
             const extractionTime = parseFloat((performance.now() - tStartExtraction).toFixed(3));
 
             // Se non ci sono log, salta la validazione ma salva le metriche
@@ -97,11 +96,9 @@ async function runHistoricalCompliance(params) {
             const verificationPromises = parsedRules.map(async (ruleObj, index) => { 
                 let ruleRedisTime = 0;
                 const ruleIndex = index + 1;
-                const redisKey = `session:${sessionId}:rule:${ruleIndex}:resolved_traces`;
-                const blacklistKey = `session:${sessionId}:rule:${ruleIndex}:blacklist`;
                 
                 const tRedis1 = performance.now();
-                const resolvedCasesIds = await redisClient.smembers(blacklistKey); 
+                const resolvedCasesIds = await getBlacklistCaseIds(sessionId, ruleIndex); 
                 ruleRedisTime += (performance.now() - tRedis1);
 
                 const rulePayload = {
@@ -155,8 +152,8 @@ async function runHistoricalCompliance(params) {
                     buildUpdate(newIgnored, 'ignored');
 
                     const tRedis2 = performance.now();
-                    if (Object.keys(updates).length > 0) await redisClient.hset(redisKey, updates); 
-                    if (newBlacklistIds.length > 0) await redisClient.sadd(blacklistKey, newBlacklistIds);
+                    if (Object.keys(updates).length > 0) await upsertResolvedTraces(sessionId, ruleIndex, updates); 
+                    if (newBlacklistIds.length > 0) await addToBlacklist(sessionId, ruleIndex, newBlacklistIds);
                     ruleRedisTime += (performance.now() - tRedis2);
 
                     return {
@@ -214,7 +211,7 @@ async function runHistoricalCompliance(params) {
                 ruleResults: finalComplianceResult
             };
 
-            await redisClient.rpush(`session:${sessionId}:timeline`, JSON.stringify(timelineSnapshot));
+            await appendTimelineStep(sessionId, timelineSnapshot);
 
         } catch (err) {
             console.error(`[Historical Processor] Errore blocco ${currentBlock}:`, err.message);
