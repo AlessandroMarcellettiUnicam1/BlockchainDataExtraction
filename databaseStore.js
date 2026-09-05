@@ -1,6 +1,6 @@
 const {connectDB} = require("./config/db");
 const mongoose = require("mongoose");
-const {extractionLogSchema,extractionAbiSchema, extractionMetricsSchema, baselineWorkerMetricsSchema, singleTraceSchema} = require("./schema/data");
+const {extractionLogSchema,extractionAbiSchema, extractionMetricsSchema, baselineWorkerMetricsSchema, singleTraceSchema, sessionBaseLogSchema} = require("./schema/data");
 const {getModelByContractAddress} = require('./query/query');
 const {searchAbi} =require("./query/query");
 
@@ -118,6 +118,40 @@ async function saveIndividualTraces(tracesArray) {
     }
 }
 
+function getSessionBaseLogModel() {
+    return mongoose.models.SessionBaseLog ||
+           mongoose.model('SessionBaseLog', sessionBaseLogSchema, 'SessionBaseLogs');
+}
+
+async function upsertSessionBaseLog(sessionId, xesString, ttlSeconds = 259200) {
+    const SessionBaseLog = getSessionBaseLogModel();
+    const expiresAt = ttlSeconds
+        ? new Date(Date.now() + ttlSeconds * 1000)
+        : undefined;
+
+    await SessionBaseLog.findOneAndUpdate(
+        { sessionId },
+        {
+            sessionId,
+            xes: xesString,
+            updatedAt: new Date(),
+            ...(expiresAt ? { expiresAt } : {})
+        },
+        { upsert: true, new: true, setDefaultsOnInsert: true }
+    );
+}
+
+async function getSessionBaseLog(sessionId) {
+    const SessionBaseLog = getSessionBaseLogModel();
+    const doc = await SessionBaseLog.findOne({ sessionId }).lean();
+    return doc ? doc.xes : null;
+}
+
+async function deleteSessionBaseLog(sessionId) {
+    const SessionBaseLog = getSessionBaseLogModel();
+    await SessionBaseLog.deleteOne({ sessionId });
+}
+
 module.exports = {
     saveTransaction,
     saveExtractionLog,
@@ -125,5 +159,8 @@ module.exports = {
     saveCompiledContractData,
     saveExtractionMetrics,
     saveBaselineWorkerMetrics,
-    saveIndividualTraces
+    saveIndividualTraces,
+    upsertSessionBaseLog,
+    getSessionBaseLog,
+    deleteSessionBaseLog
 }

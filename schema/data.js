@@ -200,11 +200,22 @@ const singleTraceSchema = new mongoose.Schema({
     timestamp: { type: Date, default: Date.now }
 }, { versionKey: false });
 
+const sessionBaseLogSchema = new mongoose.Schema({
+    sessionId: { type: String, required: true, unique: true, index: true },
+    xes: { type: String, required: true },
+    expiresAt: { type: Date, required: false },
+    updatedAt: { type: Date, default: Date.now }
+}, { versionKey: false });
+
+// TTL index: Mongo cancella il documento quando expiresAt è raggiunto
+sessionBaseLogSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
+
 module.exports = {
     transactionSchema, 
     extractionLogSchema,
     extractionAbiSchema, 
     extractionMetricsSchema,
     baselineWorkerMetricsSchema,
-    singleTraceSchema
+    singleTraceSchema,
+    sessionBaseLogSchema
 };

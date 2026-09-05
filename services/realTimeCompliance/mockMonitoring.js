@@ -4,7 +4,7 @@ const { getAllTransactions } = require('../ExtractionModule/mainWithOption');
 const { connectDB } = require('../../config/db');
 const axios = require('axios');
 const { performance } = require('perf_hooks');
-const { saveBaselineWorkerMetrics } = require('../../databaseStore');
+const { saveBaselineWorkerMetrics, getSessionBaseLog, upsertSessionBaseLog } = require('../../databaseStore');
 const { mockExtraction } = require('../ExtractionModule/simulationOrchestrator'); 
 
 /**
@@ -32,8 +32,8 @@ async function runHistoricalCompliance(params) {
         const tJobStart = performance.now();
 
         try {
-            const baseXes = await redisClient.get(`session:${sessionId}:xes`);
-            if (!baseXes) throw new Error("Log Base mancante in Redis.");
+            const baseXes = await getSessionBaseLog(sessionId);
+            if (!baseXes) throw new Error("Log Base mancante in MongoDB.");
 
             const newParams = {
                 contractAddressesFrom: monitoredContracts, 
@@ -85,10 +85,10 @@ async function runHistoricalCompliance(params) {
 
             if (!updatedXes || updatedXes.trim() === "") {
                 console.error(`[Allarme] La funzione appendXes ha restituito un XML vuoto al blocco ${currentBlock}!`);
-                break; // Ferma il loop prima di corrompere Redis
+                break; // Ferma il loop prima di corrompere il Log Base
             }
 
-            await redisClient.set(`session:${sessionId}:xes`, updatedXes);
+            await upsertSessionBaseLog(sessionId, updatedXes);
 
             // 3. Verifica Regole in Parallelo
             const tRuleCheckTotal = performance.now();

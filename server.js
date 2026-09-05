@@ -16,6 +16,7 @@ const { appendXes } = require('./services/simulationUtils/appendXes');
 const { logMetrics } = require('./services/simulationUtils/performanceMetrics');
 const { performance } = require('perf_hooks');
 const { runHistoricalCompliance } = require('./services/realTimeCompliance/mockMonitoring');
+const { upsertSessionBaseLog, deleteSessionBaseLog } = require('./databaseStore');
 
 
 // const { getAllTransactions } = require("./services/main");
@@ -1379,6 +1380,8 @@ app.post("/api/simulate/mempool-txs", async (req, res) => {
 
 app.post('/api/generate-base-xes', async (req, res) => {
 	try {
+		await connectDB("Mainnet");
+
 		// payload che viene dal frontend
 		const payload = req.body;
 		payload.extract_columns = true;
@@ -1395,10 +1398,10 @@ app.post('/api/generate-base-xes', async (req, res) => {
 		// elimino la sessione precedente se ne esiste una 
 		if (payload.previousSessionId) {
             try {
-                await redisClient.del(`session:${payload.previousSessionId}:xes`);
-                console.log(`[Redis] Sessione precedente ${payload.previousSessionId} eliminata con successo.`);
+                await deleteSessionBaseLog(payload.previousSessionId);
+                console.log(`[Mongo] Sessione precedente ${payload.previousSessionId} eliminata con successo.`);
             } catch (delErr) {
-                console.warn(`[Redis] Impossibile eliminare la vecchia sessione: ${delErr.message}`);
+                console.warn(`[Mongo] Impossibile eliminare la vecchia sessione: ${delErr.message}`);
             }
         }
 
@@ -1412,8 +1415,7 @@ app.post('/api/generate-base-xes', async (req, res) => {
 		const xesString = pythonResponse.data.xes_string;
 		const columns = pythonResponse.data.columns;
 
-		// await redisClient.set(`session:${sessionId}:xes`, xesString);
-		await redisClient.setex(`session:${sessionId}:xes`, 259200, xesString); // 72h 
+		await upsertSessionBaseLog(sessionId, xesString); // TTL 72h via expiresAt
 
 		res.status(200).json({ 
             success: true, 

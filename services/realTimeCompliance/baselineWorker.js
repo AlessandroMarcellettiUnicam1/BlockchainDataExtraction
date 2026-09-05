@@ -8,7 +8,7 @@ const { config } = require('dotenv');
 require('dotenv').config();
 const axios = require('axios');
 const { performance } = require('perf_hooks');
-const {saveBaselineWorkerMetrics} = require('../../databaseStore');
+const {saveBaselineWorkerMetrics, getSessionBaseLog, upsertSessionBaseLog} = require('../../databaseStore');
 
 console.log('[Baseline Worker] Worker inizializzato, in attesa di job in coda...');
 
@@ -33,10 +33,10 @@ const baselineWorker = new Worker('baseline-queue', async (job) => {
         // const mockBlockNumber = payload.blockNumber;
 
         const configData = await redisClient.get(`session:${sessionId}:config`);
-        const baseXes = await redisClient.get(`session:${sessionId}:xes`);
+        const baseXes = await getSessionBaseLog(sessionId);
 
         if (!configData || !baseXes) {
-            throw new Error("Configurazione o Log Base mancanti in Redis. Impossibile aggiornare lo storico.");
+            throw new Error("Configurazione (Redis) o Log Base (Mongo) mancanti. Impossibile aggiornare lo storico.");
         }
 
         const { mapping, parsedRules, logMapping, monitoredContracts } = JSON.parse(configData);
@@ -117,8 +117,8 @@ const baselineWorker = new Worker('baseline-queue', async (job) => {
              throw new Error("Errore durante l'isolamento della traccia XES modificata.");
         }
 
-        await redisClient.set(`session:${sessionId}:xes`, updatedXes);
-        console.log(`[Baseline Worker] Log Base aggiornato per sessione ${sessionId}.`);
+        await upsertSessionBaseLog(sessionId, updatedXes);
+        console.log(`[Baseline Worker] Log Base aggiornato su Mongo per sessione ${sessionId}.`);
 
         let complianceResults = null;
         console.log(`[Baseline Worker] Mempool disabilitata. Controllo compliance per il blocco ${payload.blockNumber}...`);
@@ -315,7 +315,7 @@ const baselineWorker = new Worker('baseline-queue', async (job) => {
     }
 }, {
     connection: connectionOptions,
-    concurrency: 1, // impostazione per impedire race conditions su letture e scritture di Redis
+    concurrency: 1, // evita race conditions su letture/scritture del Log Base (Mongo)
     lockDuration: 300000
 });
 
