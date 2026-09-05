@@ -8,7 +8,7 @@ const { config } = require('dotenv');
 require('dotenv').config();
 const axios = require('axios');
 const { performance } = require('perf_hooks');
-const {saveBaselineWorkerMetrics} = require('../../databaseStore');
+const {saveBaselineWorkerMetrics, getSessionBaseLog, upsertSessionBaseLog, appendTimelineStep, upsertResolvedTraces, getBlacklistCaseIds, addToBlacklist} = require('../../databaseStore');
 
 console.log('[Baseline Worker] Worker inizializzato, in attesa di job in coda...');
 
@@ -33,10 +33,10 @@ const baselineWorker = new Worker('baseline-queue', async (job) => {
         // const mockBlockNumber = payload.blockNumber;
 
         const configData = await redisClient.get(`session:${sessionId}:config`);
-        const baseXes = await redisClient.get(`session:${sessionId}:xes`);
+        const baseXes = await getSessionBaseLog(sessionId);
 
         if (!configData || !baseXes) {
-            throw new Error("Configurazione o Log Base mancanti in Redis. Impossibile aggiornare lo storico.");
+            throw new Error("Configurazione (Redis) o Log Base (Mongo) mancanti. Impossibile aggiornare lo storico.");
         }
 
         const { mapping, parsedRules, logMapping, monitoredContracts } = JSON.parse(configData);
@@ -117,8 +117,8 @@ const baselineWorker = new Worker('baseline-queue', async (job) => {
              throw new Error("Errore durante l'isolamento della traccia XES modificata.");
         }
 
-        await redisClient.set(`session:${sessionId}:xes`, updatedXes);
-        console.log(`[Baseline Worker] Log Base aggiornato per sessione ${sessionId}.`);
+        await upsertSessionBaseLog(sessionId, updatedXes);
+        console.log(`[Baseline Worker] Log Base aggiornato su Mongo per sessione ${sessionId}.`);
 
         let complianceResults = null;
         console.log(`[Baseline Worker] Mempool disabilitata. Controllo compliance per il blocco ${payload.blockNumber}...`);
@@ -131,12 +131,10 @@ const baselineWorker = new Worker('baseline-queue', async (job) => {
         const verificationPromises = parsedRules.map(async (ruleObj, index) => { 
             let ruleRedisTime = 0;
             const ruleIndex = index + 1;
-            const redisKey = `session:${sessionId}:rule:${ruleIndex}:resolved_traces`;
-            const blacklistKey = `session:${sessionId}:rule:${ruleIndex}:blacklist`;
             
-            // Lettura istantanea solo degli ID, zero overhead CPU
+            // Lettura id già risolti (ex Redis blacklist)
             const tRedis1 = performance.now();
-            const resolvedCasesIds = await redisClient.smembers(blacklistKey); 
+            const resolvedCasesIds = await getBlacklistCaseIds(sessionId, ruleIndex); 
             ruleRedisTime += (performance.now() - tRedis1);
             const rulePayload = {
                 xes_string: miniXesToVerify,
@@ -203,13 +201,13 @@ const baselineWorker = new Worker('baseline-queue', async (job) => {
                     buildUpdate(newTempNonCompliant, 'tempNonCompliant');
                     buildUpdate(newIgnored, 'ignored');
 
-                    // L'hset sovrascrive lo stato precedente della traccia aggiornandolo all'ultimo noto
+                    // L'upsert sovrascrive lo stato precedente della traccia aggiornandolo all'ultimo noto
                     const tRedis2 = performance.now();
                     if (Object.keys(updates).length > 0) {
-                        await redisClient.hset(redisKey, updates); 
+                        await upsertResolvedTraces(sessionId, ruleIndex, updates); 
                     }
                     if (newBlacklistIds.length > 0) {
-                        await redisClient.sadd(blacklistKey, newBlacklistIds);
+                        await addToBlacklist(sessionId, ruleIndex, newBlacklistIds);
                     }
                     ruleRedisTime += (performance.now() - tRedis2);
 
@@ -293,8 +291,8 @@ const baselineWorker = new Worker('baseline-queue', async (job) => {
             ruleResults: finalComplianceResult
         };
 
-        // 2. Lo accodo nella List di Redis (l'indice partirà da 0)
-        await redisClient.rpush(`session:${sessionId}:timeline`, JSON.stringify(timelineSnapshot));
+        // Accoda lo snapshot nella timeline Mongo (indice 0-based come RPUSH Redis)
+        await appendTimelineStep(sessionId, timelineSnapshot);
 
         return { 
             success: true, 
@@ -315,8 +313,8 @@ const baselineWorker = new Worker('baseline-queue', async (job) => {
     }
 }, {
     connection: connectionOptions,
-    concurrency: 1, // impostazione per impedire race conditions su letture e scritture di Redis
-    lockDuration: 60000
+    concurrency: 1, // evita race conditions su letture/scritture del Log Base (Mongo)
+    lockDuration: 300000
 });
 
 baselineWorker.on('ready', () => {

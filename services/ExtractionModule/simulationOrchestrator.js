@@ -830,13 +830,12 @@ async function mockExtraction(blockNumber, contract) {
             functionName: funcName,
             transactionHash: generateRandomHash(),
             blockNumber: parseInt(blockNumber),
-            contractAddress: selectedContract.toLowerCase(), // <--- ORA FUNZIONA CORRETTAMENTE
+            contractAddress: selectedContract.toLowerCase(), 
             sender: generateRandomAddress(), 
             gasUsed: getRandomGas(),
             timestamp: new Date().toISOString(),
             inputs: mockInputs,
             value: getRandomItem(ethValues),
-            // Campi pesanti lasciati vuoti per la simulazione rapida
             storageState: [], 
             internalTxs: [], 
             events: [],
@@ -845,9 +844,6 @@ async function mockExtraction(blockNumber, contract) {
 
         mockLogs.push(transactionLog);
     }
-
-    // Ritardo artificiale casuale tra 5000ms (5s) e 15000ms (15s)
-    await new Promise(resolve => setTimeout(resolve, Math.floor(Math.random() * 5000) + 5000));
 
     return mockLogs;
 }

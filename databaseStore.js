@@ -1,6 +1,16 @@
 const {connectDB} = require("./config/db");
 const mongoose = require("mongoose");
-const {extractionLogSchema,extractionAbiSchema, extractionMetricsSchema, baselineWorkerMetricsSchema, singleTraceSchema} = require("./schema/data");
+const {
+    extractionLogSchema,
+    extractionAbiSchema,
+    extractionMetricsSchema,
+    baselineWorkerMetricsSchema,
+    singleTraceSchema,
+    sessionBaseLogSchema,
+    sessionTimelineStepSchema,
+    sessionResolvedTraceSchema,
+    sessionRuleBlacklistSchema
+} = require("./schema/data");
 const {getModelByContractAddress} = require('./query/query');
 const {searchAbi} =require("./query/query");
 
@@ -118,6 +128,163 @@ async function saveIndividualTraces(tracesArray) {
     }
 }
 
+function getSessionBaseLogModel() {
+    return mongoose.models.SessionBaseLog ||
+           mongoose.model('SessionBaseLog', sessionBaseLogSchema, 'SessionBaseLogs');
+}
+
+async function upsertSessionBaseLog(sessionId, xesString, ttlSeconds = 259200) {
+    const SessionBaseLog = getSessionBaseLogModel();
+    const expiresAt = ttlSeconds
+        ? new Date(Date.now() + ttlSeconds * 1000)
+        : undefined;
+
+    await SessionBaseLog.findOneAndUpdate(
+        { sessionId },
+        {
+            sessionId,
+            xes: xesString,
+            updatedAt: new Date(),
+            ...(expiresAt ? { expiresAt } : {})
+        },
+        { upsert: true, new: true, setDefaultsOnInsert: true }
+    );
+}
+
+async function getSessionBaseLog(sessionId) {
+    const SessionBaseLog = getSessionBaseLogModel();
+    const doc = await SessionBaseLog.findOne({ sessionId }).lean();
+    return doc ? doc.xes : null;
+}
+
+async function deleteSessionBaseLog(sessionId) {
+    const SessionBaseLog = getSessionBaseLogModel();
+    await SessionBaseLog.deleteOne({ sessionId });
+}
+
+function getSessionTimelineStepModel() {
+    return mongoose.models.SessionTimelineStep ||
+           mongoose.model('SessionTimelineStep', sessionTimelineStepSchema, 'SessionTimelineSteps');
+}
+
+async function appendTimelineStep(sessionId, snapshot) {
+    const SessionTimelineStep = getSessionTimelineStepModel();
+    const stepIndex = await SessionTimelineStep.countDocuments({ sessionId });
+    await SessionTimelineStep.create({
+        sessionId,
+        stepIndex,
+        snapshot,
+        createdAt: new Date()
+    });
+    return stepIndex;
+}
+
+async function getTimelineStep(sessionId, stepIndex) {
+    const SessionTimelineStep = getSessionTimelineStepModel();
+    const doc = await SessionTimelineStep.findOne({
+        sessionId,
+        stepIndex: parseInt(stepIndex, 10)
+    }).lean();
+    return doc ? doc.snapshot : null;
+}
+
+function getSessionResolvedTraceModel() {
+    return mongoose.models.SessionResolvedTrace ||
+           mongoose.model('SessionResolvedTrace', sessionResolvedTraceSchema, 'SessionResolvedTraces');
+}
+
+async function upsertResolvedTraces(sessionId, ruleIndex, updates) {
+    if (!updates || Object.keys(updates).length === 0) return;
+
+    const SessionResolvedTrace = getSessionResolvedTraceModel();
+    const ops = [];
+
+    for (const [caseId, valString] of Object.entries(updates)) {
+        const parsed = typeof valString === 'string' ? JSON.parse(valString) : valString;
+        ops.push({
+            updateOne: {
+                filter: { sessionId, ruleIndex, caseId: String(caseId) },
+                update: {
+                    $set: {
+                        sessionId,
+                        ruleIndex,
+                        caseId: String(caseId),
+                        status: parsed.status,
+                        trace: parsed.trace,
+                        updatedAt: new Date()
+                    }
+                },
+                upsert: true
+            }
+        });
+    }
+
+    if (ops.length > 0) {
+        await SessionResolvedTrace.bulkWrite(ops);
+    }
+}
+
+async function getResolvedTraces(sessionId, ruleIndex, status) {
+    const SessionResolvedTrace = getSessionResolvedTraceModel();
+    const query = {
+        sessionId,
+        ruleIndex: parseInt(ruleIndex, 10)
+    };
+    if (status) {
+        query.status = status;
+    }
+
+    const docs = await SessionResolvedTrace.find(query).lean();
+    return docs.map(doc => ({
+        caseId: doc.caseId,
+        status: doc.status,
+        trace: doc.trace
+    }));
+}
+
+function getSessionRuleBlacklistModel() {
+    return mongoose.models.SessionRuleBlacklist ||
+           mongoose.model('SessionRuleBlacklist', sessionRuleBlacklistSchema, 'SessionRuleBlacklists');
+}
+
+async function getBlacklistCaseIds(sessionId, ruleIndex) {
+    const SessionRuleBlacklist = getSessionRuleBlacklistModel();
+    const doc = await SessionRuleBlacklist.findOne({
+        sessionId,
+        ruleIndex: parseInt(ruleIndex, 10)
+    }).lean();
+    return doc && Array.isArray(doc.caseIds) ? doc.caseIds : [];
+}
+
+async function addToBlacklist(sessionId, ruleIndex, caseIds) {
+    if (!caseIds || caseIds.length === 0) return;
+
+    const SessionRuleBlacklist = getSessionRuleBlacklistModel();
+    await SessionRuleBlacklist.updateOne(
+        { sessionId, ruleIndex: parseInt(ruleIndex, 10) },
+        {
+            $addToSet: { caseIds: { $each: caseIds.map(String) } },
+            $set: { updatedAt: new Date() },
+            $setOnInsert: { sessionId, ruleIndex: parseInt(ruleIndex, 10) }
+        },
+        { upsert: true }
+    );
+}
+
+async function deleteSessionComplianceState(sessionId) {
+    const SessionBaseLog = getSessionBaseLogModel();
+    const SessionTimelineStep = getSessionTimelineStepModel();
+    const SessionResolvedTrace = getSessionResolvedTraceModel();
+    const SessionRuleBlacklist = getSessionRuleBlacklistModel();
+
+    await Promise.all([
+        SessionBaseLog.deleteOne({ sessionId }),
+        SessionTimelineStep.deleteMany({ sessionId }),
+        SessionResolvedTrace.deleteMany({ sessionId }),
+        SessionRuleBlacklist.deleteMany({ sessionId })
+    ]);
+}
+
 module.exports = {
     saveTransaction,
     saveExtractionLog,
@@ -125,5 +292,15 @@ module.exports = {
     saveCompiledContractData,
     saveExtractionMetrics,
     saveBaselineWorkerMetrics,
-    saveIndividualTraces
+    saveIndividualTraces,
+    upsertSessionBaseLog,
+    getSessionBaseLog,
+    deleteSessionBaseLog,
+    appendTimelineStep,
+    getTimelineStep,
+    upsertResolvedTraces,
+    getResolvedTraces,
+    getBlacklistCaseIds,
+    addToBlacklist,
+    deleteSessionComplianceState
 }

@@ -2,7 +2,7 @@ const { Web3 } = require('web3');
 const { txQueue, baselineQueue, redisClient } = require('../../config/redisClient'); 
 const { adaptMempoolTx } = require('../simulationUtils/txAdapter');
 const systemEvents = require('../../config/sse');
-const { saveIndividualTraces } = require('../../databaseStore');
+const { saveIndividualTraces, getSessionBaseLog } = require('../../databaseStore');
 const { connectDB } = require('../../config/db');
 
 // mappa per memorizzare le sessioni attive
@@ -175,7 +175,7 @@ async function startBaselineListener(sessionId, url, monitoredContracts) {
 async function stopMempoolListener(sessionId) {
     try {
         await connectDB("Mainnet");
-        const finalXes = await redisClient.get(`session:${sessionId}:xes`);
+        const finalXes = await getSessionBaseLog(sessionId);
         const configData = await redisClient.get(`session:${sessionId}:config`);
         
         if (finalXes && configData) {
@@ -187,7 +187,7 @@ async function stopMempoolListener(sessionId) {
             const traceMatches = finalXes.match(traceRegex) || [];
             
             const tracesToSave = traceMatches.map((traceXml) => {
-                // Regex robusta per ignorare eventuali backslash di escape (\") creati da Redis
+                // Regex robusta per eventuali escape (\") residui
                 let caseIdMatch = traceXml.match(new RegExp(`<string key="${caseCol}" value=\\\\?"([^"\\\\]+)\\\\?"`));
                 if (!caseIdMatch) caseIdMatch = traceXml.match(/<string key="case:concept:name" value=\\?"([^"\\]+)\\?"/);
                 if (!caseIdMatch) caseIdMatch = traceXml.match(/<string key="case_id" value=\\?"([^"\\]+)\\?"/);
@@ -206,7 +206,7 @@ async function stopMempoolListener(sessionId) {
             }
 
         } else {
-            console.warn(`[Listener] Dati Redis non trovati ${sessionId}.`);
+            console.warn(`[Listener] Log Base (Mongo) o config (Redis) non trovati per ${sessionId}.`);
         }
     } catch (err) {
         console.error(`[Listener] Errore durante il salvataggio delle tracce XES:`, err.message);

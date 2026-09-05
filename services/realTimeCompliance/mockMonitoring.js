@@ -1,10 +1,9 @@
-const { redisClient } = require("../../config/redisClient");
 const { appendXes } = require('../simulationUtils/appendXes');
 const { getAllTransactions } = require('../ExtractionModule/mainWithOption');
 const { connectDB } = require('../../config/db');
 const axios = require('axios');
 const { performance } = require('perf_hooks');
-const { saveBaselineWorkerMetrics } = require('../../databaseStore');
+const { saveBaselineWorkerMetrics, getSessionBaseLog, upsertSessionBaseLog, appendTimelineStep, upsertResolvedTraces, getBlacklistCaseIds, addToBlacklist } = require('../../databaseStore');
 const { mockExtraction } = require('../ExtractionModule/simulationOrchestrator'); 
 
 /**
@@ -32,8 +31,8 @@ async function runHistoricalCompliance(params) {
         const tJobStart = performance.now();
 
         try {
-            const baseXes = await redisClient.get(`session:${sessionId}:xes`);
-            if (!baseXes) throw new Error("Log Base mancante in Redis.");
+            const baseXes = await getSessionBaseLog(sessionId);
+            if (!baseXes) throw new Error("Log Base mancante in MongoDB.");
 
             const newParams = {
                 contractAddressesFrom: monitoredContracts, 
@@ -81,7 +80,14 @@ async function runHistoricalCompliance(params) {
             const {updatedXes, miniXesToVerify} = appendXes(baseXes, pythonResponse.data.xes_string);
             const appendTime = parseFloat((performance.now() - tStartAppend).toFixed(3));
 
-            await redisClient.set(`session:${sessionId}:xes`, updatedXes);
+            console.log(`[DEBUG] Dimensione XES aggiornato: ${(updatedXes.length / 1024 / 1024).toFixed(2)} MB`);
+
+            if (!updatedXes || updatedXes.trim() === "") {
+                console.error(`[Allarme] La funzione appendXes ha restituito un XML vuoto al blocco ${currentBlock}!`);
+                break; // Ferma il loop prima di corrompere il Log Base
+            }
+
+            await upsertSessionBaseLog(sessionId, updatedXes);
 
             // 3. Verifica Regole in Parallelo
             const tRuleCheckTotal = performance.now();
@@ -90,11 +96,9 @@ async function runHistoricalCompliance(params) {
             const verificationPromises = parsedRules.map(async (ruleObj, index) => { 
                 let ruleRedisTime = 0;
                 const ruleIndex = index + 1;
-                const redisKey = `session:${sessionId}:rule:${ruleIndex}:resolved_traces`;
-                const blacklistKey = `session:${sessionId}:rule:${ruleIndex}:blacklist`;
                 
                 const tRedis1 = performance.now();
-                const resolvedCasesIds = await redisClient.smembers(blacklistKey); 
+                const resolvedCasesIds = await getBlacklistCaseIds(sessionId, ruleIndex); 
                 ruleRedisTime += (performance.now() - tRedis1);
 
                 const rulePayload = {
@@ -148,8 +152,8 @@ async function runHistoricalCompliance(params) {
                     buildUpdate(newIgnored, 'ignored');
 
                     const tRedis2 = performance.now();
-                    if (Object.keys(updates).length > 0) await redisClient.hset(redisKey, updates); 
-                    if (newBlacklistIds.length > 0) await redisClient.sadd(blacklistKey, newBlacklistIds);
+                    if (Object.keys(updates).length > 0) await upsertResolvedTraces(sessionId, ruleIndex, updates); 
+                    if (newBlacklistIds.length > 0) await addToBlacklist(sessionId, ruleIndex, newBlacklistIds);
                     ruleRedisTime += (performance.now() - tRedis2);
 
                     return {
@@ -207,7 +211,7 @@ async function runHistoricalCompliance(params) {
                 ruleResults: finalComplianceResult
             };
 
-            await redisClient.rpush(`session:${sessionId}:timeline`, JSON.stringify(timelineSnapshot));
+            await appendTimelineStep(sessionId, timelineSnapshot);
 
         } catch (err) {
             console.error(`[Historical Processor] Errore blocco ${currentBlock}:`, err.message);

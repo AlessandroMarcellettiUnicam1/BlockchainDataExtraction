@@ -200,11 +200,54 @@ const singleTraceSchema = new mongoose.Schema({
     timestamp: { type: Date, default: Date.now }
 }, { versionKey: false });
 
+const sessionBaseLogSchema = new mongoose.Schema({
+    sessionId: { type: String, required: true, unique: true, index: true },
+    xes: { type: String, required: true },
+    expiresAt: { type: Date, required: false },
+    updatedAt: { type: Date, default: Date.now }
+}, { versionKey: false });
+
+// TTL index: Mongo cancella il documento quando expiresAt è raggiunto
+sessionBaseLogSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
+
+const sessionTimelineStepSchema = new mongoose.Schema({
+    sessionId: { type: String, required: true, index: true },
+    stepIndex: { type: Number, required: true },
+    snapshot: { type: mongoose.Schema.Types.Mixed, required: true },
+    createdAt: { type: Date, default: Date.now }
+}, { versionKey: false });
+
+sessionTimelineStepSchema.index({ sessionId: 1, stepIndex: 1 }, { unique: true });
+
+const sessionResolvedTraceSchema = new mongoose.Schema({
+    sessionId: { type: String, required: true },
+    ruleIndex: { type: Number, required: true },
+    caseId: { type: String, required: true },
+    status: { type: String, required: true },
+    trace: { type: mongoose.Schema.Types.Mixed },
+    updatedAt: { type: Date, default: Date.now }
+}, { versionKey: false });
+
+sessionResolvedTraceSchema.index({ sessionId: 1, ruleIndex: 1, caseId: 1 }, { unique: true });
+
+const sessionRuleBlacklistSchema = new mongoose.Schema({
+    sessionId: { type: String, required: true },
+    ruleIndex: { type: Number, required: true },
+    caseIds: { type: [String], default: [] },
+    updatedAt: { type: Date, default: Date.now }
+}, { versionKey: false });
+
+sessionRuleBlacklistSchema.index({ sessionId: 1, ruleIndex: 1 }, { unique: true });
+
 module.exports = {
     transactionSchema, 
     extractionLogSchema,
     extractionAbiSchema, 
     extractionMetricsSchema,
     baselineWorkerMetricsSchema,
-    singleTraceSchema
+    singleTraceSchema,
+    sessionBaseLogSchema,
+    sessionTimelineStepSchema,
+    sessionResolvedTraceSchema,
+    sessionRuleBlacklistSchema
 };

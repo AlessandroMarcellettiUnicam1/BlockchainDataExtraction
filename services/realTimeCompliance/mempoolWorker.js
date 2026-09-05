@@ -9,6 +9,7 @@ require('dotenv').config();
 const { appendXes } = require('../simulationUtils/appendXes')
 const { performance } = require('perf_hooks');
 const { logMetrics } = require('../simulationUtils/performanceMetrics')
+const { getSessionBaseLog } = require('../../databaseStore');
 
 console.log('[Worker] Worker inizializzato, in attesa di transazioni in coda...');
 
@@ -48,12 +49,12 @@ const mempoolWorker = new Worker('mempool-queue', async (job) => {
         console.log(`[Mempool Worker] Simulazione completata per ${hash}.`);
 
         if (simulationResult.data.status !== "System error") {
-            // recupero il mapping e lo xes base da Redis
+            // recupero il mapping da Redis e lo xes base da Mongo
             const configData = await redisClient.get(`session:${sessionId}:config`);
-            const baseXes = await redisClient.get(`session:${sessionId}:xes`);
+            const baseXes = await getSessionBaseLog(sessionId);
 
             if (!configData || !baseXes) {
-                throw new Error("Configurazione o Log Base mancanti in Redis");
+                throw new Error("Configurazione (Redis) o Log Base (Mongo) mancanti");
             }
 
             const { mapping, parsedRule, logMapping } = JSON.parse(configData);

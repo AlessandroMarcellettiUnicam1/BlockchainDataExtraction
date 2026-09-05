@@ -16,6 +16,7 @@ const { appendXes } = require('./services/simulationUtils/appendXes');
 const { logMetrics } = require('./services/simulationUtils/performanceMetrics');
 const { performance } = require('perf_hooks');
 const { runHistoricalCompliance } = require('./services/realTimeCompliance/mockMonitoring');
+const { upsertSessionBaseLog, deleteSessionComplianceState, getTimelineStep, getResolvedTraces } = require('./databaseStore');
 
 
 // const { getAllTransactions } = require("./services/main");
@@ -1379,6 +1380,8 @@ app.post("/api/simulate/mempool-txs", async (req, res) => {
 
 app.post('/api/generate-base-xes', async (req, res) => {
 	try {
+		await connectDB("Mainnet");
+
 		// payload che viene dal frontend
 		const payload = req.body;
 		payload.extract_columns = true;
@@ -1395,10 +1398,10 @@ app.post('/api/generate-base-xes', async (req, res) => {
 		// elimino la sessione precedente se ne esiste una 
 		if (payload.previousSessionId) {
             try {
-                await redisClient.del(`session:${payload.previousSessionId}:xes`);
-                console.log(`[Redis] Sessione precedente ${payload.previousSessionId} eliminata con successo.`);
+                await deleteSessionComplianceState(payload.previousSessionId);
+                console.log(`[Mongo] Sessione precedente ${payload.previousSessionId} eliminata con successo.`);
             } catch (delErr) {
-                console.warn(`[Redis] Impossibile eliminare la vecchia sessione: ${delErr.message}`);
+                console.warn(`[Mongo] Impossibile eliminare la vecchia sessione: ${delErr.message}`);
             }
         }
 
@@ -1412,8 +1415,7 @@ app.post('/api/generate-base-xes', async (req, res) => {
 		const xesString = pythonResponse.data.xes_string;
 		const columns = pythonResponse.data.columns;
 
-		// await redisClient.set(`session:${sessionId}:xes`, xesString);
-		await redisClient.setex(`session:${sessionId}:xes`, 259200, xesString); // 72h 
+		await upsertSessionBaseLog(sessionId, xesString); // TTL 72h via expiresAt
 
 		res.status(200).json({ 
             success: true, 
@@ -1451,7 +1453,7 @@ app.post('/api/start-compliance-monitoring', async (req, res) => {
             return res.status(400).json({ error: "Parametri mancanti" });
         }
 
-		// salvo mapping e regola che serviranno per il worker
+		// Redis: solo config leggera (mapping, regole, contratti). Timeline/traces/blacklist sono su Mongo.
 		await redisClient.set(
             `session:${sessionId}:config`, 
             JSON.stringify({ mapping, parsedRules, logMapping, monitoredContracts })
@@ -1570,6 +1572,7 @@ baselineQueueEvents.on('completed', ({ jobId, returnvalue }) => {
 
 app.get('/api/traces/:sessionId/:ruleIndex', async (req, res) => {
     try {
+        await connectDB("Mainnet");
         const { sessionId, ruleIndex } = req.params;
         const { status } = req.query; // Opzionale: '?status=compliant' o '?status=noncompliant'
 
@@ -1577,49 +1580,30 @@ app.get('/api/traces/:sessionId/:ruleIndex', async (req, res) => {
             return res.status(400).json({ error: "Parametri mancanti" });
         }
 
-        const redisKey = `session:${sessionId}:rule:${ruleIndex}:resolved_traces`;
-        
-        // Legge tutti i campi (caseId) e i valori associati da Redis
-        const resolvedData = await redisClient.hgetall(redisKey);
-
-        const traces = [];
-        
-        // Cicla le chiavi di Redis per ricostruire l'array
-        for (const [caseId, valString] of Object.entries(resolvedData)) {
-            const parsed = JSON.parse(valString);
-            
-            // Se è richiesto uno status specifico, filtra, altrimenti restituisci tutto
-            if (!status || parsed.status === status) {
-                traces.push({ 
-                    caseId: caseId, 
-                    status: parsed.status, 
-                    trace: parsed.trace 
-                });
-            }
-        }
+        const traces = await getResolvedTraces(sessionId, ruleIndex, status || undefined);
 
         res.status(200).json({ success: true, count: traces.length, traces });
 
     } catch (error) {
-        console.error(`[API] Errore recupero tracce da Redis per sessione ${req.params.sessionId}:`, error);
+        console.error(`[API] Errore recupero tracce da Mongo per sessione ${req.params.sessionId}:`, error);
         res.status(500).json({ success: false, error: "Errore interno durante il recupero delle tracce" });
     }
 });
 
 app.get('/api/timeline/:sessionId/:stepIndex', async (req, res) => {
     try {
+        await connectDB("Mainnet");
         const { sessionId, stepIndex } = req.params;
         
-        // LINDEX recupera un elemento specifico dalla lista cronologica in Redis (0-based)
-        const snapshotStr = await redisClient.lindex(`session:${sessionId}:timeline`, parseInt(stepIndex));
+        const data = await getTimelineStep(sessionId, stepIndex);
         
-        if (!snapshotStr) {
+        if (!data) {
             return res.status(404).json({ success: false, error: "Step non trovato" });
         }
 
-        res.status(200).json({ success: true, data: JSON.parse(snapshotStr) });
+        res.status(200).json({ success: true, data });
     } catch (error) {
-        console.error(`[API Timeline] Errore recupero step da Redis:`, error);
+        console.error(`[API Timeline] Errore recupero step da Mongo:`, error);
         res.status(500).json({ success: false, error: "Errore interno durante il recupero dello step" });
     }
 });
