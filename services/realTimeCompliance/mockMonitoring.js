@@ -49,8 +49,8 @@ async function runHistoricalCompliance(params) {
             };
 
             const tStartExtraction = performance.now();
-            const extractedLogs = await getAllTransactions(null, newParams, true);
-            //const extractedLogs = await mockExtraction(currentBlock, monitoredContracts);
+            //const extractedLogs = await getAllTransactions(null, newParams, true);
+            const extractedLogs = await mockExtraction(currentBlock, monitoredContracts);
             const extractionTime = parseFloat((performance.now() - tStartExtraction).toFixed(3));
 
             // Se non ci sono log, salta la validazione ma salva le metriche
@@ -80,6 +80,13 @@ async function runHistoricalCompliance(params) {
             const tStartAppend = performance.now();
             const {updatedXes, miniXesToVerify} = appendXes(baseXes, pythonResponse.data.xes_string);
             const appendTime = parseFloat((performance.now() - tStartAppend).toFixed(3));
+
+            console.log(`[DEBUG] Dimensione XES aggiornato: ${(updatedXes.length / 1024 / 1024).toFixed(2)} MB`);
+
+            if (!updatedXes || updatedXes.trim() === "") {
+                console.error(`[Allarme] La funzione appendXes ha restituito un XML vuoto al blocco ${currentBlock}!`);
+                break; // Ferma il loop prima di corrompere Redis
+            }
 
             await redisClient.set(`session:${sessionId}:xes`, updatedXes);
 
