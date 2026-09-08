@@ -200,35 +200,86 @@ const singleTraceSchema = new mongoose.Schema({
     timestamp: { type: Date, default: Date.now }
 }, { versionKey: false });
 
-const sessionBaseLogSchema = new mongoose.Schema({
+// Meta del base log (solo header XES + TTL). Le tracce stanno in SessionBaseTraces.
+const sessionBaseLogMetaSchema = new mongoose.Schema({
     sessionId: { type: String, required: true, unique: true, index: true },
-    xes: { type: String, required: true },
+    xesHeader: { type: String, required: true },
     expiresAt: { type: Date, required: false },
     updatedAt: { type: Date, default: Date.now }
 }, { versionKey: false });
 
-// TTL index: Mongo cancella il documento quando expiresAt è raggiunto
-sessionBaseLogSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
+sessionBaseLogMetaSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 
+// Traccia XES del base log, eventualmente spezzata in chunk
+const sessionBaseTraceSchema = new mongoose.Schema({
+    sessionId: { type: String, required: true },
+    caseId: { type: String, required: true },
+    chunkIndex: { type: Number, required: true, default: 0 },
+    chunkTotal: { type: Number, required: true, default: 1 },
+    payload: { type: String, required: true },
+    updatedAt: { type: Date, default: Date.now }
+}, { versionKey: false });
+
+sessionBaseTraceSchema.index({ sessionId: 1, caseId: 1, chunkIndex: 1 }, { unique: true });
+sessionBaseTraceSchema.index({ sessionId: 1 });
+
+// Metadati step timeline (senza tracce inline)
 const sessionTimelineStepSchema = new mongoose.Schema({
     sessionId: { type: String, required: true, index: true },
     stepIndex: { type: Number, required: true },
-    snapshot: { type: mongoose.Schema.Types.Mixed, required: true },
+    step: { type: mongoose.Schema.Types.Mixed },
+    sourceType: { type: String },
+    sourceId: { type: String },
+    blockNumber: { type: Number },
+    ruleSummaries: [{
+        ruleText: { type: String },
+        ruleIndex: { type: Number },
+        error: { type: Boolean, required: false },
+        _id: false
+    }],
     createdAt: { type: Date, default: Date.now }
 }, { versionKey: false });
 
 sessionTimelineStepSchema.index({ sessionId: 1, stepIndex: 1 }, { unique: true });
 
+// Tracce point-in-time dello step timeline (chunkabili)
+const sessionTimelineTraceSchema = new mongoose.Schema({
+    sessionId: { type: String, required: true },
+    stepIndex: { type: Number, required: true },
+    ruleIndex: { type: Number, required: true },
+    caseId: { type: String, required: true },
+    status: { type: String, required: true },
+    payloadKind: { type: String, enum: ['string', 'json'], default: 'json' },
+    chunkIndex: { type: Number, required: true, default: 0 },
+    chunkTotal: { type: Number, required: true, default: 1 },
+    payload: { type: String, required: true },
+    createdAt: { type: Date, default: Date.now }
+}, { versionKey: false });
+
+sessionTimelineTraceSchema.index(
+    { sessionId: 1, stepIndex: 1, ruleIndex: 1, caseId: 1, chunkIndex: 1 },
+    { unique: true }
+);
+sessionTimelineTraceSchema.index({ sessionId: 1, stepIndex: 1 });
+
+// Resolved traces per regola (chunkabili)
 const sessionResolvedTraceSchema = new mongoose.Schema({
     sessionId: { type: String, required: true },
     ruleIndex: { type: Number, required: true },
     caseId: { type: String, required: true },
     status: { type: String, required: true },
-    trace: { type: mongoose.Schema.Types.Mixed },
+    payloadKind: { type: String, enum: ['string', 'json'], default: 'json' },
+    chunkIndex: { type: Number, required: true, default: 0 },
+    chunkTotal: { type: Number, required: true, default: 1 },
+    payload: { type: String, required: true },
     updatedAt: { type: Date, default: Date.now }
 }, { versionKey: false });
 
-sessionResolvedTraceSchema.index({ sessionId: 1, ruleIndex: 1, caseId: 1 }, { unique: true });
+sessionResolvedTraceSchema.index(
+    { sessionId: 1, ruleIndex: 1, caseId: 1, chunkIndex: 1 },
+    { unique: true }
+);
+sessionResolvedTraceSchema.index({ sessionId: 1, ruleIndex: 1, status: 1 });
 
 const sessionRuleBlacklistSchema = new mongoose.Schema({
     sessionId: { type: String, required: true },
@@ -246,8 +297,10 @@ module.exports = {
     extractionMetricsSchema,
     baselineWorkerMetricsSchema,
     singleTraceSchema,
-    sessionBaseLogSchema,
+    sessionBaseLogMetaSchema,
+    sessionBaseTraceSchema,
     sessionTimelineStepSchema,
+    sessionTimelineTraceSchema,
     sessionResolvedTraceSchema,
     sessionRuleBlacklistSchema
 };
