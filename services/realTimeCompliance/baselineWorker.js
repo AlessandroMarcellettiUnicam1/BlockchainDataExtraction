@@ -61,8 +61,8 @@ const baselineWorker = new Worker('baseline-queue', async (job) => {
         };
 
         const tStartExtraction = performance.now();
-        const extractedLogs = await getAllTransactions(null, newParams, true);
-        //const extractedLogs = await mockExtraction( payload.blockNumber, payload.contract);
+        //const extractedLogs = await getAllTransactions(null, newParams, true);
+        const extractedLogs = await mockExtraction( payload.blockNumber, payload.contract);
         const extractionTime = parseFloat((performance.now() - tStartExtraction).toFixed(3));
 
         if (!extractedLogs || extractedLogs.length === 0) {
@@ -117,7 +117,7 @@ const baselineWorker = new Worker('baseline-queue', async (job) => {
              throw new Error("Errore durante l'isolamento della traccia XES modificata.");
         }
 
-        await upsertSessionBaseLog(sessionId, updatedXes);
+        await upsertSessionBaseLog(sessionId, updatedXes, { modifiedXes: miniXesToVerify });
         console.log(`[Baseline Worker] Log Base aggiornato su Mongo per sessione ${sessionId}.`);
 
         let complianceResults = null;
