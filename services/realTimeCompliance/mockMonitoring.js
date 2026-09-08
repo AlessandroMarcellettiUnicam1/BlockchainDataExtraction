@@ -48,8 +48,8 @@ async function runHistoricalCompliance(params) {
             };
 
             const tStartExtraction = performance.now();
-            //const extractedLogs = await getAllTransactions(null, newParams, true);
-            const extractedLogs = await mockExtraction(currentBlock, monitoredContracts);
+            const extractedLogs = await getAllTransactions(null, newParams, true);
+            //const extractedLogs = await mockExtraction(currentBlock, monitoredContracts);
             const extractionTime = parseFloat((performance.now() - tStartExtraction).toFixed(3));
 
             // Se non ci sono log, salta la validazione ma salva le metriche
