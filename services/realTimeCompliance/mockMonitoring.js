@@ -4,7 +4,34 @@ const { connectDB } = require('../../config/db');
 const axios = require('axios');
 const { performance } = require('perf_hooks');
 const { saveBaselineWorkerMetrics, getSessionBaseLog, upsertSessionBaseLog, appendTimelineStep, upsertResolvedTraces, getBlacklistCaseIds, addToBlacklist } = require('../../databaseStore');
-const { mockExtraction } = require('../ExtractionModule/simulationOrchestrator'); 
+const { mockExtraction } = require('../ExtractionModule/simulationOrchestrator');
+
+function formatErrorDetail(err) {
+    if (!err) return 'Unknown error';
+    if (err.response) {
+        return JSON.stringify({
+            status: err.response.status,
+            statusText: err.response.statusText,
+            data: err.response.data,
+            code: err.code,
+            message: err.message
+        });
+    }
+    return err.stack || err.message || String(err);
+}
+
+function bytesToMb(bytes) {
+    if (bytes < 0) return '?';
+    return (bytes / 1024 / 1024).toFixed(2);
+}
+
+function estimateStringMapBytes(map) {
+    let total = 0;
+    for (const v of Object.values(map)) {
+        total += Buffer.byteLength(typeof v === 'string' ? v : String(v), 'utf8');
+    }
+    return total;
+}
 
 /**
  * Esegue l'analisi storica su un range di blocchi.
@@ -81,6 +108,7 @@ async function runHistoricalCompliance(params) {
             const appendTime = parseFloat((performance.now() - tStartAppend).toFixed(3));
 
             console.log(`[DEBUG] Dimensione XES aggiornato: ${(updatedXes.length / 1024 / 1024).toFixed(2)} MB`);
+            console.log(`[DEBUG] Dimensione miniXesToVerify: ${miniXesToVerify ? (Buffer.byteLength(miniXesToVerify, 'utf8') / 1024 / 1024).toFixed(2) : 0} MB`);
 
             if (!updatedXes || updatedXes.trim() === "") {
                 console.error(`[Allarme] La funzione appendXes ha restituito un XML vuoto al blocco ${currentBlock}!`);
@@ -92,6 +120,8 @@ async function runHistoricalCompliance(params) {
             // 3. Verifica Regole in Parallelo
             const tRuleCheckTotal = performance.now();
             if (!logMapping.gasLimit) logMapping.gasLimit = "gasLimit";
+
+            console.log(`[Historical Processor] Avvio verifica di ${parsedRules.length} regole in parallelo (blocco ${currentBlock})`);
 
             const verificationPromises = parsedRules.map(async (ruleObj, index) => { 
                 let ruleRedisTime = 0;
@@ -119,6 +149,8 @@ async function runHistoricalCompliance(params) {
                     const newTempCompliant = res.data.tempCompliant || [];
                     const newTempNonCompliant = res.data.tempNonCompliant || [];
                     const newIgnored = res.data.ignored || [];
+
+                    console.log(`[Processor] Regola ${ruleObj.id} (idx ${ruleIndex}) OK in ${(tEndSingleRule - tStartSingleRule).toFixed(1)}ms | C=${newCompliant.length} NC=${newNoncompliant.length} TC=${newTempCompliant.length} TNC=${newTempNonCompliant.length} IGN=${newIgnored.length}`);
                     
                     const cleanTraceMetrics = (res.data.trace_metrics || []).map(tm => ({
                         case_id: tm.case_id,
@@ -141,6 +173,8 @@ async function runHistoricalCompliance(params) {
                                 if (statusName === 'compliant' || statusName === 'noncompliant') {
                                     newBlacklistIds.push(String(id));
                                 }
+                            } else {
+                                console.warn(`[Processor] Regola ${ruleObj.id}: caseId non trovato (status=${statusName}, case_col="${mapping.case_col}")`);
                             }
                         });
                     };
@@ -150,6 +184,8 @@ async function runHistoricalCompliance(params) {
                     buildUpdate(newTempCompliant, 'tempCompliant');
                     buildUpdate(newTempNonCompliant, 'tempNonCompliant');
                     buildUpdate(newIgnored, 'ignored');
+
+                    console.log(`[Processor] Regola ${ruleObj.id}: upsertResolvedTraces cases=${Object.keys(updates).length} payload≈${bytesToMb(estimateStringMapBytes(updates))} MB blacklist+=${newBlacklistIds.length}`);
 
                     const tRedis2 = performance.now();
                     if (Object.keys(updates).length > 0) await upsertResolvedTraces(sessionId, ruleIndex, updates); 
@@ -169,13 +205,28 @@ async function runHistoricalCompliance(params) {
                         ignored: newIgnored
                     };
                 } catch (err) {
-                    console.error(`[Processor] Errore regola ${ruleObj.id}:`, err.message);
-                    return { error: true, cleanTraceMetrics: [], compliant: [], noncompliant: [], tempCompliant: [], tempNonCompliant: [], ignored: [] };
+                    const tEndSingleRule = performance.now();
+                    console.error(`[Processor] Errore regola ${ruleObj.id} (idx ${ruleIndex}) dopo ${(tEndSingleRule - tStartSingleRule).toFixed(1)}ms:`, formatErrorDetail(err));
+                    return {
+                        ruleText: ruleObj.text,
+                        ruleIndex: ruleIndex,
+                        executionTime: parseFloat((tEndSingleRule - tStartSingleRule).toFixed(3)),
+                        ruleRedisTime: ruleRedisTime,
+                        cleanTraceMetrics: [],
+                        error: true,
+                        compliant: [],
+                        noncompliant: [],
+                        tempCompliant: [],
+                        tempNonCompliant: [],
+                        ignored: []
+                    };
                 }
             });
 
             const complianceResults = await Promise.all(verificationPromises);
             const ruleCheckTotalTime = parseFloat((performance.now() - tRuleCheckTotal).toFixed(3));
+            const failedRules = complianceResults.filter(r => r.error);
+            console.log(`[Historical Processor] Verifica regole completata in ${ruleCheckTotalTime}ms | ok=${complianceResults.length - failedRules.length} fail=${failedRules.length}`);
 
             let totalRedisVerificationTime = 0;
             const ruleMetricsMap = {};
@@ -211,10 +262,15 @@ async function runHistoricalCompliance(params) {
                 ruleResults: finalComplianceResult
             };
 
-            await appendTimelineStep(sessionId, timelineSnapshot);
+            try {
+                await appendTimelineStep(sessionId, timelineSnapshot);
+            } catch (timelineErr) {
+                console.error(`[Historical Processor] Errore appendTimelineStep blocco ${currentBlock}:`, formatErrorDetail(timelineErr));
+                throw timelineErr;
+            }
 
         } catch (err) {
-            console.error(`[Historical Processor] Errore blocco ${currentBlock}:`, err.message);
+            console.error(`[Historical Processor] Errore blocco ${currentBlock}:`, formatErrorDetail(err));
         }
     }
     

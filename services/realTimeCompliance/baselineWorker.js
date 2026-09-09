@@ -10,6 +10,33 @@ const axios = require('axios');
 const { performance } = require('perf_hooks');
 const {saveBaselineWorkerMetrics, getSessionBaseLog, upsertSessionBaseLog, appendTimelineStep, upsertResolvedTraces, getBlacklistCaseIds, addToBlacklist} = require('../../databaseStore');
 
+function formatErrorDetail(err) {
+    if (!err) return 'Unknown error';
+    if (err.response) {
+        return JSON.stringify({
+            status: err.response.status,
+            statusText: err.response.statusText,
+            data: err.response.data,
+            code: err.code,
+            message: err.message
+        });
+    }
+    return err.stack || err.message || String(err);
+}
+
+function bytesToMb(bytes) {
+    if (bytes < 0) return '?';
+    return (bytes / 1024 / 1024).toFixed(2);
+}
+
+function estimateStringMapBytes(map) {
+    let total = 0;
+    for (const v of Object.values(map)) {
+        total += Buffer.byteLength(typeof v === 'string' ? v : String(v), 'utf8');
+    }
+    return total;
+}
+
 console.log('[Baseline Worker] Worker inizializzato, in attesa di job in coda...');
 
 (async () => {
@@ -119,6 +146,7 @@ const baselineWorker = new Worker('baseline-queue', async (job) => {
 
         await upsertSessionBaseLog(sessionId, updatedXes, { modifiedXes: miniXesToVerify });
         console.log(`[Baseline Worker] Log Base aggiornato su Mongo per sessione ${sessionId}.`);
+        console.log(`[DEBUG] Dimensione XES aggiornato: ${(updatedXes.length / 1024 / 1024).toFixed(2)} MB | miniXesToVerify: ${(Buffer.byteLength(miniXesToVerify, 'utf8') / 1024 / 1024).toFixed(2)} MB`);
 
         let complianceResults = null;
         console.log(`[Baseline Worker] Mempool disabilitata. Controllo compliance per il blocco ${payload.blockNumber}...`);
@@ -127,6 +155,8 @@ const baselineWorker = new Worker('baseline-queue', async (job) => {
         if (!logMapping.gasLimit) {
             logMapping.gasLimit = "gasLimit";
         }
+
+        console.log(`[Baseline Worker] Avvio verifica di ${parsedRules.length} regole in parallelo (blocco ${payload.blockNumber})`);
         
         const verificationPromises = parsedRules.map(async (ruleObj, index) => { 
             let ruleRedisTime = 0;
@@ -155,6 +185,8 @@ const baselineWorker = new Worker('baseline-queue', async (job) => {
                     const newTempCompliant = res.data.tempCompliant || [];
                     const newTempNonCompliant = res.data.tempNonCompliant || [];
                     const newIgnored = res.data.ignored || [];
+
+                    console.log(`[Baseline Worker] Regola ${ruleObj.id} (idx ${ruleIndex}) OK in ${(tEndSingleRule - tStartSingleRule).toFixed(1)}ms | C=${newCompliant.length} NC=${newNoncompliant.length} TC=${newTempCompliant.length} TNC=${newTempNonCompliant.length} IGN=${newIgnored.length}`);
                     
                     const rawTraceMetrics = res.data.trace_metrics || [];
 
@@ -190,7 +222,7 @@ const baselineWorker = new Worker('baseline-queue', async (job) => {
                                     newBlacklistIds.push(strId);
                                 }
                             } else {
-                                console.warn(`[Worker] Impossibile trovare il Case ID con la colonna "${mapping.case_col}"`);
+                                console.warn(`[Baseline Worker] Regola ${ruleObj.id}: caseId non trovato (status=${statusName}, case_col="${mapping.case_col}")`);
                             }
                         });
                     };
@@ -200,6 +232,8 @@ const baselineWorker = new Worker('baseline-queue', async (job) => {
                     buildUpdate(newTempCompliant, 'tempCompliant');
                     buildUpdate(newTempNonCompliant, 'tempNonCompliant');
                     buildUpdate(newIgnored, 'ignored');
+
+                    console.log(`[Baseline Worker] Regola ${ruleObj.id}: upsertResolvedTraces cases=${Object.keys(updates).length} payload≈${bytesToMb(estimateStringMapBytes(updates))} MB blacklist+=${newBlacklistIds.length}`);
 
                     // L'upsert sovrascrive lo stato precedente della traccia aggiornandolo all'ultimo noto
                     const tRedis2 = performance.now();
@@ -232,8 +266,7 @@ const baselineWorker = new Worker('baseline-queue', async (job) => {
                 })
                 .catch(err => {
                     const tEndSingleRule = performance.now();
-                    const pythonError = err.response ? JSON.stringify(err.response.data) : err.message;
-                    console.error(`[Baseline Worker] Errore verifica regola ${ruleObj.id}:`, pythonError);
+                    console.error(`[Baseline Worker] Errore verifica regola ${ruleObj.id} (idx ${ruleIndex}) dopo ${(tEndSingleRule - tStartSingleRule).toFixed(1)}ms:`, formatErrorDetail(err));
                     return {
                         ruleText: ruleObj.text,
                         ruleIndex: ruleIndex,
@@ -250,6 +283,8 @@ const baselineWorker = new Worker('baseline-queue', async (job) => {
         complianceResults = await Promise.all(verificationPromises);
         
         const ruleCheckTotalTime = parseFloat((performance.now() - tRuleCheckTotal).toFixed(3));
+        const failedRules = complianceResults.filter(r => r.error);
+        console.log(`[Baseline Worker] Verifica regole completata in ${ruleCheckTotalTime}ms | ok=${complianceResults.length - failedRules.length} fail=${failedRules.length}`);
 
         let totalRedisVerificationTime = 0;
 
@@ -292,7 +327,12 @@ const baselineWorker = new Worker('baseline-queue', async (job) => {
         };
 
         // Accoda lo snapshot nella timeline Mongo (indice 0-based come RPUSH Redis)
-        await appendTimelineStep(sessionId, timelineSnapshot);
+        try {
+            await appendTimelineStep(sessionId, timelineSnapshot);
+        } catch (timelineErr) {
+            console.error(`[Baseline Worker] Errore appendTimelineStep blocco ${payload.blockNumber}:`, formatErrorDetail(timelineErr));
+            throw timelineErr;
+        }
 
         return { 
             success: true, 
@@ -302,7 +342,7 @@ const baselineWorker = new Worker('baseline-queue', async (job) => {
         };
     }
     catch (err) {
-        console.error(`[Baseline Worker] Errore durante l'elaborazione di ${payload.blockNumber}:`, err.message);
+        console.error(`[Baseline Worker] Errore durante l'elaborazione di ${payload.blockNumber}:`, formatErrorDetail(err));
         await saveBaselineWorkerMetrics({
             jobId: job.id, 
             blockNumber: payload.blockNumber,
@@ -330,7 +370,7 @@ baselineWorker.on('completed', (job) => {
 });
 
 baselineWorker.on('failed', (job, err) => {
-    console.error(`[Baseline Worker] Job ${job.id} fallito: ${err.message}`);
+    console.error(`[Baseline Worker] Job ${job.id} fallito:`, formatErrorDetail(err));
 });
 
 module.exports = baselineWorker;
