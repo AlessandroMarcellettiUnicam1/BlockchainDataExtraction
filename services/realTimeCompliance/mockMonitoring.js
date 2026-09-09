@@ -169,7 +169,7 @@ async function runHistoricalCompliance(params) {
                         ignored: newIgnored
                     };
                 } catch (err) {
-                    console.error(`[Processor] Errore regola ${ruleObj.id}`);
+                    console.error(`[Processor] Errore regola ${ruleObj.id}:`, err.message);
                     return { error: true, cleanTraceMetrics: [], compliant: [], noncompliant: [], tempCompliant: [], tempNonCompliant: [], ignored: [] };
                 }
             });
