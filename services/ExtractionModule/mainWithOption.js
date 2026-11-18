@@ -34,6 +34,49 @@ const { saveExtractionMetrics, saveCompiledContractData } = require('../../datab
  * @returns {Promise<*|*[]>} - the blockchain log with the extracted data
  */
 
+function normalizeAddressList(value) {
+    if (!value) return [];
+    const list = Array.isArray(value) ? value : [value];
+    return list.filter(Boolean).map((address) => String(address).toLowerCase());
+}
+
+async function getTransactionsFromBlockRange(networkData, fromAddresses, toAddresses, fromBlock, toBlock) {
+    const web3 = new Web3(networkData.web3Endpoint);
+    const watched = new Set([
+        ...normalizeAddressList(fromAddresses),
+        ...normalizeAddressList(toAddresses),
+    ]);
+    const start = Number(fromBlock);
+    const end = Number(toBlock);
+    const transactions = [];
+
+    for (let blockNumber = start; blockNumber <= end; blockNumber++) {
+        const block = await web3.eth.getBlock(blockNumber, true);
+        if (!block || !block.transactions) continue;
+
+        const timestamp = web3.utils.toHex(block.timestamp);
+        for (const tx of block.transactions) {
+            if (!tx || !tx.from) continue;
+            const fromLower = tx.from.toLowerCase();
+            const toLower = tx.to ? tx.to.toLowerCase() : "";
+            if (!watched.has(fromLower) && !(toLower && watched.has(toLower))) continue;
+
+            transactions.push({
+                hash: tx.hash,
+                from: tx.from,
+                to: tx.to,
+                value: web3.utils.toHex(tx.value),
+                gasUsed: web3.utils.toHex(tx.gas),
+                input: tx.input,
+                blockNumber: web3.utils.toHex(tx.blockNumber ?? blockNumber),
+                timestamp,
+            });
+        }
+    }
+
+    return transactions;
+}
+
 async function getAllTransactions(oldParams, newParams, returnInMemory = false) {
     const network = (oldParams ? oldParams.network : null) || (newParams ? newParams.network : null);
     let networkData={
@@ -96,9 +139,23 @@ async function getAllTransactions(oldParams, newParams, returnInMemory = false) 
 
         await connectDB(networkData.networkName);
         if(!oldParams && newParams){
-                console.log(`[${new Date().toISOString()}] Costruisco TransactionHierarchy`);
-                const txHierarchy = await buildTransactionHierarchy(newParams.contractAddressesFrom, newParams.contractAddressesTo, newParams.fromBlock, newParams.toBlock, networkData);
-                console.log(`[${new Date().toISOString()}] TransactionHierarchy Costruita`);
+                const useHardhatTrace = newParams.option?.traceProvider === "hardhat";
+                let txHierarchy;
+                if (useHardhatTrace) {
+                    console.log(`[${new Date().toISOString()}] Lettura blocco via eth_getBlock (Hardhat)`);
+                    txHierarchy = await getTransactionsFromBlockRange(
+                        networkData,
+                        newParams.contractAddressesFrom,
+                        newParams.contractAddressesTo,
+                        newParams.fromBlock,
+                        newParams.toBlock
+                    );
+                    console.log(`[${new Date().toISOString()}] Trovate ${txHierarchy.length} transazioni nel blocco`);
+                } else {
+                    console.log(`[${new Date().toISOString()}] Costruisco TransactionHierarchy`);
+                    txHierarchy = await buildTransactionHierarchy(newParams.contractAddressesFrom, newParams.contractAddressesTo, newParams.fromBlock, newParams.toBlock, networkData);
+                    console.log(`[${new Date().toISOString()}] TransactionHierarchy Costruita`);
+                }
                 for(let tx of txHierarchy){
                     try {
                         const targetAbiAddress = newParams.implementationContractAddress ? 

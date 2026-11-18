@@ -314,6 +314,48 @@ async function createTransactionLog(
         } catch (err) {
           console.log(err);
         }
+      } else if (option.traceProvider === "hardhat") {
+        const t3 = performance.now();
+        console.log(
+          `[${new Date().toISOString()}, DEBUG-1] Inizio debug_traceTransaction via Hardhat per TX: ${tx.hash}`,
+        );
+        debugResult = await debugTransaction(
+          tx.hash,
+          transactionLog.blockNumber,
+          networkData,
+        );
+        console.log(
+          `[${new Date().toISOString()}, DEBUG-2] Trace Hardhat ricevuto per TX: ${tx.hash}`,
+        );
+        localMetrics.time_debugStandard = parseFloat(
+          (performance.now() - t3).toFixed(3),
+        );
+        try {
+          const t4 = performance.now();
+          console.log(
+            `[${new Date().toISOString()}, DEBUG-PARTIAL-3] Inizio parsing trace Hardhat (getTraceStorage) per TX: ${tx.hash}`,
+          );
+          storageVal = await getTraceStorage(
+            debugResult.response,
+            networkData,
+            tx.inputDecoded ? tx.inputDecoded.method : null,
+            tx.hash,
+            mainContract,
+            contractTree,
+            smartContract,
+            option,
+            web3,
+            transactionLog.blockNumber,
+          );
+          console.log(
+            `[${new Date().toISOString()} DEBUG-PARTIAL-4] Parsing trace Hardhat completato per TX: ${tx.hash}`,
+          );
+          localMetrics.time_traceStorageStandard = parseFloat(
+            (performance.now() - t4).toFixed(3),
+          );
+        } catch (err) {
+          console.log(err);
+        }
       } else {
         const t3 = performance.now();
         console.log(

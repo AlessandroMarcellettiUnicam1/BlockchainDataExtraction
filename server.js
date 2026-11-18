@@ -1446,17 +1446,20 @@ app.post('/api/start-compliance-monitoring', async (req, res) => {
 			monitoredContracts,
 			mapping,
 			parsedRules,
-			logMapping
+			logMapping,
+			traceProvider: requestedTraceProvider
 		} = req.body;
 
 		if (!sessionId || !monitoredContracts || monitoredContracts.length === 0) {
             return res.status(400).json({ error: "Parametri mancanti" });
         }
 
+		const traceProvider = requestedTraceProvider === "hardhat" ? "hardhat" : "erigon";
+
 		// Redis: solo config leggera (mapping, regole, contratti). Timeline/traces/blacklist sono su Mongo.
 		await redisClient.set(
             `session:${sessionId}:config`, 
-            JSON.stringify({ mapping, parsedRules, logMapping, monitoredContracts })
+            JSON.stringify({ mapping, parsedRules, logMapping, monitoredContracts, traceProvider })
         );
 
 		const url = process.env.WS_ALCHEMY_MAINNET_URL;

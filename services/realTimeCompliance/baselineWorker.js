@@ -66,7 +66,8 @@ const baselineWorker = new Worker('baseline-queue', async (job) => {
             throw new Error("Configurazione (Redis) o Log Base (Mongo) mancanti. Impossibile aggiornare lo storico.");
         }
 
-        const { mapping, parsedRules, logMapping, monitoredContracts } = JSON.parse(configData);
+        const { mapping, parsedRules, logMapping, monitoredContracts, traceProvider } = JSON.parse(configData);
+        const selectedTraceProvider = traceProvider === "hardhat" ? "hardhat" : "erigon";
 
         const newParams = {
             contractAddressesFrom: payload.contract, 
@@ -84,7 +85,7 @@ const baselineWorker = new Worker('baseline-queue', async (job) => {
             contractName: "",
             implementationContractAddress: "", //impl address da aggiungere in caso
             smartContract: null,
-            option: { default: 1, internalStorage: 1, internalTransaction: 0 } 
+            option: { default: 1, internalStorage: 1, internalTransaction: 0, traceProvider: selectedTraceProvider } 
         };
 
         const tStartExtraction = performance.now();
