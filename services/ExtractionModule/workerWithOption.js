@@ -1334,7 +1334,7 @@ async function getTraceStorageInputStream(
           if (
             !(
               web3.utils.hexToNumber(
-                "0x" + publicTrackBuffer[test].hexStorageIndex,
+                ensureHexPrefix(publicTrackBuffer[test].hexStorageIndex),
               ) < 300
             )
           ) {

@@ -137,6 +137,13 @@ async function tryMethodSignature(element, web3, metrics) {
  * @param {*} contractName 
  */
 function decodeInputs(element, abi, web3, contractName) {
+    if (!Array.isArray(abi) || abi.length === 0) {
+        console.warn("decodeInputs: ABI is empty or invalid, skipping input decoding", {
+            contractName,
+            abiIsArray: Array.isArray(abi),
+        });
+        return;
+    }
     const decoder = new InputDataDecoder(abi);
     const inputData = element.input?element.input:element.inputsCall;
     const tempResult = decoder.decodeData(inputData);
