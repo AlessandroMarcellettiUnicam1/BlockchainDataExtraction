@@ -324,7 +324,8 @@ const baselineWorker = new Worker('baseline-queue', async (job) => {
             sourceType: 'BASELINE_UPDATE',
             sourceId: `Block_${payload.blockNumber}`,
             blockNumber: payload.blockNumber,
-            ruleResults: finalComplianceResult
+            ruleResults: finalComplianceResult,
+            caseCol: mapping.case_col
         };
 
         // Accoda lo snapshot nella timeline Mongo (indice 0-based come RPUSH Redis)

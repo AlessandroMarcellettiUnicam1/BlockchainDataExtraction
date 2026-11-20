@@ -293,17 +293,6 @@ async function appendTimelineStep(sessionId, snapshot) {
         ...(r.error ? { error: true } : {})
     }));
 
-    await SessionTimelineStep.create({
-        sessionId,
-        stepIndex,
-        step: snapshot.step,
-        sourceType: snapshot.sourceType,
-        sourceId: snapshot.sourceId,
-        blockNumber: snapshot.blockNumber,
-        ruleSummaries,
-        createdAt: new Date()
-    });
-
     const traceDocs = [];
     for (const ruleResult of ruleResults) {
         const ruleIndex = ruleResult.ruleIndex;
@@ -311,7 +300,7 @@ async function appendTimelineStep(sessionId, snapshot) {
             const arr = ruleResult[status] || [];
             for (let i = 0; i < arr.length; i++) {
                 const trace = arr[i];
-                let caseId = extractCaseIdFromComplianceTrace(trace);
+                let caseId = extractCaseIdFromComplianceTrace(trace, snapshot.caseCol);
                 if (!caseId) caseId = `unknown_${ruleIndex}_${status}_${i}`;
 
                 const { kind, body } = serializeForStorage(trace);
@@ -336,6 +325,24 @@ async function appendTimelineStep(sessionId, snapshot) {
 
     if (traceDocs.length > 0) {
         await SessionTimelineTrace.insertMany(traceDocs);
+    }
+
+    try {
+        await SessionTimelineStep.create({
+            sessionId,
+            stepIndex,
+            step: snapshot.step,
+            sourceType: snapshot.sourceType,
+            sourceId: snapshot.sourceId,
+            blockNumber: snapshot.blockNumber,
+            ruleSummaries,
+            createdAt: new Date()
+        });
+    } catch (err) {
+        if (traceDocs.length > 0) {
+            await SessionTimelineTrace.deleteMany({ sessionId, stepIndex });
+        }
+        throw err;
     }
 
     return stepIndex;
