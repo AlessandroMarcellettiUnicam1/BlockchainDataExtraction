@@ -74,6 +74,7 @@ const { processSimulation } = require("./services/ExtractionModule/simulationOrc
 const { getMempoolTxs, getSequentialMempoolTxs, simulateMempoolTxs } = require("./services/ExtractionModule/mempoolSimulator");
 const { net } = require("web3");
 const { startMempoolListener, stopMempoolListener, startBaselineListener } = require("./services/realTimeCompliance/mempoolListener");
+const { registerBlockComplianceRoutes } = require("./services/realTimeCompliance/blockCompliance");
 const { deprecate } = require("util");
 
 function flattenTransaction(inputData) {
@@ -1715,6 +1716,8 @@ app.post("/api/test-append-xes", async (req, res) => {
         });
     }
 });
+
+registerBlockComplianceRoutes(app);
 
 // Start the server
 app.listen(port, () => {
