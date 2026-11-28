@@ -11,7 +11,7 @@ const {redisClient} = require("./config/redisClient");
 const axios = require('axios');
 const crypto = require('crypto');
 const systemEvents = require('./config/sse');
-const { connectionOptions, txQueue, mempoolQueueEvents, baselineQueueEvents } = require('./config/redisClient');
+const { redisEnabled, connectionOptions, txQueue, mempoolQueueEvents, baselineQueueEvents } = require('./config/redisClient');
 const { appendXes } = require('./services/simulationUtils/appendXes');
 const { logMetrics } = require('./services/simulationUtils/performanceMetrics');
 const { performance } = require('perf_hooks');
@@ -138,13 +138,22 @@ function flattenTransaction(inputData) {
 }
 
 
-redisClient.on('connect', () => {
-    console.log('Connesso a Redis con successo!');
-});
+if (redisEnabled) {
+    redisClient.on('connect', () => {
+        console.log('Connesso a Redis con successo!');
+    });
 
-redisClient.on('error', (err) => {
-    console.error('Errore di connessione a Redis:', err);
-});
+    redisClient.on('error', (err) => {
+        console.error('Errore di connessione a Redis:', err);
+    });
+} else {
+    console.log('Redis disattivato: monitoraggio in tempo reale non disponibile.');
+
+    // Deve essere registrato prima delle route di monitoraggio
+    app.use(['/api/start-compliance-monitoring', '/api/stop-compliance-monitoring'], (req, res) => {
+        res.status(503).json({ success: false, error: 'Monitoraggio in tempo reale disattivato (Redis non abilitato)' });
+    });
+}
 
 
 
@@ -1542,33 +1551,35 @@ app.get('/api/stream-mempool/:sessionId', (req, res) => {
 });
 
 
-mempoolQueueEvents.on('completed', ({ jobId, returnvalue }) => {
-    // Se il worker ha restituito i dati correttamente...
-    if (returnvalue && returnvalue.success && returnvalue.sessionId) {
-        console.log(`[Server] Risultati per ${returnvalue.hash} ricevuti da Redis. Inoltro via SSE...`);
-        
-        systemEvents.emit(`new-tx-${returnvalue.sessionId}`, {
-            type: 'SIMULATION_RESULT',
-			sessionId: returnvalue.sessionId,
-            hash: returnvalue.hash,
-			complianceResult: returnvalue.complianceResult
-        });
-    }
-});
+if (redisEnabled) {
+    mempoolQueueEvents.on('completed', ({ jobId, returnvalue }) => {
+        // Se il worker ha restituito i dati correttamente...
+        if (returnvalue && returnvalue.success && returnvalue.sessionId) {
+            console.log(`[Server] Risultati per ${returnvalue.hash} ricevuti da Redis. Inoltro via SSE...`);
 
-baselineQueueEvents.on('completed', ({ jobId, returnvalue }) => {
-    if (returnvalue && returnvalue.sessionId) {
-        console.log(`[Server] Esito Baseline Worker per il blocco ${returnvalue.blockNumber}. Inoltro via SSE...`);
-        
-        systemEvents.emit(`new-tx-${returnvalue.sessionId}`, {
-            type: 'BASELINE_UPDATE', 
-            sessionId: returnvalue.sessionId,
-            blockNumber: returnvalue.blockNumber,
-            success: returnvalue.success,
-			complianceResult: returnvalue.complianceResult
-        });
-    }
-});
+            systemEvents.emit(`new-tx-${returnvalue.sessionId}`, {
+                type: 'SIMULATION_RESULT',
+                sessionId: returnvalue.sessionId,
+                hash: returnvalue.hash,
+                complianceResult: returnvalue.complianceResult
+            });
+        }
+    });
+
+    baselineQueueEvents.on('completed', ({ jobId, returnvalue }) => {
+        if (returnvalue && returnvalue.sessionId) {
+            console.log(`[Server] Esito Baseline Worker per il blocco ${returnvalue.blockNumber}. Inoltro via SSE...`);
+
+            systemEvents.emit(`new-tx-${returnvalue.sessionId}`, {
+                type: 'BASELINE_UPDATE',
+                sessionId: returnvalue.sessionId,
+                blockNumber: returnvalue.blockNumber,
+                success: returnvalue.success,
+                complianceResult: returnvalue.complianceResult
+            });
+        }
+    });
+}
 
 app.get('/api/traces/:sessionId/:ruleIndex', async (req, res) => {
     try {

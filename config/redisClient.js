@@ -8,16 +8,28 @@ const connectionOptions = {
   maxRetriesPerRequest: null
 };
 
-const redisClient = new Redis(connectionOptions);
-const txQueue = new Queue('mempool-queue', { connection: connectionOptions });
-//coda di eventi per il frontend
-const mempoolQueueEvents = new QueueEvents('mempool-queue', { connection: connectionOptions });
+// Redis è attivo di default: si disattiva solo con REDIS_ENABLED=false
+const redisEnabled = process.env.REDIS_ENABLED !== 'false';
 
-// nuova coda per l'aggiornamento dello xes base, con annessa conda di eventi per il frontend
-const baselineQueue = new Queue('baseline-queue', { connection: connectionOptions });
-const baselineQueueEvents = new QueueEvents('baseline-queue', { connection: connectionOptions });
+let redisClient = null;
+let txQueue = null;
+let mempoolQueueEvents = null;
+let baselineQueue = null;
+let baselineQueueEvents = null;
+
+if (redisEnabled) {
+  redisClient = new Redis(connectionOptions);
+  txQueue = new Queue('mempool-queue', { connection: connectionOptions });
+  //coda di eventi per il frontend
+  mempoolQueueEvents = new QueueEvents('mempool-queue', { connection: connectionOptions });
+
+  // nuova coda per l'aggiornamento dello xes base, con annessa conda di eventi per il frontend
+  baselineQueue = new Queue('baseline-queue', { connection: connectionOptions });
+  baselineQueueEvents = new QueueEvents('baseline-queue', { connection: connectionOptions });
+}
 
 module.exports = {
+  redisEnabled,
   redisClient,
   txQueue,
   mempoolQueueEvents,
